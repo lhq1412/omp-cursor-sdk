@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.3.6 - 2026-08-18
+
+### Fixed
+
+- Isolate `smoke:visual` captures from the host: pi runs with `PI_CODING_AGENT_DIR=<out-dir>/pi-agent` (seeded `auth.json`, `quietStartup`, telemetry off), `PI_OFFLINE=1`, and `PI_SKIP_VERSION_CHECK=1`, so host extensions, skills, MCP config, update banners, and package-update notices no longer pollute visual evidence.
+- Start the visual-smoke tmux session in `--cwd` with a non-login shell, eliminating `shell-init: getcwd` noise from a stale tmux-server working directory.
+- Forward `--session-id` to pi only when explicitly provided, so fresh captures no longer show the new-session warning line; the HTML render labels pi-assigned sessions instead of failing.
+
+## 0.3.5 - 2026-08-18
+
+### Fixed
+
+- Keep billed `getUsage()` rows as spend only. Occupancy `totalTokens` uses local turn-ended usage only when it is below the latest compaction `tokensBefore`, so a stale or cumulative Cursor total cannot restick the footer or retrigger auto-compact (#204).
+- Leave local-resume persist suppressed across any `turn_end` that fires during compaction summarization; only `session_compact` clears the guard (#223).
+
+## 0.3.4 - 2026-08-18
+
+### Changed
+
+- Pin the runtime to exact `@cursor/sdk@1.0.27` and recapture installed-package ripgrep, stalled-connection, HTTP/1.1, PR-control, closed-writable, and `getUsage` contracts against that pin.
+- Refresh the 37-model Cursor fallback catalog and checkpoint-derived context-window snapshot from the live `@cursor/sdk@1.0.27` runtime, including Grok 4.6.
+- Make `cursor/grok-4.6` the recommended local/smoke default (`:slow` for live evidence). Composer 2.5 remains in the catalog.
+
+### Added
+
+- Apply billed `Agent.getUsage()` spend to pi assistant usage for local and cloud turns. Local billed rows are selected by unseen usage UUIDs (never by a client-minted `run-*` id). Cloud reports prefer mapped `AgentUsage` and keep the REST `/v1/agents/:id/usage` fallback.
+
+### Fixed
+
+- Keep billed token spend when cumulative `inputTokens + outputTokens` exceeds the model context window, while occupancy `totalTokens` still uses in-window turn-ended occupancy or the post-compaction estimate floor.
+- Ignore assistant occupancy at or before the latest `compactionSummary`, and ignore measurements at or above that summary's `tokensBefore`, so split-turn keep cannot restick the footer at the pre-compaction watermark.
+- Drop compaction-summarizer local-resume handles: `session_before_compact` suppresses persist, and `session_compact` clears any pending handle so the first later `turn_end` cannot flush the one-message summarizer lineage (#223).
+- Write smoke self-test fake `pi` helpers as ESM so Node 24 shebang execution can dump env without `require`.
+
 ## 0.3.3 - 2026-08-14
 
 ### Changed

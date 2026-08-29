@@ -3,7 +3,6 @@ import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 import { InteractionUpdateSchema, TurnEndedUpdateSchema } from "@cursor/sdk";
 import type { AssistantMessage, Context } from "@oh-my-pi/pi-ai";
-import { calculateContextTokens } from "@oh-my-pi/pi-coding-agent";
 import {
 	applyCursorApproximateUsage,
 	applyCursorUsage,
@@ -183,14 +182,15 @@ describe("cursor usage accounting", () => {
 		// Published SDK toTokenUsage/sumTokenUsage formula only — not the observed raw local turn-ended mapping.
 		const sdkBundle = readFileSync(createRequire(import.meta.url).resolve("@cursor/sdk"), "utf8");
 		expect(sdkBundle).toMatch(/totalTokens:\w\+\w\+\w\+\w/);
-		expect(calculateContextTokens({
-			input: 1,
-			output: 2,
-			cacheRead: 3,
-			cacheWrite: 4,
-			totalTokens: 10,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		})).toBe(10);
+		// OMP consumes provider-reported `usage.totalTokens` as context occupancy.
+		// The port therefore verifies the emitted value directly instead of importing
+		// Pi's `calculateContextTokens`, which OMP does not export.
+		const mapped = makeAssistantMessage([]);
+		applyCursorUsage(mapped, makeModel(), { systemPrompt: "", messages: [] }, 0, {
+			runtime: "local",
+			turn: { inputTokens: 6, outputTokens: 4, cacheReadTokens: 3, cacheWriteTokens: 2 },
+		});
+		expect(mapped.usage.totalTokens).toBe(10);
 		expect(readCursorSdkTurnUsage({ inputTokens: -1, outputTokens: 2, cacheReadTokens: 3, cacheWriteTokens: 4 })).toBeUndefined();
 		expect(readCursorSdkTurnUsage({ inputTokens: 1, outputTokens: Number.POSITIVE_INFINITY, cacheReadTokens: 3, cacheWriteTokens: 4 })).toBeUndefined();
 		expect(InteractionUpdateSchema.safeParse({
@@ -278,6 +278,125 @@ describe("cursor usage accounting", () => {
 		applyCursorUsage(partial, model, context, 7);
 		expect(partial.usage.cacheRead).toBe(0);
 		expect(partial.usage.totalTokens).toBeGreaterThanOrEqual(50_150);
+	});
+
+	it("never uses billed spend as occupancy, including in-window cloud billed rows", () => {
+		const model = makeModel();
+		const context: Context = {
+			systemPrompt: "Be helpful.",
+			messages: [{ role: "user", content: "Hello", timestamp: 1 }],
+		};
+		const partial = makeAssistantMessage([{ type: "text", text: "Hello back." }]);
+		const billed = { inputTokens: 25, outputTokens: 6, cacheReadTokens: 24, cacheWriteTokens: 1 };
+		applyCursorUsage(partial, model, context, 7, { runtime: "cloud", billed });
+		expect(partial.usage.input).toBe(0);
+		expect(partial.usage.output).toBe(6);
+		expect(partial.usage.cacheRead).toBe(24);
+		expect(partial.usage.cacheWrite).toBe(1);
+		expect(partial.usage.totalTokens).toBe(estimateCursorContextTotalTokens(partial, model, context));
+		expect(partial.usage.totalTokens).not.toBe(31);
+	});
+
+	it("rejects local turn occupancy at or above the latest compaction tokensBefore", () => {
+		const model = makeModel();
+		const kept = makeAssistantMessage([{ type: "text", text: "Kept." }]);
+		kept.usage = {
+			input: 10_000,
+			output: 50,
+			cacheRead: 40_000,
+			cacheWrite: 100,
+			totalTokens: 50_150,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		};
+		const context: Context = {
+			systemPrompt: "Be helpful.",
+			messages: [
+				{ role: "compactionSummary", summary: "compacted", tokensBefore: 50_150, timestamp: 2 } as unknown as Context["messages"][number],
+				kept,
+				{ role: "user", content: "Again", timestamp: 3 },
+			],
+		};
+		const partial = makeAssistantMessage([{ type: "text", text: "Hi." }]);
+		applyCursorUsage(partial, model, context, 7, {
+			runtime: "local",
+			turn: { inputTokens: 50_100, outputTokens: 50, cacheReadTokens: 40_000, cacheWriteTokens: 100 },
+			billed: { inputTokens: 80, outputTokens: 12, cacheReadTokens: 60, cacheWriteTokens: 1 },
+		});
+		expect(partial.usage.input).toBe(19);
+		expect(partial.usage.output).toBe(12);
+		expect(partial.usage.cacheRead).toBe(60);
+		expect(partial.usage.cacheWrite).toBe(1);
+		expect(partial.usage.totalTokens).toBeLessThan(50_150);
+		expect(partial.usage.totalTokens).toBe(estimateCursorContextTotalTokens(partial, model, context));
+	});
+
+	it("keeps post-compaction local turn occupancy when it is below tokensBefore", () => {
+		const model = makeModel();
+		const context: Context = {
+			systemPrompt: "Be helpful.",
+			messages: [
+				{ role: "compactionSummary", summary: "compacted", tokensBefore: 50_150, timestamp: 2 } as unknown as Context["messages"][number],
+				{ role: "user", content: "Again", timestamp: 3 },
+			],
+		};
+		const partial = makeAssistantMessage([{ type: "text", text: "Hi." }]);
+		applyCursorUsage(partial, model, context, 7, {
+			runtime: "local",
+			turn: { inputTokens: 12_000, outputTokens: 40, cacheReadTokens: 11_000, cacheWriteTokens: 20 },
+		});
+		expect(partial.usage.totalTokens).toBe(12_040);
+	});
+
+	it("prefers billed spend even when billed occupancy exceeds the context window", () => {
+		const model = makeModel();
+		const context: Context = {
+			systemPrompt: "Be helpful.",
+			messages: [{ role: "user", content: "Hello", timestamp: 1 }],
+		};
+		const partial = makeAssistantMessage([{ type: "text", text: "Hello back." }]);
+		applyCursorUsage(partial, model, context, 7, {
+			runtime: "local",
+			turn: { inputTokens: 25, outputTokens: 6, cacheReadTokens: 24, cacheWriteTokens: 1 },
+			billed: { inputTokens: 200_000, outputTokens: 80, cacheReadTokens: 150_000, cacheWriteTokens: 10 },
+		});
+		expect(partial.usage.input).toBe(49_990);
+		expect(partial.usage.output).toBe(80);
+		expect(partial.usage.cacheRead).toBe(150_000);
+		expect(partial.usage.cacheWrite).toBe(10);
+		expect(partial.usage.totalTokens).toBe(31);
+		expect(partial.usage.totalTokens).toBeLessThan(model.contextWindow);
+	});
+
+	it("ignores pre-compaction occupancy and watermarks at or above tokensBefore", () => {
+		const model = makeModel();
+		const prior = makeAssistantMessage([{ type: "text", text: "Prior." }]);
+		prior.usage = {
+			input: 10_000,
+			output: 50,
+			cacheRead: 40_000,
+			cacheWrite: 100,
+			totalTokens: 50_150,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		};
+		const kept = makeAssistantMessage([{ type: "text", text: "Kept." }]);
+		kept.usage = {
+			...prior.usage,
+			totalTokens: 50_150,
+		};
+		const context: Context = {
+			systemPrompt: "Be helpful.",
+			messages: [
+				{ role: "user", content: "Hello", timestamp: 1 },
+				prior,
+				{ role: "compactionSummary", summary: "compacted", tokensBefore: 50_150, timestamp: 2 } as unknown as Context["messages"][number],
+				kept,
+				{ role: "user", content: "Again", timestamp: 3 },
+			],
+		};
+		const partial = makeAssistantMessage([{ type: "text", text: "Hi." }]);
+		applyCursorUsage(partial, model, context, 7);
+		expect(partial.usage.cacheRead).toBe(0);
+		expect(partial.usage.totalTokens).toBeLessThan(50_150);
 	});
 
 	it("rejects over-window prior assistant occupancy from the compaction poison fixture", () => {

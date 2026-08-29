@@ -140,7 +140,7 @@ The target session fails fast. The release-gate path handles one target at a tim
 Runtime budget is part of the contract:
 
 - `smoke:platform:doctor` never calls Cursor.
-- `platform-build` runs once per target and is the only suite that performs the full local CI/build/typecheck/package gate. Its Windows VM invocation raises only Vitest's default per-test timeout to 15 seconds for host-contention headroom; normal `npm test` keeps the 5-second default, and explicit longer integration-test timeouts still apply.
+- `platform-build` runs once per target and is the only suite that performs the full local CI/build/typecheck/package gate. Its target invocations raise only Vitest's default per-test timeout to 15 seconds for host-contention headroom; normal `npm test` keeps the 5-second default, and explicit longer integration-test timeouts still apply.
 - Live suites reuse the target checkout and prepared `node_modules` when run after `platform-build`; they do not repeat `npm ci` in a target-session release run. Their interactive Pi process sets `PI_OFFLINE=1` to skip unrelated startup catalog/update probes; the scenario's explicit Cursor provider turn remains live. The PTY launches Pi's JavaScript entry with direct Node argv so multiline prompts remain one positional message on every target.
 - Live and local-resume suites share one target-local packed-install prep directory per target-session release run. The first such suite runs `npm pack` and `npm install --no-save <tarball>` once. Visual/abort suites install that packed path with `pi install --approve -l`; local-resume lanes pass the same packed package path to their source-tree smoke harness instead of loading the checkout extension.
 - Visual coverage is batched into one native prompt, one focused HTTP/1.1 transport prompt, one bridge prompt, and one abort/cleanup prompt per target. Do not split the card matrices into one prompt per card.
@@ -164,7 +164,7 @@ Cloud validation stays separate from `smoke:platform:all`. Releases that touch a
 npm run smoke:cloud
 ```
 
-The no-flag command is the required `cursor/composer-2-5` matrix. It uses current `gh` CLI authentication to create one private throwaway GitHub repository, seeds clean `main`, `starting-ref`, and `direct-push` branches, and runs persisted-session named lanes for:
+The no-flag command is the required `cursor/grok-4.6` matrix. It uses current `gh` CLI authentication to create one private throwaway GitHub repository, seeds clean `main`, `starting-ref`, and `direct-push` branches, and runs persisted-session named lanes for:
 
 - cancellation, with exact agent/run IDs captured before abort, retained `runIdSource` (`metadata` or installed-SDK `Agent.listRuns()` recovery), and terminal `cancelled` independently read through the SDK;
 - explicit HTTPS repository plus `startingRef`, requiring a distinct pushed cloud branch with remote-content and starting-ref-ancestry proof, recording whether the SDK returned branch metadata, and validating any returned PR URL through GitHub;
@@ -288,7 +288,7 @@ import { LOCAL_RESUME_SUITE_NAMES } from "./scripts/platform-smoke/local-resume-
 
 export default {
   packageName: "pi-cursor-sdk",
-  cursorModel: "cursor/composer-2-5",
+  cursorModel: "cursor/grok-4.6",
   artifactRoot: ".artifacts/platform-smoke",
   artifactRetention: {
     maxRunDirs: 18,

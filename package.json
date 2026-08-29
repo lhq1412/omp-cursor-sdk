@@ -1,6 +1,6 @@
 {
   "name": "omp-cursor-sdk",
-  "version": "0.3.3",
+  "version": "0.3.6",
   "description": "omp provider extension backed by @cursor/sdk local and cloud agents",
   "author": "Mitch Fultz (https://github.com/fitchmultz)",
   "license": "MIT",
@@ -119,7 +119,7 @@
     "typecheck:tests": "tsc -p tsconfig.test.json --noEmit",
     "typecheck:replay-compile": "tsc --noEmit -p test/tsconfig.json",
     "verify": "npm run check:platform-smoke && npm run typecheck && npm test",
-    "test": "bun test test/cursor-api-key.test.ts test/model-list-cache.test.ts test/model-discovery-selection.test.ts test/context.test.ts test/package-metadata.test.ts test/cursor-config.test.ts test/cursor-model-lifecycle.test.ts test/cursor-session-scope.test.ts test/cursor-provider-lazy.test.ts",
+    "test": "bun test test/cursor-api-key.test.ts test/model-list-cache.test.ts test/model-discovery-selection.test.ts test/context.test.ts test/package-metadata.test.ts test/cursor-config.test.ts test/cursor-model-lifecycle.test.ts test/cursor-session-scope.test.ts test/cursor-provider-lazy.test.ts test/cursor-sdk-billed-usage.test.ts test/cursor-sdk-get-usage-contract.test.ts test/cursor-sdk-turn-ended-usage-contract.test.ts test/cursor-cloud-reporting.test.ts test/cursor-session-agent-resume.test.ts test/cursor-session-compaction-prep.test.ts test/cursor-usage-accounting.test.ts",
     "test:full": "bun test test/*.test.ts",
     "test:upstream": "vitest run",
     "test:watch": "vitest",
@@ -154,7 +154,7 @@
     "smoke:platform:all": "npm run smoke:platform:doctor && node scripts/platform-smoke.mjs run --target macos,ubuntu,windows-native"
   },
   "dependencies": {
-    "@cursor/sdk": "1.0.23",
+    "@cursor/sdk": "1.0.27",
     "@hono/node-server": "2.0.12",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@oh-my-pi/omptype": "17.3.0",
