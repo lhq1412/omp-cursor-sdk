@@ -1,14 +1,24 @@
 import type { ModelListItem } from "@cursor/sdk";
 
+export interface CursorContextTier {
+	value: string;
+	contextWindowKey: string;
+}
+
+export interface CursorTwoTierContextPolicy {
+	standard: CursorContextTier;
+	extended: CursorContextTier;
+}
+
 export interface CursorModelSelectionIdentity {
 	model: ModelListItem;
-	selectionModelId: string;
 	context?: string;
-	fastOverride?: boolean;
+	contextTiers?: CursorTwoTierContextPolicy;
 	piModelId: string;
 	contextWindowKey: string;
-	baseContextWindowKey: string;
 }
+
+export declare function parseCursorContextWindowValue(value: string): number | undefined;
 
 export declare function getCursorModelSelectionIdentities(
 	models: readonly ModelListItem[],

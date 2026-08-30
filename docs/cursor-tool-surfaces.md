@@ -1,90 +1,92 @@
-# Cursor tool surfaces in pi
+# Cursor tool surfaces in OMP
 
-pi-cursor-sdk runs Cursor models through the local `@cursor/sdk` agent runtime by default. A local pi session can expose **three related but different** tool namespaces. This page is the user-facing guide; maintainer replay details live in [Cursor native tool replay](./cursor-native-tool-replay.md).
+`omp-cursor-sdk` runs `cursor-sdk/*` models through `@cursor/sdk`. One OMP session can expose three distinct tool surfaces.
 
-## The three surfaces
+## Surface map
 
-| Surface | Who owns it | Callable by Cursor? | What pi shows |
+| Surface | Owner | Callable by Cursor | OMP history/display |
 | --- | --- | --- | --- |
-| **Cursor SDK host tools** | Cursor local agent | Yes | Native replay cards (`read`, `bash`, …) or neutral Cursor activity. Representative ToolType list: [SDK ToolType replay matrix](./cursor-native-tool-replay.md#sdk-tooltype-replay-matrix). |
-| **Configured Cursor MCP** | Cursor settings / `~/.cursor/mcp.json` | Yes (when loaded) | Neutral **Cursor MCP** activity cards on replay |
-| **Pi bridge (`pi__*`)** | pi-cursor-sdk loopback MCP | Yes, when exposed | Real pi tool names (`cursor_ask_question`, `cursor_activate_skill`, extension tools, …) |
+| Cursor SDK host tools | Cursor local agent | Yes | Recorded activity replayed through the neutral `cursor` tool |
+| Cursor-configured MCP | Cursor settings and plugins | Yes, when loaded | Neutral `cursor` activity |
+| OMP bridge (`pi__*`) | This extension's loopback MCP server | Yes, when exposed | The real OMP tool name and result |
 
-Pi CLI tool toggles apply at the pi tool-registry boundary. `--no-tools`, `--tools`, and `--exclude-tools` can remove pi bridge exposure, but they do **not** disable Cursor SDK host tools or configured Cursor MCP servers.
+The `pi__` prefix is a stable bridge protocol identity inherited from the Cursor SDK integration. It does not mean that OMP's builtin `cursor` provider is active.
 
-**Not callable:** `cursor-replay-*` IDs in JSONL, pi history tool names used only for display, and transcript labels. Cursor must call exposed `pi__*` MCP names for bridged pi tools, not the pi card name.
+## Cursor SDK host tools
 
-## Discoverability
+Cursor's local agent owns file, shell, search, edit, planning, web, task, and configured MCP execution. OMP does not execute those calls.
 
-- **MCP `listTools`** (and pi's MCP catalog when present) lists **MCP servers only** — for example `pi_tools` with `pi__cursor_ask_question`. It does **not** enumerate Cursor SDK host tools such as `Read` or `Shell`.
-- **Bootstrap prompts** include a short **Cursor SDK tool boundary** block plus a compact **callable tool surfaces** manifest by default (disable manifest with `PI_CURSOR_TOOL_MANIFEST=0`). The manifest reminds the model that Cursor host/configured MCP tools are controlled by Cursor, while pi tool toggles only affect pi tools/bridge exposure; when bridge tools are exposed, it lists the current `pi__*` names. MCP `listTools` entries for bridged pi tools point back to the bootstrap prompt instead of repeating the full contract.
-- **Incremental prompts** omit the full boundary block but keep a short tail guard (including an explicit shell `cd` hint); the session agent retains prior bootstrap context. They also omit invariant Pi system instructions; a changed system prompt forces bootstrap with the new section.
-- **In-session debug:** `/cursor-tools` prints bridge enablement, manifest enablement, effective `PI_CURSOR_SETTING_SOURCES`, and the current callable-surface snapshot.
+Completed SDK activity is display-only replay:
 
-## Pi bridge vs Cursor native
+- the extension registers one replay-only OMP tool named `cursor`;
+- it never shadows OMP's `read`, `bash`, `edit`, `write`, `grep`, `find`, or `ls`;
+- the replay result retains `details.sourceToolName`;
+- consuming an unknown replay ID fails instead of executing real work.
 
-Default behavior:
-
-- Cursor host tools handle files, shell, grep, and edits.
-- When exposed, `pi__mcp` is preferred for MCP work and `pi__subagent` is preferred for delegation. Cursor-configured MCP and Cursor-native subagents are fallbacks when the matching pi tool is not exposed or is unavailable.
-- The pi bridge exposes **active pi tools** as `pi__*` MCP names when `PI_CURSOR_PI_TOOL_BRIDGE` is enabled (default on).
-- Overlapping pi builtins (`read`, `bash`, `write`, `edit`, `grep`, `find`, `ls`) are **hidden** from the bridge unless `PI_CURSOR_EXPOSE_BUILTIN_TOOLS=1`.
-
-`pi-cursor-sdk` registers `cursor_ask_question` for Cursor models when the bridge is on and `PI_CURSOR_ASK_QUESTION` is enabled (the default); Cursor sees `pi__cursor_ask_question`. The tool is sequential and emits `pi-cursor-sdk:ask-question:blocked` `{ active }` while awaiting UI input. Set `PI_CURSOR_ASK_QUESTION=0` to remove only this tool while preserving the rest of the bridge. Pending bridged calls use a local deadline capped by the effective MCP tool timeout; `PI_CURSOR_PI_BRIDGE_CALL_TIMEOUT_MS` can lower it. When pi has visible Agent Skills loaded, the extension also rewrites pi's skill catalog for Cursor and activates `cursor_activate_skill`; Cursor sees `pi__cursor_activate_skill` and should call it with a listed skill name before applying that skill. The activation result returns the full `SKILL.md`, the skill directory for relative paths, and a bounded list of bundled `scripts/`, `references/`, and `assets/` files without eagerly reading those resources.
+Disable replay cards:
 
 ```bash
-# Disable only Cursor's interactive question tool
-PI_CURSOR_ASK_QUESTION=0 pi --model cursor/grok-4.6
-
-# Disable pi bridge entirely
-PI_CURSOR_PI_TOOL_BRIDGE=0 pi --model cursor/grok-4.6
-
-# Expose overlapping pi builtins through the bridge
-PI_CURSOR_EXPOSE_BUILTIN_TOOLS=1 pi --model cursor/grok-4.6
-
-# Fail a stranded bridge call sooner than the effective MCP tool timeout
-PI_CURSOR_PI_BRIDGE_CALL_TIMEOUT_MS=120000 pi --model cursor/grok-4.6
-
-# Disable bootstrap tool manifest
-PI_CURSOR_TOOL_MANIFEST=0 pi --model cursor/grok-4.6
+PI_CURSOR_NATIVE_TOOL_DISPLAY=0 omp --model cursor-sdk/grok-4.6
 ```
 
-## Runtime and transport policy
+## OMP bridge
 
-Current defaults:
+For local runs, the extension can expose bridgeable active OMP tools through a run-scoped, tokenized loopback MCP endpoint. Cursor sees names such as `pi__cursor_ask_question` or `pi__my_extension_tool`; OMP executes the underlying tool.
 
-- Local runtime is the default.
-- The pi bridge uses loopback MCP and is the sole implemented Pi-tool transport for local Cursor agents.
-- SDK `local.customTools` remains deferred and needs SDK cancellation/deadline support before it can replace the loopback MCP bridge; no transport config is exposed.
-- Explicit cloud runtime selection requires first-use acknowledgement (`/cursor-runtime cloud`, `/cursor-runtime cloud --save-user`, `--cursor-cloud-ack`, or `PI_CURSOR_CLOUD_ACK=1`) plus preflight. Project config may save a cloud runtime default but not the acknowledgement. Cloud runs use fresh context by default and do **not** get local pi tools through loopback MCP or `local.customTools`; cloud Pi-tool access would require a separate secure remote bridge and a new product decision.
-- Inline cloud MCP is not exposed in the initial cloud runtime because live probes showed first-run/replacement/resume behavior was not deterministic enough.
+Overlapping OMP builtins are hidden by default because Cursor already has host equivalents. Explicitly expose them only when the prompt requires OMP execution:
 
-## Cursor settings vs pi toggles
+```bash
+PI_CURSOR_EXPOSE_BUILTIN_TOOLS=1 omp --model cursor-sdk/grok-4.6
+```
 
-Disabling or removing an MCP server **only in pi** does not remove Cursor ambient MCP loaded from Cursor config.
+Other controls:
 
-| Control | Effect |
-| --- | --- |
-| `pi --no-tools` | Disables pi built-in/extension/custom tools and therefore removes pi bridge exposure; Cursor SDK host tools still remain callable. |
-| `pi --tools ...` / `pi --exclude-tools ...` | Narrows pi's active tool registry and therefore the pi bridge snapshot; Cursor SDK host tools and configured Cursor MCP are unchanged. |
-| `PI_CURSOR_SETTING_SOURCES=all` (default) | Loads user/project Cursor MCP, plugins, rules (`~/.cursor/mcp.json`, etc.) |
-| `PI_CURSOR_SETTING_SOURCES=none` | Disables ambient Cursor setting sources for local agents |
-| `PI_CURSOR_SETTING_SOURCES=project,plugins` | Narrows which layers load |
-| Empty or edited `~/.cursor/mcp.json` | Changes which user MCP servers Cursor connects to |
+```bash
+# Disable only interactive questions.
+PI_CURSOR_ASK_QUESTION=0 omp --model cursor-sdk/grok-4.6
 
-To reproduce a **minimal** surface (pi-cursor-sdk + Cursor host only), use extension-only install, empty user MCP config, and `PI_CURSOR_SETTING_SOURCES=none` when you do not need Cursor rules/MCP from disk.
+# Disable the complete OMP bridge.
+PI_CURSOR_PI_TOOL_BRIDGE=0 omp --model cursor-sdk/grok-4.6
 
-## JSONL ID patterns (debugging)
+# Bound one bridged call below the effective SDK MCP timeout.
+PI_CURSOR_PI_BRIDGE_CALL_TIMEOUT_MS=120000 omp --model cursor-sdk/grok-4.6
 
-| ID prefix | Meaning |
-| --- | --- |
-| `cursor-replay-*` | Display-only replay of Cursor SDK activity |
-| `cursor-pi-bridge-run-*` | Live pi execution via bridge |
+# Disable the bootstrap callable-surface manifest.
+PI_CURSOR_TOOL_MANIFEST=0 omp --model cursor-sdk/grok-4.6
+```
 
-Example mistake: treating `cursor-replay-…` as a tool to invoke. Replay never re-runs work.
+OMP's `--no-tools`, `--tools`, and `--exclude-tools` change the active OMP registry and therefore the bridge snapshot. They do not disable Cursor SDK host tools or Cursor-configured MCP servers.
 
-## Related docs
+## Cursor settings and MCP
 
-- [README — Cursor provider tool contract](../README.md#cursor-provider-tool-contract)
-- [Cursor native tool replay](./cursor-native-tool-replay.md)
-- [Cursor model UX spec](./cursor-model-ux-spec.md)
+`PI_CURSOR_SETTING_SOURCES=all` is the default. It permits the SDK to load Cursor user/project settings, rules, plugins, and MCP configuration.
+
+Use a hermetic surface for debugging:
+
+```bash
+PI_CURSOR_SETTING_SOURCES=none \
+PI_CURSOR_PI_TOOL_BRIDGE=0 \
+omp --model cursor-sdk/grok-4.6
+```
+
+## Cloud runtime
+
+Cursor Cloud does not use the local OMP bridge or local replay continuation. Cloud execution is configured with `/cursor-runtime cloud` and guarded by cloud preflight and lifecycle cleanup.
+
+## Debugging identity
+
+Persisted OMP tool calls have two valid shapes:
+
+- SDK replay: `toolCall.name === "cursor"` and, when available, `toolResult.details.sourceToolName` names the SDK activity.
+- OMP bridge: `toolCall.name` and `toolResult.toolName` are the real OMP tool name.
+
+Do not infer execution from assistant prose. Verify `toolCall`/`toolResult` entries in the session JSONL.
+
+## Security boundary
+
+- The bridge binds to `127.0.0.1` and uses run-scoped endpoint tokens.
+- Tool schemas come from OMP's callable omptype schemas and are converted to JSON Schema for MCP.
+- Bridge errors and diagnostics are scrubbed.
+- `PI_CURSOR_SDK_EVENT_DEBUG=1` writes raw local artifacts that may contain prompts, paths, arguments, and results; never commit them.
+
+Detailed replay behavior: [Cursor native tool replay](./cursor-native-tool-replay.md).

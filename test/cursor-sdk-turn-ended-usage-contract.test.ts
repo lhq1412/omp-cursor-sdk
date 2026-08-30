@@ -60,7 +60,7 @@ function makeAssistantMessage(): AssistantMessage {
 		role: "assistant",
 		content: [{ type: "text", text: "A" }],
 		api: "cursor-sdk",
-		provider: "cursor",
+		provider: "cursor-sdk",
 		model: "test-model",
 		usage: {
 			input: 0,
@@ -118,7 +118,7 @@ describe("installed Cursor SDK turn-ended usage contract", () => {
 	it("maps observed raw turn-ended.usage with full-prompt partition semantics, not published additive totalTokens", () => {
 		const model = makeModel();
 		const context: Context = {
-			systemPrompt: "Be helpful.",
+			systemPrompt: ["Be helpful."],
 			messages: [{ role: "user", content: "Reply with exactly: A", timestamp: 1 }],
 		};
 

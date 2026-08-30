@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Maintainer probe: measure Cursor SDK cold-start timing with/without ambient MCP settings
- * and with the pi-cursor-sdk MCP connect timeout override installed.
+ * and with the omp-cursor-sdk MCP connect timeout override installed.
  */
 import { spawn } from "node:child_process";
 import { performance } from "node:perf_hooks";
@@ -46,7 +46,7 @@ Stdout:
 
 Scenarios:
   with-all-settings                   Cursor settingSources=["all"]
-  with-all-settings+connect-override  Same, with pi-cursor-sdk timeout override installed
+  with-all-settings+connect-override  Same, with omp-cursor-sdk timeout override installed
   no-setting-sources                  No explicit settingSources
 
 Safety:

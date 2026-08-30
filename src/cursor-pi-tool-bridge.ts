@@ -89,15 +89,15 @@ Get-CimInstance Win32_Process -Filter "Name = 'bash.exe' OR Name = 'sh.exe'" |
 }
 
 export function registerCursorPiToolBridge(pi: CursorPiToolBridgeExtensionApi): CursorPiToolBridge {
-	bridgeToolExecutionAbortTracker.abortAll("Cursor pi tool bridge extension reloaded");
-	void registeredCursorPiToolBridge?.disposeAll("Cursor pi tool bridge extension reloaded");
+	bridgeToolExecutionAbortTracker.abortAll("Cursor OMP tool bridge extension reloaded");
+	void registeredCursorPiToolBridge?.disposeAll("Cursor OMP tool bridge extension reloaded");
 	const bridge = new CursorPiToolBridgeRegistry(pi);
 	registeredCursorPiToolBridge = bridge;
 	pi.on("tool_call", (event, ctx) => {
 		if (registeredCursorPiToolBridge !== bridge) return undefined;
 		if (!bridge.hasPendingPiToolCallId(event.toolCallId)) {
 			return isCursorPiBridgeToolCallId(event.toolCallId)
-				? { block: true, reason: "Cursor pi bridge tool call is no longer pending" }
+				? { block: true, reason: "Cursor OMP bridge tool call is no longer pending" }
 				: undefined;
 		}
 		const windowsAbortMarker = installWindowsBridgeBashAbortMarker(event);
@@ -118,18 +118,18 @@ export function registerCursorPiToolBridge(pi: CursorPiToolBridgeExtensionApi): 
 			},
 		});
 		if (trackingStarted) return undefined;
-		return { block: true, reason: "Cursor pi bridge tool execution was aborted before it started" };
+		return { block: true, reason: "Cursor OMP bridge tool execution was aborted before it started" };
 	});
 	pi.on("tool_result", (event) => {
 		bridgeToolExecutionAbortTracker.finish(event.toolCallId);
 	});
-	// Closest OMP analog to upstream's host-abort signal edge: any bridge
+	// Closest OMP analog to upstream's host-abort signal edge: each bridge
 	// execution still active when a turn ends is aborted. No-op when none.
 	pi.on("turn_end", () => {
-		bridgeToolExecutionAbortTracker.abortAll("Cursor pi tool bridge turn ended");
+		bridgeToolExecutionAbortTracker.abortAll("Cursor OMP tool bridge turn ended");
 	});
 	pi.on("session_shutdown", async () => {
-		const reason = "Cursor pi tool bridge session shutdown";
+		const reason = "Cursor OMP tool bridge session shutdown";
 		bridgeToolExecutionAbortTracker.abortAll(reason);
 		await bridge.disposeAll(reason);
 	});
@@ -169,9 +169,9 @@ export const __testUtils = {
 		bridgeToolExecutionAbortTracker.emitProcessAbortSignalForTests(signal);
 	},
 	resetRegisteredBridgeForTests() {
-		bridgeToolExecutionAbortTracker.abortAll("Cursor pi tool bridge test reset");
+		bridgeToolExecutionAbortTracker.abortAll("Cursor OMP tool bridge test reset");
 		const bridge = registeredCursorPiToolBridge;
 		registeredCursorPiToolBridge = undefined;
-		return bridge?.disposeAll("Cursor pi tool bridge test reset") ?? Promise.resolve();
+		return bridge?.disposeAll("Cursor OMP tool bridge test reset") ?? Promise.resolve();
 	},
 };

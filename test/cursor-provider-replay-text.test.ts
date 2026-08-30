@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Type } from "typebox";
+import { Type } from "@oh-my-pi/omptype/typebox"
 import {
 	resetCursorProviderTestState,
 	mockedCreate,
@@ -337,7 +337,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
-		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const replayContext = makeContext();
@@ -516,7 +516,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 		expect(done.message.usage.totalTokens).toBeGreaterThan(done.message.usage.input);
 
 		const toolCall = done.message.content.find(isToolCallBlock);
-		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		const replayContext = makeContext();
 		replayContext.messages = [
@@ -581,7 +581,7 @@ it("replays Cursor createPlan as a neutral cursor card before final plan text", 
 		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
-		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		const toolResultMessage = {
 			role: "toolResult" as const,

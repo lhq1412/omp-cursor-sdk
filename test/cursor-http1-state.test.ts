@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelListItem } from "@cursor/sdk";
 import type { ExtensionContext, SessionEntry } from "@oh-my-pi/pi-coding-agent";
+import { getAgentDir, setAgentDir } from "@oh-my-pi/pi-utils";
 import { CURSOR_HTTP1_ENV } from "../src/cursor-config.js";
 import {
 	CURSOR_HTTP1_ENTRY_TYPE,
@@ -49,7 +50,7 @@ function customEntry(id: string, customType: string, data: Record<string, unknow
 function createHarness(branch: SessionEntry[] = []) {
 	const pi = createPiHarness();
 	const ctx = createExtensionTestContext({
-		model: makeModel("gpt-5.5@1m"),
+		model: makeModel("gpt-5.5"),
 		sessionManager: {
 			getBranch: vi.fn<ExtensionContext["sessionManager"]["getBranch"]>(() => branch),
 		},
@@ -67,16 +68,19 @@ function createHarness(branch: SessionEntry[] = []) {
 describe("Cursor HTTP/1.1 state", () => {
 	let agentDir: string;
 	const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+	const originalResolvedAgentDir = getAgentDir();
 
 	beforeEach(() => {
 		agentDir = mkdtempSync(join(tmpdir(), "pi-cursor-http1-state-"));
 		process.env.PI_CODING_AGENT_DIR = agentDir;
+		setAgentDir(agentDir);
 		delete process.env[CURSOR_HTTP1_ENV];
 		__testUtils.resetCursorModeStateForTests();
 		modelDiscoveryTestUtils.registerModelItems([modelItem]);
 	});
 
 	afterEach(() => {
+		setAgentDir(originalResolvedAgentDir);
 		if (originalAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 		else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
 		delete process.env[CURSOR_HTTP1_ENV];
@@ -87,7 +91,7 @@ describe("Cursor HTTP/1.1 state", () => {
 	it("reports the env source without changing session state", async () => {
 		process.env[CURSOR_HTTP1_ENV] = "1";
 		const { pi, ctx, commandCtx, commands } = createHarness();
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-http")!.handler("", commandCtx);
 
@@ -105,7 +109,7 @@ describe("Cursor HTTP/1.1 state", () => {
 			JSON.stringify({ future: { enabled: true }, local: { futureLocal: "keep" } }),
 		);
 		const { pi, ctx, commandCtx, commands } = createHarness();
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-http")!.handler("on", commandCtx);
 
@@ -129,7 +133,7 @@ describe("Cursor HTTP/1.1 state", () => {
 	it("retains a completed global save after session append failure", async () => {
 		process.env[CURSOR_HTTP1_ENV] = "1";
 		const { pi, ctx, commandCtx, commands } = createHarness();
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 		vi.mocked(pi.appendEntry).mockImplementationOnce(() => {
 			throw new Error("journal failed");
 		});
@@ -153,7 +157,7 @@ describe("Cursor HTTP/1.1 state", () => {
 		);
 		const { pi, ctx } = createHarness();
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(getStoredCursorHttp1Enabled()).toBeUndefined();
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off · http1");
@@ -163,7 +167,7 @@ describe("Cursor HTTP/1.1 state", () => {
 		const enabledBranch = [customEntry("http-on", CURSOR_HTTP1_ENTRY_TYPE, { enabled: true })];
 		const { pi, ctx } = createHarness(enabledBranch);
 		const getBranch = vi.mocked(ctx.sessionManager.getBranch);
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off · http1");
 
 		getBranch.mockReturnValue([customEntry("http-off", CURSOR_HTTP1_ENTRY_TYPE, { enabled: false })]);
@@ -184,7 +188,7 @@ describe("Cursor HTTP/1.1 state", () => {
 			}),
 		]);
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:cloud · fast:n/a");
 	});

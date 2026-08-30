@@ -35,6 +35,7 @@ export async function resetIndexExtensionTestState(): Promise<void> {
 	delete process.env.PI_CURSOR_ASK_QUESTION;
 	delete process.env.PI_CURSOR_AUTO_REVIEW;
 	delete process.env.PI_CURSOR_SANDBOX;
+	delete process.env.CURSOR_API_KEY;
 	await cursorPiToolBridgeTestUtils.resetRegisteredBridgeForTests();
 	cursorSessionScopeTestUtils.reset();
 	cursorSessionResumeTestUtils.reset();

@@ -23,26 +23,26 @@ const DEBUG_ENV_NAMES = CURSOR_SDK_EVENT_DEBUG_ENV_NAMES;
 const DEFAULT_CHILD_CLOSE_TIMEOUT_MS = 30_000;
 
 function printHelp() {
-	console.log(`RPC steering smoke for pi-cursor-sdk live runs.
+	console.log(`RPC steering smoke for omp-cursor-sdk live runs.
 
 Usage:
   node scripts/steering-rpc-smoke.mjs
 
 Environment:
-  SMOKE_SESSION_DIR            Session directory for the RPC pi run. Defaults to /tmp/pi-cursor-steer-smoke-<timestamp>.
-  PI_BIN                       Optional absolute pi executable path. smoke:live injects the parent-resolved path.
-  CURSOR_API_KEY               Optional fallback auth. Stored pi auth in ~/.pi/agent/auth.json is also supported.
+  SMOKE_SESSION_DIR            Session directory for the RPC OMP run. Defaults to /tmp/omp-cursor-sdk-steer-smoke-<timestamp>.
+  PI_BIN                       Optional absolute OMP executable path (legacy environment name).
+  CURSOR_API_KEY               Optional fallback auth; saved /login cursor-sdk auth is also supported.
 
 Options:
   -h, --help                   Show this help.
-  --self-test                  Run the fake-PATH resolver probe without launching pi.
+  --self-test                  Run the fake-PATH resolver probe without launching OMP.
 
 Exit codes:
   0  steering scenario completed without AgentBusyError; STEER_OK and STEER_CHAIN present
-  1  validation failure, timeout, AgentBusyError, or non-zero pi exit
+  1  validation failure, timeout, AgentBusyError, or non-zero OMP exit
 
 Notes:
-  - Runs pi in RPC mode with native tool replay enabled and the pi bridge disabled.
+  - Runs OMP in RPC mode with native tool replay enabled and the OMP bridge disabled.
   - Sends steer after the replayed bash tool finishes execution (post toolResult boundary).
   - Prints a single JSON result line on success; errors go to stderr.`);
 }
@@ -71,7 +71,7 @@ async function waitForChildCloseWithTimeout(child, timeoutMs, outputSummary = ()
 			new Promise((_, reject) => {
 				timeout = setTimeout(() => {
 					const summary = outputSummary();
-					reject(new Error(`pi did not exit within ${timeoutMs}ms after agent_settled${summary ? `\n${summary}` : ""}`));
+					reject(new Error(`OMP did not exit within ${timeoutMs}ms after agent_settled${summary ? `\n${summary}` : ""}`));
 				}, timeoutMs);
 			}),
 		]);
@@ -105,7 +105,7 @@ function resolveCommand(command, envPath = process.env.PATH ?? "") {
 }
 
 function resolvePiBin() {
-	const path = process.env.PI_BIN?.trim() || resolveCommand("pi");
+	const path = process.env.PI_BIN?.trim() || resolveCommand("omp");
 	if (!path.startsWith("/")) fail(`PI_BIN must be an absolute path when provided: ${path}`);
 	return path;
 }
@@ -170,7 +170,7 @@ function buildPiRpcEnv(baseEnv = process.env, nodePath = process.execPath) {
 }
 
 async function runPiRpcSmoke(sessionDir, piBin) {
-	const args = ["--approve", "-e", root, "--cursor-no-fast", "--model", "cursor/grok-4.6", "--mode", "rpc", "--session-dir", sessionDir];
+	const args = ["--auto-approve", "-e", root, "--cursor-no-fast", "--model", "cursor-sdk/grok-4.6", "--mode", "rpc", "--session-dir", sessionDir];
 	const env = buildPiRpcEnv();
 
 	const child = spawn(piBin, args, {
@@ -190,7 +190,7 @@ async function runPiRpcSmoke(sessionDir, piBin) {
 	});
 
 	const send = (obj) => {
-		if (!child.stdin.writable) fail("pi stdin closed before smoke command could be sent");
+		if (!child.stdin.writable) fail("OMP stdin closed before smoke command could be sent");
 		child.stdin.write(`${JSON.stringify(obj)}\n`);
 	};
 
@@ -238,7 +238,7 @@ async function runPiRpcSmoke(sessionDir, piBin) {
 		const exitCode = await waitForChildCloseWithTimeout(child, DEFAULT_CHILD_CLOSE_TIMEOUT_MS, () => smokeOutputTail(stdout, stderr));
 		closed = true;
 		if (exitCode !== 0) {
-			fail(`pi exited ${exitCode}\nstderr=${scrubForReport(stderr.slice(-2000))}`);
+			fail(`OMP exited ${exitCode}\nstderr=${scrubForReport(stderr.slice(-2000))}`);
 		}
 
 		return {
@@ -253,14 +253,14 @@ async function runPiRpcSmoke(sessionDir, piBin) {
 }
 
 async function runSelfTest() {
-	const tempDir = mkdtempSync(join(tmpdir(), "pi-cursor-sdk-steering-self-test-"));
+	const tempDir = mkdtempSync(join(tmpdir(), "omp-cursor-sdk-steering-self-test-"));
 	try {
 		const binDir = join(tempDir, "bin");
 		mkdirSync(binDir, { recursive: true });
-		const fakePi = join(binDir, "pi");
+		const fakePi = join(binDir, "omp");
 		const fakeNode = join(binDir, "node");
 		const fakeNodeMarker = join(tempDir, "fake-node-used");
-		const envCapture = join(tempDir, "fake-pi.env");
+		const envCapture = join(tempDir, "fake-omp.env");
 		writeFileSync(
 			fakePi,
 			`#!/usr/bin/env node\nimport { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(envCapture)}, Object.entries(process.env).map(([key, value]) => key + "=" + (value ?? "")).join("\\n") + "\\n", "utf8");\n`,
@@ -271,7 +271,7 @@ async function runSelfTest() {
 		chmodSync(fakeNode, 0o755);
 		const hostilePath = `${binDir}${delimiter}${process.env.PATH ?? ""}`;
 		if (buildPiRpcEnv({ PATH: "" }).PATH?.includes(delimiter)) fail("self-test failed: empty inherited PATH left an empty PATH segment");
-		if (resolveCommand("pi", hostilePath) !== fakePi) fail("self-test failed: direct PATH resolver did not prefer fake PATH head");
+		if (resolveCommand("omp", hostilePath) !== fakePi) fail("self-test failed: direct PATH resolver did not prefer fake PATH head");
 		const originalPiBin = process.env.PI_BIN;
 		const originalPath = process.env.PATH;
 		try {
@@ -295,7 +295,7 @@ async function runSelfTest() {
 				if (name in hostileEnv) fail(`self-test failed: ${name} should be cleared`);
 			}
 			const probe = spawnSync(fakePi, ["--version"], { cwd: root, env: hostileEnv, encoding: "utf8" });
-			if (probe.status !== 0) fail(`self-test failed: fake pi shim exited ${probe.status}; stderr=${probe.stderr}`);
+			if (probe.status !== 0) fail(`self-test failed: fake OMP shim exited ${probe.status}; stderr=${probe.stderr}`);
 			let fakeNodeUsed = false;
 			try {
 				accessSync(fakeNodeMarker, constants.F_OK);
@@ -312,7 +312,7 @@ async function runSelfTest() {
 				await waitForChildCloseWithTimeout(hangingChild, 10, () => smokeOutputTail("STEER_OK=yes", ""));
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				closeTimedOut = message.includes("pi did not exit within 10ms after agent_settled") && message.includes("stdoutTail=STEER_OK=yes");
+				closeTimedOut = message.includes("OMP did not exit within 10ms after agent_settled") && message.includes("stdoutTail=STEER_OK=yes");
 			}
 			if (!closeTimedOut) fail("self-test failed: post-agent_settled child close wait should be bounded and report output tail");
 		} finally {
@@ -337,7 +337,7 @@ async function main() {
 		return;
 	}
 
-	const sessionDir = process.env.SMOKE_SESSION_DIR ?? join("/tmp", `pi-cursor-steer-smoke-${Date.now()}`);
+	const sessionDir = process.env.SMOKE_SESSION_DIR ?? join("/tmp", `omp-cursor-sdk-steer-smoke-${Date.now()}`);
 	const piBin = resolvePiBin();
 	mkdirSync(sessionDir, { recursive: true });
 	console.log(JSON.stringify(await runPiRpcSmoke(sessionDir, piBin)));

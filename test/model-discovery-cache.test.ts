@@ -1,13 +1,16 @@
+import type { Mock } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelListItem } from "@cursor/sdk";
+import { Effort } from "@oh-my-pi/pi-ai";
 import {
+	__testUtils,
 	buildCursorModelSelection,
-	discoverModels,
+	fetchCursorDynamicModels,
+	getCursorFallbackModels,
 	getCursorModelMetadata,
-	type CursorModelFallbackIssue,
 } from "../src/model-discovery.js";
 
 vi.mock("@cursor/sdk", () => ({
@@ -16,45 +19,46 @@ vi.mock("@cursor/sdk", () => ({
 
 import { Cursor } from "@cursor/sdk";
 
-const mockedList = vi.mocked(Cursor.models.list);
+const mockedList = Cursor.models.list as Mock<typeof Cursor.models.list>;
 
-function writeStoredCursorApiKey(apiKey: string): void {
-	writeFileSync(
-		join(process.env.PI_CODING_AGENT_DIR!, "auth.json"),
-		JSON.stringify({ cursor: { type: "api_key", key: apiKey } }, null, 2),
-	);
-}
+const LIVE_ONLY_MODEL: ModelListItem = {
+	id: "future-model",
+	displayName: "Future Model",
+	parameters: [
+		{ id: "effort", displayName: "Effort", values: [{ value: "low" }, { value: "high" }] },
+		{ id: "fast", displayName: "Fast", values: [{ value: "false" }, { value: "true" }] },
+	],
+	variants: [
+		{
+			params: [
+				{ id: "effort", value: "high" },
+				{ id: "fast", value: "false" },
+			],
+			displayName: "Future Model",
+			isDefault: true,
+		},
+	],
+};
 
-describe("discoverModels model-list cache", () => {
+describe("OMP dynamic model cache integration", () => {
 	const originalEnv = process.env;
-	const originalArgv = process.argv;
 	let tmpAgentDir: string;
-
-	const MODEL: ModelListItem = {
-		id: "composer-2",
-		displayName: "Composer 2",
-		variants: [{ params: [], displayName: "Composer 2", isDefault: true }],
-	};
 
 	beforeEach(() => {
 		process.env = { ...originalEnv };
 		delete process.env.CURSOR_API_KEY;
 		delete process.env.PI_CURSOR_SDK_DISABLE_MODEL_CACHE;
-		delete process.env.PI_CURSOR_SDK_MODEL_CACHE_TTL_MS;
-		tmpAgentDir = mkdtempSync(join(tmpdir(), "pi-cursor-discovery-cache-"));
+		tmpAgentDir = mkdtempSync(join(tmpdir(), "omp-cursor-dynamic-models-"));
 		process.env.PI_CODING_AGENT_DIR = tmpAgentDir;
-		process.argv = ["node", "vitest"];
+		mockedList.mockReset();
 	});
 
 	afterEach(() => {
 		rmSync(tmpAgentDir, { recursive: true, force: true });
 		process.env = originalEnv;
-		process.argv = originalArgv;
-		vi.clearAllMocks();
 	});
 
-	it("preserves variant-only default params without exposing them as known controls", async () => {
-		process.env.CURSOR_API_KEY = "test-key-123";
+	it("preserves variant-only defaults without exposing unknown controls", async () => {
 		mockedList.mockResolvedValueOnce([
 			{
 				id: "claude-opus-4-8",
@@ -76,7 +80,9 @@ describe("discoverModels model-list cache", () => {
 				],
 			},
 		]);
-		await discoverModels();
+
+		await fetchCursorDynamicModels("test-key-123");
+
 		expect(getCursorModelMetadata("claude-opus-4-8")?.parameterIds).toEqual({
 			context: false,
 			reasoning: false,
@@ -84,7 +90,7 @@ describe("discoverModels model-list cache", () => {
 			thinking: true,
 			fast: false,
 		});
-		expect(buildCursorModelSelection("claude-opus-4-8", "low")).toEqual({
+		expect(buildCursorModelSelection("claude-opus-4-8", Effort.Low)).toEqual({
 			id: "claude-opus-4-8",
 			params: [
 				{ id: "cyber", value: "false" },
@@ -94,80 +100,49 @@ describe("discoverModels model-list cache", () => {
 		});
 	});
 
-	it("serves a warm catalog from cache without a second network call", async () => {
-		writeStoredCursorApiKey("cache-key");
-		mockedList.mockResolvedValueOnce([MODEL]);
+	it("leaves fetch cadence to OMP instead of serving a second local catalog", async () => {
+		mockedList.mockResolvedValue([LIVE_ONLY_MODEL]);
 
-		const first = await discoverModels();
-		const second = await discoverModels();
-
-		expect(mockedList).toHaveBeenCalledTimes(1);
-		expect(second.map((model) => model.id)).toEqual(first.map((model) => model.id));
-	});
-
-	it("bypasses the cache when forceRefresh is set", async () => {
-		writeStoredCursorApiKey("cache-key");
-		mockedList.mockResolvedValue([MODEL]);
-
-		await discoverModels();
-		await discoverModels({ forceRefresh: true });
+		await fetchCursorDynamicModels("cache-key");
+		await fetchCursorDynamicModels("cache-key");
 
 		expect(mockedList).toHaveBeenCalledTimes(2);
 	});
 
-	it("does not read the cache when disabled via env", async () => {
-		process.env.PI_CURSOR_SDK_DISABLE_MODEL_CACHE = "1";
-		writeStoredCursorApiKey("cache-key");
-		mockedList.mockResolvedValue([MODEL]);
+	it("hydrates live-only selection metadata before OMP restores its SQLite catalog", async () => {
+		mockedList.mockResolvedValueOnce([LIVE_ONLY_MODEL]);
+		await fetchCursorDynamicModels("cache-key");
+		__testUtils.registerModelItems([]);
+		expect(getCursorModelMetadata("future-model")).toBeUndefined();
 
-		await discoverModels();
-		await discoverModels();
+		await getCursorFallbackModels();
 
-		expect(mockedList).toHaveBeenCalledTimes(2);
+		expect(buildCursorModelSelection("future-model", Effort.Low, { fastEnabled: true })).toEqual({
+			id: "future-model",
+			params: [
+				{ id: "effort", value: "low" },
+				{ id: "fast", value: "true" },
+			],
+		});
+		expect(mockedList).toHaveBeenCalledOnce();
 	});
 
-	it("keeps successful live discovery when cache persistence fails", async () => {
+	it("keeps successful discovery when metadata-cache persistence fails", async () => {
 		const badAgentDir = join(tmpAgentDir, "not-a-directory");
 		writeFileSync(badAgentDir, "file");
 		process.env.PI_CODING_AGENT_DIR = badAgentDir;
-		process.env.CURSOR_API_KEY = "cache-key";
-		mockedList.mockResolvedValueOnce([MODEL]);
-		const issues: CursorModelFallbackIssue[] = [];
+		mockedList.mockResolvedValueOnce([LIVE_ONLY_MODEL]);
 
-		const models = await discoverModels({ onFallback: (issue) => issues.push(issue) });
+		const models = await fetchCursorDynamicModels("cache-key");
 
-		expect(models.map((model) => model.id)).toEqual(["composer-2"]);
-		expect(issues).toEqual([]);
+		expect(models.some((model) => model.id === "future-model")).toBe(true);
 	});
 
-	it("falls back to the cached catalog with a warning when a forced refresh fails", async () => {
-		writeStoredCursorApiKey("cache-key");
-		mockedList.mockResolvedValueOnce([MODEL]);
-		await discoverModels();
-
+	it("throws discovery failures so OMP can retain its last good SQLite catalog", async () => {
 		mockedList.mockRejectedValueOnce(new Error("network down"));
-		const issues: CursorModelFallbackIssue[] = [];
-		const refreshed = await discoverModels({ forceRefresh: true, onFallback: (issue) => issues.push(issue) });
 
-		expect(refreshed.map((model) => model.id)).toEqual(["composer-2"]);
-		expect(issues).toHaveLength(1);
-		expect(issues[0].reason).toBe("cached-after-error");
-		expect(issues[0].message).toContain("using cached Cursor model catalog");
-		expect(issues[0].errorMessage).toContain("network down");
-	});
-
-	it("omits an empty cached-catalog error detail", async () => {
-		writeStoredCursorApiKey("cache-key");
-		mockedList.mockResolvedValueOnce([MODEL]);
-		await discoverModels();
-
-		mockedList.mockRejectedValueOnce({});
-		const issues: CursorModelFallbackIssue[] = [];
-		await discoverModels({ forceRefresh: true, onFallback: (issue) => issues.push(issue) });
-
-		expect(issues).toHaveLength(1);
-		expect(issues[0].reason).toBe("cached-after-error");
-		expect(issues[0]).not.toHaveProperty("errorMessage");
-		expect(issues[0].message).not.toContain("undefined");
+		await expect(fetchCursorDynamicModels("cache-key")).rejects.toThrow(
+			"Cursor SDK model discovery failed: network down",
+		);
 	});
 });

@@ -1,4 +1,4 @@
-import { Type, type TSchema } from "typebox";
+import { Type, type TSchema } from "@oh-my-pi/omptype/typebox";
 import type { ToolInfo } from "@oh-my-pi/pi-coding-agent";
 import type { RegisteredTool } from "./pi-harness-types.js";
 
@@ -14,7 +14,7 @@ export function createBuiltinToolInfo(
 	return {
 		name,
 		description,
-		parameters,
+		parameters: parameters as unknown as ToolInfo["parameters"],
 		...(promptGuidelines ? { promptGuidelines } : {}),
 		sourceInfo: { source: "builtin", path: `<builtin:${name}>`, scope: "temporary", origin: "top-level" },
 	};
@@ -30,7 +30,7 @@ export function createTestToolInfo(
 	return {
 		name,
 		description,
-		parameters,
+		parameters: parameters as unknown as ToolInfo["parameters"],
 		...(promptGuidelines ? { promptGuidelines } : {}),
 		sourceInfo: { source: "test", path: `test:${name}`, scope: "temporary", origin: "top-level" },
 	};

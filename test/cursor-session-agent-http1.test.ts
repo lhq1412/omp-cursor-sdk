@@ -50,7 +50,7 @@ describe("Cursor session agent HTTP/1.1 pooling", () => {
 			createAgent,
 		});
 
-		const shutdown = pi.runSessionShutdown({ reason: "reload" });
+		const shutdown = pi.runSessionShutdown({});
 		await vi.waitFor(() => expect(dispose).toHaveBeenCalledTimes(1));
 		expect(configure).toHaveBeenCalledTimes(1);
 		finishDispose?.();

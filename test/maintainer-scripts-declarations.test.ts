@@ -85,7 +85,11 @@ const packageJson = require("../package.json") as { files: string[] };
 
 /** Type-only exports that intentionally have no runtime .mjs value. */
 const DECLARATION_TYPE_ONLY_EXPORTS: Record<string, readonly string[]> = {
-	"shared/cursor-model-selection-identities.d.mts": ["CursorModelSelectionIdentity"],
+	"shared/cursor-model-selection-identities.d.mts": [
+		"CursorContextTier",
+		"CursorModelSelectionIdentity",
+		"CursorTwoTierContextPolicy",
+	],
 	"scripts/cloud-runtime-smoke.d.mts": [
 		"CloudSmokeBranchLaneEvidence",
 		"CloudSmokeCancelLaneEvidence",

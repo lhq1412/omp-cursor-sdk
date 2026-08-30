@@ -62,7 +62,7 @@ export class CursorPiToolBridgeRegistry implements CursorPiToolBridge {
 		return run;
 	}
 
-	async disposeAll(reason = "Cursor pi tool bridge disposed"): Promise<void> {
+	async disposeAll(reason = "Cursor OMP tool bridge disposed"): Promise<void> {
 		await Promise.all([...this.runs].map(async (run) => {
 			run.cancel(reason);
 			await run.dispose();
@@ -73,7 +73,7 @@ export class CursorPiToolBridgeRegistry implements CursorPiToolBridge {
 		await this.ensureHttpServer();
 		this.routes.set(pathname, run);
 		const address = this.getHttpServerAddress();
-		if (!address) throw new Error("Cursor pi tool bridge HTTP server is not listening");
+		if (!address) throw new Error("Cursor OMP tool bridge HTTP server is not listening");
 		return `http://${LOOPBACK_HOST}:${address.port}${pathname}`;
 	}
 
@@ -166,14 +166,14 @@ export class CursorPiToolBridgeRegistry implements CursorPiToolBridge {
 
 	private async handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
 		if (req.socket.localAddress !== LOOPBACK_HOST) {
-			res.writeHead(403, { "content-type": "application/json" }).end(JSON.stringify({ error: "Cursor pi tool bridge only accepts loopback requests" }));
+			res.writeHead(403, { "content-type": "application/json" }).end(JSON.stringify({ error: "Cursor OMP tool bridge only accepts loopback requests" }));
 			return;
 		}
 
 		const url = new URL(req.url ?? "/", `http://${LOOPBACK_HOST}`);
 		const run = this.routes.get(url.pathname);
 		if (!run) {
-			res.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({ error: "Cursor pi tool bridge endpoint not found" }));
+			res.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({ error: "Cursor OMP tool bridge endpoint not found" }));
 			return;
 		}
 

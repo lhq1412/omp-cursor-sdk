@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.0 - 2026-08-30
+
+### Added
+
+- Register an independent `cursor-sdk/*` OMP provider with an OMP-owned API-key login, dynamic `fetchDynamicModels` catalog, provider-scoped refresh, native model-role/subagent resolution, and explicit-only host fallback coverage.
+- Add OMP 18 contract tests for unauthenticated/empty live-discovery fallback, native `extendedContext` projection, role selectors, and fallback chains against the installed host implementation.
+
+### Changed
+
+- Port the extension from OMP 17.3 to the pinned OMP 18.0.11 runtime package family and switch the package manifest to the OMP-native `omp.extensions` entry.
+- Converge exactly-two-tier, parseable SDK context catalogs onto one canonical model ID controlled by OMP's native `/extended-context`; retain explicit `@context` rows for every catalog that cannot be represented losslessly by that boolean control.
+- Register only canonical Cursor SDK `model.id` values plus the non-default context rows retained for non-converged catalogs; keep SDK aliases as raw metadata, speed as `/cursor-fast` runtime state, and reasoning under OMP `:level` suffixes.
+- Split catalog ownership: OMP's SQLite registry owns freshness/stale fallback, while the extension's fingerprinted mode-`0600` raw cache restores only SDK parameter/variant selection metadata.
+- Migrate session context, project trust, active skills, `<repo-rules>` deduplication, lifecycle hooks, tool metadata, and test harnesses to OMP 18 contracts.
+- Rework package provenance for `lhq1412/omp-cursor-sdk`, preserve the `LoneExile/omp-cursor-sdk` OMP-port lineage plus original `fitchmultz/pi-cursor-sdk` authorship and MIT notice, and document the OMP host boundary plus dual-upstream synchronization policy.
+
+### Fixed
+
+- Keep OMP's built-in `cursor/*` provider and credentials isolated from Cursor SDK turns; remove placeholder credentials and require an explicit `cursor-sdk` login, `--api-key`, provider credential, or `CURSOR_API_KEY`.
+- Stop shadowing OMP builtin tool names. Register only the neutral `cursor` replay surface, fail soft on ownership conflicts, and keep concurrent lifecycle registration idempotent without a permanent process latch.
+- Route generated fallback rows through OMP's authoritative dynamic discovery instead of static runtime overlays, preserving unauthenticated/empty-fetch availability while allowing native `extendedContext` policy to clamp and restore the effective model window.
+
 ## 0.3.6 - 2026-08-18
 
 ### Fixed

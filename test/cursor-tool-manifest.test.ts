@@ -27,7 +27,7 @@ describe("cursor-tool-manifest", () => {
 
 		expect(text).toContain("Callable tool surfaces this run:");
 		expect(text).toContain("Cursor host/MCP");
-		expect(text).toContain("Pi tool toggles affect pi tools/bridge exposure only");
+		expect(text).toContain("OMP tool toggles affect OMP tools/bridge exposure only");
 		expect(text).toContain("pi__cursor_ask_question");
 		expect(text).toContain("cursor-replay-*");
 	});
@@ -54,13 +54,13 @@ describe("cursor-tool-manifest", () => {
 		expect(text).toContain("Callable tool surfaces this run:");
 		expect(text).toContain("Cursor host/MCP");
 		expect(text).toContain("configured MCP depends on Cursor settings");
-		expect(text).not.toContain("Pi bridge");
+		expect(text).not.toContain("OMP bridge");
 		expect(text).not.toContain("pi__cursor_ask_question");
 	});
 
 	it("notes disabled bridge", () => {
 		const text = buildCursorToolManifestText({ piBridgeEnabled: false });
-		expect(text).toContain("Pi bridge: disabled");
+		expect(text).toContain("OMP bridge: disabled");
 		expect(text).not.toContain("SwitchMode");
 	});
 

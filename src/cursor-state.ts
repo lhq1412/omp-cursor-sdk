@@ -192,19 +192,7 @@ function restoreSessionCursorHttp1(branch: readonly SessionEntry[]): void {
 }
 
 function getFastPreferenceModelId(metadata: NonNullable<ReturnType<typeof getCursorModelMetadata>>): string {
-	return metadata.selectionModelId || metadata.baseModelId;
-}
-
-function getVirtualFastBaseModelId(modelId: string): string {
-	return modelId.replace(/@(?:fast|slow)$/, "");
-}
-
-function getMapFastPreference(
-	map: Map<string, boolean>,
-	metadata: NonNullable<ReturnType<typeof getCursorModelMetadata>>,
-): boolean | undefined {
-	const preferenceModelId = getFastPreferenceModelId(metadata);
-	return map.get(preferenceModelId) ?? (preferenceModelId !== metadata.baseModelId ? map.get(metadata.baseModelId) : undefined);
+	return metadata.baseModelId;
 }
 
 function getEffectiveFast(modelId: string): boolean | undefined {
@@ -213,11 +201,10 @@ function getEffectiveFast(modelId: string): boolean | undefined {
 	return resolveCursorFastDefault({
 		cliForceNoFast,
 		cliForceFast,
-		aliasOverride: metadata.fastOverride,
 		sessionValue: authoritativeGlobalFastPreferenceIds.has(getFastPreferenceModelId(metadata))
 			? undefined
-			: getMapFastPreference(sessionFastPreferences, metadata),
-		userValue: getMapFastPreference(globalFastPreferences, metadata),
+			: sessionFastPreferences.get(metadata.baseModelId),
+		userValue: globalFastPreferences.get(metadata.baseModelId),
 		modelDefault: metadata.defaultFast,
 	}).value;
 }
@@ -360,10 +347,9 @@ function restoreCliCursorMode(raw: boolean | string | undefined): void {
 	cliCursorModeState = { kind: "invalid", raw: rawText, message };
 }
 
-function notifyInvalidCursorModeIfCursorActive(ctx: Pick<ExtensionContext, "hasUI" | "ui">): void {
+function notifyInvalidCursorModeIfCursorActive(ctx: Pick<ExtensionContext, "mode" | "ui">): void {
 	const modeResolution = resolveCursorAgentMode();
-	// OMP's ExtensionContext has no mode field; hasUI implies an interactive TUI.
-	if (modeResolution.kind !== "invalid" || !ctx.hasUI) return;
+	if (modeResolution.kind !== "invalid" || ctx.mode !== "tui") return;
 	const scopeKey = getCursorSessionScopeKey();
 	if (invalidCursorModeNotifiedSessionScopeKeys.has(scopeKey)) return;
 	invalidCursorModeNotifiedSessionScopeKeys.add(scopeKey);
@@ -395,7 +381,7 @@ export function formatCursorToolsDebugReport(
 		try {
 			bridgeSnapshot = buildCursorPiToolBridgeSnapshot(pi);
 		} catch {
-			lines.push("Pi bridge snapshot: unavailable (extension tool APIs required).");
+			lines.push("OMP bridge snapshot: unavailable (extension tool APIs required).");
 		}
 	}
 
@@ -455,14 +441,6 @@ export function registerCursorRuntimeControls(pi: CursorRuntimeControlsExtension
 			}
 			if (cliForceFast) {
 				ctx.ui.notify("Cursor fast is forced by --cursor-fast", "info");
-				return;
-			}
-			if (metadata.fastOverride !== undefined) {
-				const state = metadata.fastOverride ? "enabled" : "disabled";
-				ctx.ui.notify(
-					`Cursor fast is fixed ${state} by selected model ${metadata.piModelId}; choose ${getVirtualFastBaseModelId(metadata.piModelId)} to use /cursor-fast preferences`,
-					"info",
-				);
 				return;
 			}
 

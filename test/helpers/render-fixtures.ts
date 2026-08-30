@@ -3,9 +3,7 @@ import type { RegisteredTool } from "./pi-harness-types.js";
 type ToolRenderCall = NonNullable<RegisteredTool["renderCall"]>;
 type ToolRenderResult = NonNullable<RegisteredTool["renderResult"]>;
 
-export type HarnessRenderTheme = Parameters<ToolRenderCall>[1];
-export type HarnessRenderContext = Parameters<ToolRenderCall>[2];
-type HarnessRenderContextWithObjectArgs = Omit<HarnessRenderContext, "args"> & { args: object };
+export type HarnessRenderTheme = Parameters<ToolRenderCall>[2];
 export type HarnessRenderResultOptions = Parameters<ToolRenderResult>[1];
 
 export function createRenderTheme(overrides: Partial<HarnessRenderTheme> = {}): HarnessRenderTheme {
@@ -24,20 +22,6 @@ export function createRenderOptions(overrides: Partial<HarnessRenderResultOption
 	};
 }
 
-export function createRenderContext(overrides: Partial<HarnessRenderContext> & { args?: object } = {}): HarnessRenderContextWithObjectArgs {
-	return {
-		args: {},
-		toolCallId: "test-tool-call",
-		invalidate: () => {},
-		lastComponent: undefined,
-		state: undefined,
-		cwd: process.cwd(),
-		executionStarted: true,
-		argsComplete: true,
-		isPartial: false,
-		expanded: false,
-		showImages: false,
-		isError: false,
-		...overrides,
-	};
+export function createRenderArgs<T extends Record<string, unknown>>(args: T = {} as T): T {
+	return args;
 }

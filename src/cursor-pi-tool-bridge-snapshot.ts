@@ -67,7 +67,7 @@ export function buildCursorPiToolBridgeSnapshot(
 		if (!exposeOverlappingBuiltins && isOverlappingCursorNativePiToolName(tool.name)) continue;
 
 		const mcpToolName = createMcpToolName(tool.name, usedMcpToolNames);
-		const description = tool.description || `Run pi tool ${tool.name}`;
+		const description = tool.description || `Run OMP tool ${tool.name}`;
 		mcpToolNameToPiToolName.set(mcpToolName, tool.name);
 		piToolNameToMcpToolName.set(tool.name, mcpToolName);
 		tools.push({

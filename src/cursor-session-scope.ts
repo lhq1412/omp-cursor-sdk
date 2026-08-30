@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import type { ExtensionHandler, SessionStartEvent } from "@oh-my-pi/pi-coding-agent";
 import { truncateCursorDisplayLine } from "./cursor-display-text.js";
 
@@ -22,12 +21,11 @@ const state = {
 };
 
 const scopeGenerations = new Map<string, number>([[ANONYMOUS_SESSION_SCOPE_KEY, state.sessionGeneration]]);
-const projectTrustResolutionCwds = new Set<string>();
 let nextSessionGeneration = 1;
 let scopeChangeHandler: CursorSessionScopeChangeHandler | undefined;
 
 /**
- * Pi session file when known; used to scope reused Cursor SDK agents to one pi session.
+ * OMP session file when known; used to scope reused Cursor SDK agents to one OMP session.
  */
 export function getCursorSessionFile(): string | undefined {
 	return state.sessionFile;
@@ -48,8 +46,8 @@ export function getCursorSessionScopeGeneration(scopeKey: string = getCursorSess
 }
 
 /**
- * Pi session cwd when known; falls back to process.cwd() before session_start.
- * Updated on session_start only until pi threads cwd into streamSimple—mid-session cwd
+ * OMP session cwd when known; falls back to process.cwd() before session_start.
+ * Updated on session_start only until OMP threads cwd into streamSimple—mid-session cwd
  * changes without a new session_start event are not reflected here.
  */
 export function getCursorSessionCwd(): string {
@@ -86,15 +84,6 @@ function setCursorSessionScope(
 	scopeGenerations.set(getCursorSessionScopeKey(), state.sessionGeneration);
 }
 
-function recordProjectTrustResolution(cwd: string): void {
-	projectTrustResolutionCwds.add(resolve(cwd));
-}
-
-// OMP has no per-project trust event or --approve flag (Pi 0.84 surface);
-// --auto-approve is the closest analog and defaults to untrusted.
-function isCliProjectTrustApproved(args = process.argv.slice(2)): boolean {
-	return args.includes("--auto-approve");
-}
 
 function resetCursorSessionScope(): void {
 	state.sessionCwd = process.cwd();
@@ -106,7 +95,6 @@ function resetCursorSessionScope(): void {
 	nextSessionGeneration = 1;
 	scopeGenerations.clear();
 	scopeGenerations.set(ANONYMOUS_SESSION_SCOPE_KEY, state.sessionGeneration);
-	projectTrustResolutionCwds.clear();
 }
 
 export function onCursorSessionScopeKeyChange(handler: CursorSessionScopeChangeHandler): void {
@@ -120,7 +108,7 @@ export function registerCursorSessionScope(pi: CursorSessionScopeExtensionApi): 
 			ctx.cwd,
 			ctx.sessionManager?.getSessionFile?.() ?? undefined,
 			ctx.sessionManager?.getSessionId?.() ?? undefined,
-			isCliProjectTrustApproved(),
+			ctx.isProjectTrusted(),
 			ctx.sessionManager?.getSessionName?.() ?? undefined,
 		);
 		if (previousScopeKey !== getCursorSessionScopeKey()) {
@@ -133,7 +121,5 @@ export const __testUtils = {
 	ANONYMOUS_SESSION_SCOPE_KEY,
 	EPHEMERAL_SESSION_SCOPE_PREFIX,
 	set: setCursorSessionScope,
-	recordProjectTrustResolution,
-	isCliProjectTrustApproved,
 	reset: resetCursorSessionScope,
 };

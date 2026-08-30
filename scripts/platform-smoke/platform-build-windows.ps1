@@ -1,5 +1,5 @@
 param(
-	[string]$PackageName = "pi-cursor-sdk",
+	[string]$PackageName = "omp-cursor-sdk",
 	[int]$NodeValidationMajor = 24
 )
 
@@ -107,13 +107,13 @@ if ((Test-Path -LiteralPath (Join-Path $TestWorkspace "package.json")) -and (Tes
 }
 Write-Output "PLATFORM_FIXTURE_EXIT=$FIXTURE_EXIT"
 
-$PiCli = Join-Path (Get-Location) "node_modules\.bin\pi.cmd"
-if (-not (Test-Path -LiteralPath $PiCli)) { $PiCli = Join-Path (Get-Location) "node_modules\.bin\pi" }
+$PiCli = Join-Path (Get-Location) "node_modules\.bin\omp.cmd"
+if (-not (Test-Path -LiteralPath $PiCli)) { $PiCli = Join-Path (Get-Location) "node_modules\.bin\omp" }
 if (-not (Test-Path -LiteralPath $PiCli)) {
-	$Command = Get-Command pi -ErrorAction SilentlyContinue
+	$Command = Get-Command omp -ErrorAction SilentlyContinue
 	$PiCli = $Command.Source
 }
-Write-Output "PLATFORM_PI_CLI=$PiCli"
+Write-Output "PLATFORM_OMP_CLI=$PiCli"
 
 $PackedNodeInstallOut = Join-Path $PackDir "packed-node-install.stdout.txt"
 $PackedNodeInstallErr = Join-Path $PackDir "packed-node-install.stderr.txt"
@@ -122,7 +122,7 @@ $PiInstallErr = Join-Path $PackDir "pi-install.stderr.txt"
 $PiListOut = Join-Path $PackDir "pi-list.stdout.txt"
 $PiListErr = Join-Path $PackDir "pi-list.stderr.txt"
 
-Write-Output "=== pi install packed tarball ==="
+Write-Output "=== omp plugin install packed tarball ==="
 $TarballPath = Join-Path $PackDir $PackTarball
 if ($PackTarball -and $PiCli -and (Test-Path -LiteralPath $TarballPath)) {
 	Push-Location $PiProject
@@ -137,7 +137,7 @@ if ($PackTarball -and $PiCli -and (Test-Path -LiteralPath $TarballPath)) {
 	if ($PACKED_NODE_INSTALL_EXIT -eq 0) {
 		$PreviousPiOffline = $env:PI_OFFLINE
 		$env:PI_OFFLINE = "1"
-		& $PiCli install --approve -l (Join-Path ".\node_modules" $PackageName) 1> $PiInstallOut 2> $PiInstallErr
+		& $PiCli plugin install --scope project (Join-Path ".\node_modules" $PackageName) 1> $PiInstallOut 2> $PiInstallErr
 		$PI_INSTALL_EXIT = Exit-CodeFromLastCommand
 		if ($null -eq $PreviousPiOffline) { Remove-Item Env:\PI_OFFLINE -ErrorAction SilentlyContinue } else { $env:PI_OFFLINE = $PreviousPiOffline }
 	} else {
@@ -146,8 +146,8 @@ if ($PackTarball -and $PiCli -and (Test-Path -LiteralPath $TarballPath)) {
 	}
 	Pop-Location
 } else {
-	Set-Content -LiteralPath $PackedNodeInstallErr -Value "missing pi cli or tarball"
-	Set-Content -LiteralPath $PiInstallErr -Value "missing pi cli or tarball"
+	Set-Content -LiteralPath $PackedNodeInstallErr -Value "missing omp cli or tarball"
+	Set-Content -LiteralPath $PiInstallErr -Value "missing omp cli or tarball"
 	$PACKED_NODE_INSTALL_EXIT = 1
 	$PI_INSTALL_EXIT = 1
 }
@@ -158,17 +158,17 @@ Write-Output "PLATFORM_PI_INSTALL_EXIT=$PI_INSTALL_EXIT"
 Write-SectionFile "PI_INSTALL_STDOUT" $PiInstallOut
 Write-SectionFile "PI_INSTALL_STDERR" $PiInstallErr
 
-Write-Output "=== pi list ==="
+Write-Output "=== omp plugin list ==="
 if ($PiCli) {
 	Push-Location $PiProject
 	$PreviousPiOffline = $env:PI_OFFLINE
 	$env:PI_OFFLINE = "1"
-	& $PiCli list --approve 1> $PiListOut 2> $PiListErr
+	& $PiCli plugin list --scope project 1> $PiListOut 2> $PiListErr
 	$PI_LIST_EXIT = Exit-CodeFromLastCommand
 	if ($null -eq $PreviousPiOffline) { Remove-Item Env:\PI_OFFLINE -ErrorAction SilentlyContinue } else { $env:PI_OFFLINE = $PreviousPiOffline }
 	Pop-Location
 } else {
-	Set-Content -LiteralPath $PiListErr -Value "missing pi cli"
+	Set-Content -LiteralPath $PiListErr -Value "missing omp cli"
 	$PI_LIST_EXIT = 1
 }
 Write-Output "PLATFORM_PI_LIST_EXIT=$PI_LIST_EXIT"

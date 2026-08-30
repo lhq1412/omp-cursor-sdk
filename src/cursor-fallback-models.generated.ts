@@ -1,63 +1,9 @@
 import type { ModelListItem } from "@cursor/sdk";
 
-// Generated with @cursor/sdk@1.0.27 from 37 Cursor models.
+// Generated with @cursor/sdk@1.0.27 from 36 Cursor models.
 // Refresh with: npm run refresh:cursor-snapshots -- --write
 // Do not add secrets; this file stores public model metadata only.
 export const FALLBACK_MODEL_ITEMS = [
-	{
-		id: "auto-smart",
-		displayName: "Auto",
-		parameters: [
-			{
-				id: "optimize_for",
-				displayName: "Optimize For",
-				values: [
-					{
-						value: "intelligence",
-						displayName: "Intelligence"
-					},
-					{
-						value: "balanced",
-						displayName: "Balance"
-					},
-					{
-						value: "cost",
-						displayName: "Cost"
-					}
-				]
-			}
-		],
-		variants: [
-			{
-				params: [
-					{
-						id: "optimize_for",
-						value: "intelligence"
-					}
-				],
-				displayName: "Auto Intelligence"
-			},
-			{
-				params: [
-					{
-						id: "optimize_for",
-						value: "balanced"
-					}
-				],
-				displayName: "Auto Balance",
-				isDefault: true
-			},
-			{
-				params: [
-					{
-						id: "optimize_for",
-						value: "cost"
-					}
-				],
-				displayName: "Auto Cost"
-			}
-		]
-	},
 	{
 		id: "claude-fable-5",
 		displayName: "Claude Fable 5",

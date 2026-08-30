@@ -34,7 +34,7 @@ describe("streamCursor session store", () => {
 			}),
 		});
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		const store = storeMock.stores[0];
 		expect(storeMock.openSqliteStore).toHaveBeenCalledWith({

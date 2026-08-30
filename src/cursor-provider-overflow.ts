@@ -1,28 +1,26 @@
-import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import type { AssistantMessage } from "@oh-my-pi/pi-ai";
-import { CURSOR_PROVIDER } from "./cursor-model.js";
 
 /**
- * Pi recognizes `context_length_exceeded` (its `OVERFLOW_PATTERNS` includes
+ * OMP recognizes `context_length_exceeded` (its `OVERFLOW_PATTERNS` includes
  * `/context[_ ]length[_ ]exceeded/i`) as a context-overflow signal and, on
  * detecting it, drops the failed assistant message, compacts, and retries once.
  *
  * The Cursor provider sanitizes SDK failures into auth/network/generic messages
- * that pi does NOT treat as overflow, so a genuine Cursor context-overflow
- * failure would otherwise surface as a plain provider error and bypass pi's
+ * that OMP does NOT treat as overflow, so a genuine Cursor context-overflow
+ * failure would otherwise surface as a plain provider error and bypass OMP's
  * auto-compact-retry recovery. This handler rewrites only Cursor context-window
- * failures into the `context_length_exceeded` form pi recognizes.
+ * failures into the `context_length_exceeded` form OMP recognizes.
  *
- * See pi `docs/custom-provider.md` -> "Context Overflow Errors".
+ * See OMP `docs/custom-provider.md` -> "Context Overflow Errors".
  */
 export const CURSOR_OVERFLOW_MARKER = "context_length_exceeded";
 
 /**
- * Context-overflow phrases. These overlap pi's own `OVERFLOW_PATTERNS` so the
- * false-positive surface matches pi's built-in detection for other providers.
+ * Context-overflow phrases. These overlap OMP's own `OVERFLOW_PATTERNS` so the
+ * false-positive surface matches OMP's built-in detection for other providers.
  *
- * ponytail: intentionally narrow and textual. We do NOT match bare gRPC
- * `resource_exhausted` (code 8) or `too many tokens` because pi documents those
+ * Intentionally narrow and textual. We do NOT match bare gRPC
+ * `resource_exhausted` (code 8) or `too many tokens` because OMP documents those
  * can false-match throttling/quota errors and trigger an unwanted compaction.
  * If a live Cursor probe reveals a distinct overflow phrase, add it here; this
  * pattern set is the single place to extend without touching the handler.
@@ -36,11 +34,11 @@ const CURSOR_OVERFLOW_PATTERNS = [
 	/exceed(?:s|ed).{0,30}context/i,
 ] as const;
 
-/** Never treat rate-limit/throttle signals as overflow (pi retries those separately). */
+/** Never treat rate-limit/throttle signals as overflow (OMP retries those separately). */
 const CURSOR_THROTTLE_PATTERN = /too many requests|rate.?limit|throttl|retry.?after/i;
 
 /**
- * Map a finalized Cursor assistant `errorMessage` to pi's overflow form.
+ * Map a finalized Cursor assistant `errorMessage` to OMP's overflow form.
  * Returns `undefined` when the message is not a Cursor context-overflow failure.
  *
  * Pure and idempotent so it is safe to call repeatedly and unit-test in isolation.
@@ -58,12 +56,12 @@ export function normalizeCursorOverflowErrorMessage(errorMessage: string | undef
 }
 
 /**
- * Rewrite a finalized assistant message into pi's overflow form when it is a
+ * Rewrite a finalized assistant message into OMP's overflow form when it is a
  * Cursor context-overflow failure. Returns the replacement message (for the
  * `message_end` result) or `undefined` to leave it unchanged.
  *
  * `isCursorProvider` carries the provider scoping decision out of the handler so
- * the full logic is unit-testable without a pi event harness.
+ * the full logic is unit-testable without an OMP event harness.
  */
 export function rewriteCursorOverflowAssistantMessage(
 	message: AssistantMessage,
@@ -74,5 +72,3 @@ export function rewriteCursorOverflowAssistantMessage(
 	if (!rewritten) return undefined;
 	return { ...message, errorMessage: rewritten };
 }
-
-export type CursorOverflowExtensionApi = Pick<ExtensionAPI, "on">;

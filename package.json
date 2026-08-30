@@ -1,13 +1,16 @@
 {
   "name": "omp-cursor-sdk",
-  "version": "0.3.6",
-  "description": "omp provider extension backed by @cursor/sdk local and cloud agents",
-  "author": "Mitch Fultz (https://github.com/fitchmultz)",
+  "version": "0.4.0",
+  "description": "Oh My Pi provider extension backed by independent @cursor/sdk local and cloud agents",
+  "author": "lhq1412 (https://github.com/lhq1412)",
+  "contributors": [
+    "Mitch Fultz (https://github.com/fitchmultz)"
+  ],
   "license": "MIT",
   "keywords": [
-    "pi-package",
-    "pi",
-    "pi-extension",
+    "omp-plugin",
+    "omp",
+    "oh-my-pi",
     "cursor",
     "cursor-sdk",
     "ai",
@@ -15,12 +18,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LoneExile/omp-cursor-sdk.git"
+    "url": "git+https://github.com/lhq1412/omp-cursor-sdk.git"
   },
   "bugs": {
-    "url": "https://github.com/LoneExile/omp-cursor-sdk/issues"
+    "url": "https://github.com/lhq1412/omp-cursor-sdk/issues"
   },
-  "homepage": "https://github.com/LoneExile/omp-cursor-sdk#readme",
+  "homepage": "https://github.com/lhq1412/omp-cursor-sdk#readme",
   "files": [
     "shared",
     "src",
@@ -97,6 +100,7 @@
     "scripts/lib/cursor-sdk-output-filter.mjs",
     "scripts/lib/cursor-sdk-output-filter.d.mts",
     "README.md",
+    "docs/omp-integration.md",
     "docs/cursor-model-ux-spec.md",
     "docs/cursor-tool-surfaces.md",
     "docs/cursor-live-smoke-checklist.md",
@@ -111,7 +115,8 @@
   ],
   "type": "module",
   "engines": {
-    "node": ">=22.19.0"
+    "node": ">=22.19.0",
+    "bun": ">=1.3.14"
   },
   "scripts": {
     "typecheck": "npm run typecheck:src && npm run typecheck:tests && npm run typecheck:replay-compile",
@@ -119,10 +124,8 @@
     "typecheck:tests": "tsc -p tsconfig.test.json --noEmit",
     "typecheck:replay-compile": "tsc --noEmit -p test/tsconfig.json",
     "verify": "npm run check:platform-smoke && npm run typecheck && npm test",
-    "test": "bun test test/cursor-api-key.test.ts test/model-list-cache.test.ts test/model-discovery-selection.test.ts test/context.test.ts test/package-metadata.test.ts test/cursor-config.test.ts test/cursor-model-lifecycle.test.ts test/cursor-session-scope.test.ts test/cursor-provider-lazy.test.ts test/cursor-sdk-billed-usage.test.ts test/cursor-sdk-get-usage-contract.test.ts test/cursor-sdk-turn-ended-usage-contract.test.ts test/cursor-cloud-reporting.test.ts test/cursor-session-agent-resume.test.ts test/cursor-session-compaction-prep.test.ts test/cursor-usage-accounting.test.ts",
-    "test:full": "bun test test/*.test.ts",
-    "test:upstream": "vitest run",
-    "test:watch": "vitest",
+    "test": "bun scripts/run-tests.mjs",
+    "test:watch": "bun test --watch --isolate test",
     "refresh:cursor-snapshots": "node scripts/refresh-cursor-model-snapshots.mjs",
     "check:cursor-snapshots": "node scripts/refresh-cursor-model-snapshots.mjs --check",
     "smoke:live": "scripts/tmux-live-smoke.sh",
@@ -145,7 +148,7 @@
     "debug:sdk-events": "node scripts/debug-sdk-events.mjs",
     "debug:provider-events": "node scripts/debug-provider-events.mjs",
     "debug:mcp-coldstart": "node scripts/probe-mcp-coldstart.mjs",
-    "check:platform-smoke": "node --check platform-smoke.config.mjs && node --check scripts/cloud-runtime-smoke.mjs && node --check scripts/lib/cloud-smoke-cleanup-evidence.mjs && node --check scripts/lib/cloud-smoke-artifacts.mjs && node --check scripts/lib/cloud-smoke-pi-runner.mjs && node --check scripts/lib/cloud-smoke-github.mjs && node --check scripts/lib/cloud-smoke-shutdown.mjs && node --check scripts/local-resume-cleanup-smoke.mjs && node --check scripts/local-resume-smoke.mjs && node --check scripts/lib/local-resume-smoke-harness.mjs && node --check scripts/platform-smoke.mjs && node --check scripts/platform-smoke/artifact-bundle-chunk.mjs && node --check scripts/platform-smoke/artifact-bundle-contract.mjs && node --check scripts/platform-smoke/artifact-fs-safety.mjs && node --check scripts/platform-smoke/artifact-anchored-extract.mjs && node --check scripts/platform-smoke/artifact-secrets.mjs && node --check scripts/platform-smoke/assertions.mjs && node --check scripts/platform-smoke/artifacts.mjs && node --check scripts/platform-smoke/card-detect.mjs && node --check scripts/platform-smoke/crabbox-runner.mjs && node --check scripts/platform-smoke/doctor.mjs && node --check scripts/platform-smoke/jsonl-text.mjs && node --check scripts/platform-smoke/live-suite-runner.mjs && node --check scripts/platform-smoke/local-resume-runner.mjs && node --check scripts/platform-smoke/pty-capture.mjs && node --check scripts/platform-smoke/render-ansi.mjs && node --check scripts/platform-smoke/scenarios.mjs && node --check scripts/platform-smoke/target-runtime.mjs && node --check scripts/platform-smoke/targets.mjs && node --check scripts/platform-smoke/visual-evidence.mjs && node --check scripts/platform-smoke/wrapped-line-match.mjs && vitest run test/platform-artifact-boundaries.test.ts test/platform-smoke-artifact-transport.test.ts test/cloud-smoke-helpers.test.ts test/cursor-sdk-cloud-list-runs-contract.test.ts test/smoke-cli-package-contracts.test.ts test/smoke-tooling.test.ts",
+    "check:platform-smoke": "node --check platform-smoke.config.mjs && node --check scripts/cloud-runtime-smoke.mjs && node --check scripts/lib/cloud-smoke-cleanup-evidence.mjs && node --check scripts/lib/cloud-smoke-artifacts.mjs && node --check scripts/lib/cloud-smoke-pi-runner.mjs && node --check scripts/lib/cloud-smoke-github.mjs && node --check scripts/lib/cloud-smoke-shutdown.mjs && node --check scripts/local-resume-cleanup-smoke.mjs && node --check scripts/local-resume-smoke.mjs && node --check scripts/lib/local-resume-smoke-harness.mjs && node --check scripts/platform-smoke.mjs && node --check scripts/platform-smoke/artifact-bundle-chunk.mjs && node --check scripts/platform-smoke/artifact-bundle-contract.mjs && node --check scripts/platform-smoke/artifact-fs-safety.mjs && node --check scripts/platform-smoke/artifact-anchored-extract.mjs && node --check scripts/platform-smoke/artifact-secrets.mjs && node --check scripts/platform-smoke/assertions.mjs && node --check scripts/platform-smoke/artifacts.mjs && node --check scripts/platform-smoke/card-detect.mjs && node --check scripts/platform-smoke/crabbox-runner.mjs && node --check scripts/platform-smoke/doctor.mjs && node --check scripts/platform-smoke/jsonl-text.mjs && node --check scripts/platform-smoke/live-suite-runner.mjs && node --check scripts/platform-smoke/local-resume-runner.mjs && node --check scripts/platform-smoke/pty-capture.mjs && node --check scripts/platform-smoke/render-ansi.mjs && node --check scripts/platform-smoke/scenarios.mjs && node --check scripts/platform-smoke/target-runtime.mjs && node --check scripts/platform-smoke/targets.mjs && node --check scripts/platform-smoke/visual-evidence.mjs && node --check scripts/platform-smoke/wrapped-line-match.mjs && bun scripts/run-tests.mjs test/platform-artifact-boundaries.test.ts test/platform-smoke-artifact-transport.test.ts test/cloud-smoke-helpers.test.ts test/cursor-sdk-cloud-list-runs-contract.test.ts test/smoke-cli-package-contracts.test.ts test/smoke-tooling.test.ts",
     "smoke:platform": "node scripts/platform-smoke.mjs",
     "smoke:platform:doctor": "node scripts/platform-smoke.mjs doctor",
     "smoke:platform:macos": "node scripts/platform-smoke.mjs run --target macos",
@@ -157,11 +160,11 @@
     "@cursor/sdk": "1.0.27",
     "@hono/node-server": "2.0.12",
     "@modelcontextprotocol/sdk": "1.30.0",
-    "@oh-my-pi/omptype": "17.3.0",
-    "@oh-my-pi/pi-ai": "17.3.0",
-    "@oh-my-pi/pi-coding-agent": "17.3.0",
-    "@oh-my-pi/pi-tui": "17.3.0",
-    "@oh-my-pi/pi-utils": "17.3.0",
+    "@oh-my-pi/omptype": "18.0.11",
+    "@oh-my-pi/pi-ai": "18.0.11",
+    "@oh-my-pi/pi-coding-agent": "18.0.11",
+    "@oh-my-pi/pi-tui": "18.0.11",
+    "@oh-my-pi/pi-utils": "18.0.11",
     "zod": "^3.25.0"
   },
   "bundledDependencies": [
@@ -176,7 +179,7 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"
   },
-  "pi": {
+  "omp": {
     "extensions": [
       "./src/index.ts"
     ]

@@ -1,4 +1,4 @@
-import { Type } from "typebox";
+import { Type } from "@oh-my-pi/omptype/typebox"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	asMockCursorRun,
@@ -34,7 +34,10 @@ describe("streamCursor local resume", () => {
 		incrementalSendCount = 0,
 	): void {
 		cursorSessionScopeTestUtils.set(process.cwd(), scopeKey);
-		const modelSelection = buildCursorModelSelection("gpt-5.5@1m", "off", false);
+		const modelSelection = buildCursorModelSelection("gpt-5.5", "off", {
+			fastEnabled: false,
+			extendedContextEnabled: false,
+		});
 		const poolKey = cursorSessionAgentTestUtils.buildSessionAgentPoolKey(scopeKey, {
 			apiKey: "test-key",
 			agentMode: "agent",
@@ -92,7 +95,7 @@ describe("streamCursor local resume", () => {
 		mockedResume.mockResolvedValueOnce(asMockSdkAgent({ agentId: "agent-old", send: mockSend }));
 		seedResumeHandle("/tmp/resume-bridge-session.jsonl", computeCursorContextFingerprint(priorContext));
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), resumedContext, { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), resumedContext, { apiKey: "test-key" }));
 
 		expect(mockedCreate).not.toHaveBeenCalled();
 		expect(mockedResume).toHaveBeenCalledTimes(1);
@@ -127,7 +130,7 @@ describe("streamCursor local resume", () => {
 		mockCreatedAgent({ agentId: "agent-new", send: newSend });
 		seedResumeHandle(`/tmp/reset-${count}.jsonl`, fingerprint(context), "agent-old", count);
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), context, { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), context, { apiKey: "test-key" }));
 
 		expect(mockedResume).toHaveBeenCalledTimes(1);
 		expect(oldDispose).toHaveBeenCalledTimes(1);
@@ -149,7 +152,7 @@ describe("streamCursor local resume", () => {
 		});
 		seedResumeHandle("/tmp/reject-cloud-resume-session.jsonl", "{}", "bc-cloud-agent");
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedResume).not.toHaveBeenCalled();
 		expect(mockedCreate).toHaveBeenCalledTimes(1);
@@ -170,8 +173,8 @@ describe("streamCursor local resume", () => {
 		mockCreatedAgent({ agentId: "agent-new", send: mockSend });
 		seedResumeHandle("/tmp/resume-session.jsonl");
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
-		const followUpEvents = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
+		const followUpEvents = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedResume).toHaveBeenCalledTimes(1);
 		expect(mockedCreate).toHaveBeenCalledTimes(1);
@@ -197,7 +200,7 @@ describe("streamCursor local resume", () => {
 		mockCreatedAgent({ agentId: "agent-new", send: mockSend });
 		seedResumeHandle("/tmp/resume-live-session.jsonl");
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(collectThinkingDeltas(events)).toContain("Could not resume prior Cursor agent");
 		expect(JSON.stringify(getDoneEvent(events).message.content)).not.toContain("Could not resume prior Cursor agent");

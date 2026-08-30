@@ -183,6 +183,8 @@ function installProcessHooks(): void {
 export const __testUtils = {
 	activeProviderTurnCount: (): number => activeProviderTurns.size,
 	activeSessionCount: (): number => activeSessions.size,
+	shouldSuppressProcessError: (event: string | symbol, args: readonly unknown[]): boolean =>
+		shouldSuppressProcessError(event, args),
 	resetLifecycleSessionGuard(): void {
 		activeLifecycleSessionGuard?.dispose();
 		activeLifecycleSessionGuard = undefined;

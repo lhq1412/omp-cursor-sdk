@@ -6,13 +6,14 @@ export function makeModel(id = "test-model"): Model<"cursor-sdk"> {
 		id,
 		name: "Test Model",
 		api: "cursor-sdk" as const,
-		provider: "cursor",
+		provider: "cursor-sdk",
 		baseUrl: "",
 		reasoning: false,
 		input: ["text", "image"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: 128000,
 		maxTokens: 16384,
+		compat: undefined,
 	};
 }
 
@@ -33,6 +34,7 @@ export function makeHarnessModel<TApi extends Api>(
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: 128000,
 		maxTokens: 16384,
+		compat: undefined as Model<TApi>["compat"],
 		...overrides,
 	};
 }

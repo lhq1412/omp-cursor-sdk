@@ -38,14 +38,14 @@ const args = new Set(argv);
 function printHelp() {
 	const npmUsage = LOCAL_RESUME_SUITES.map((lane) => `  npm run ${lane.script}`).join("\n");
 	const nodeUsage = LOCAL_RESUME_SUITES.map((lane) => `  node scripts/local-resume-smoke.mjs${lane.flag ? ` ${lane.flag}` : ""}`).join("\n");
-	console.log(`Live local Cursor resume smoke for pi-cursor-sdk.
+	console.log(`Live local Cursor resume smoke for omp-cursor-sdk.
 
 Usage:
 ${npmUsage}
 ${nodeUsage}
 
 Environment:
-  CURSOR_LOCAL_RESUME_SMOKE_MODEL          Cursor model id (default: cursor/grok-4.6@slow).
+  CURSOR_LOCAL_RESUME_SMOKE_MODEL          Cursor model id (default: cursor-sdk/grok-4.6; fast forced off).
   CURSOR_LOCAL_RESUME_SMOKE_TIMEOUT_MS     Timeout in ms per model turn (default: 300000).
   CURSOR_LOCAL_RESUME_SMOKE_KEEP_ARTIFACTS Keep temp artifacts when set to 1.
   CURSOR_LOCAL_RESUME_SMOKE_EXTENSION_PATH Packed extension path override (platform runner only).
@@ -178,7 +178,7 @@ async function runSafetySmoke() {
 			const cloneTurn = await promptAndRead({
 				rpc,
 				artifactDir: artifactRoot,
-				message: "What exact LOCAL_FUTURE marker is visible in this cloned pi transcript? Reply exactly MARKER=<marker> if visible, otherwise NO_MARKER.",
+				message: "What exact LOCAL_FUTURE marker is visible in this cloned OMP transcript? Reply exactly MARKER=<marker> if visible, otherwise NO_MARKER.",
 				timeoutMs,
 				seenMetadata,
 			});
@@ -251,7 +251,7 @@ async function runToolSurfaceSmoke() {
 			const changedSurface = await promptAndRead({
 				rpc,
 				artifactDir: artifactRoot,
-				message: "What exact LOCAL_TOOL_SURFACE marker is visible in this pi transcript? Reply exactly MARKER=<marker> if visible, otherwise NO_MARKER.",
+				message: "What exact LOCAL_TOOL_SURFACE marker is visible in this OMP transcript? Reply exactly MARKER=<marker> if visible, otherwise NO_MARKER.",
 				timeoutMs,
 				seenMetadata,
 			});

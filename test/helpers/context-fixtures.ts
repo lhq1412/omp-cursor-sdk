@@ -12,28 +12,33 @@ function getSharedTestModelRegistry(): ModelRegistry {
 }
 
 export function createDefaultSystemPromptOptions(cwd: string): BuildSystemPromptOptions {
-	return {
-		cwd,
-		selectedTools: ["read", "bash", "edit", "write"],
-	};
+	return { cwd };
 }
 
 function createMinimalSessionManager(cwd: string, overrides: Partial<ExtensionContext["sessionManager"]> = {}): ExtensionContext["sessionManager"] {
 	return {
 		getCwd: vi.fn(() => cwd),
+		getRecordedCwd: vi.fn(() => cwd),
 		getSessionDir: vi.fn(() => ""),
 		getSessionId: vi.fn(() => "test-session"),
 		getSessionFile: vi.fn(() => undefined),
+		getSessionName: vi.fn(() => undefined),
+		getArtifactsDir: vi.fn(() => null),
+		getArtifactManager: vi.fn(() => null),
+		allocateArtifactPath: vi.fn(async () => ({})),
+		saveArtifact: vi.fn(async () => undefined),
+		getArtifactPath: vi.fn(async () => null),
 		getLeafId: vi.fn(() => null),
 		getLeafEntry: vi.fn(() => undefined),
 		getEntry: vi.fn(() => undefined),
 		getLabel: vi.fn(() => undefined),
 		getBranch: vi.fn(() => []),
-		buildContextEntries: vi.fn(() => []),
 		getHeader: vi.fn(() => null),
 		getEntries: vi.fn(() => []),
 		getTree: vi.fn(() => []),
-		getSessionName: vi.fn(() => undefined),
+		getUsageStatistics: vi.fn() as ExtensionContext["sessionManager"]["getUsageStatistics"],
+		putBlob: vi.fn() as ExtensionContext["sessionManager"]["putBlob"],
+		putBlobSync: vi.fn() as ExtensionContext["sessionManager"]["putBlobSync"],
 		...overrides,
 	};
 }
@@ -47,9 +52,6 @@ function createMinimalExtensionUi(): ExtensionContext["ui"] {
 		onTerminalInput: vi.fn(() => () => {}),
 		setStatus: vi.fn(),
 		setWorkingMessage: vi.fn(),
-		setWorkingVisible: vi.fn(),
-		setWorkingIndicator: vi.fn(),
-		setHiddenThinkingLabel: vi.fn(),
 		setWidget: vi.fn(),
 		setFooter: vi.fn(),
 		setHeader: vi.fn(),
@@ -61,11 +63,10 @@ function createMinimalExtensionUi(): ExtensionContext["ui"] {
 		editor: vi.fn(async () => undefined),
 		addAutocompleteProvider: vi.fn(),
 		setEditorComponent: vi.fn(),
-		getEditorComponent: vi.fn(() => undefined),
 		theme: {} as ExtensionContext["ui"]["theme"],
-		getAllThemes: vi.fn(() => []),
-		getTheme: vi.fn(() => undefined),
-		setTheme: vi.fn(() => ({ success: true })),
+		getAllThemes: vi.fn(async () => []),
+		getTheme: vi.fn(async () => undefined),
+		setTheme: vi.fn(async () => ({ success: true })),
 		getToolsExpanded: vi.fn(() => false),
 		setToolsExpanded: vi.fn(),
 	} satisfies ExtensionContext["ui"];
@@ -73,6 +74,7 @@ function createMinimalExtensionUi(): ExtensionContext["ui"] {
 
 function createMinimalExtensionContextInternal(overrides: ExtensionContextOverrides = {}): ExtensionContext {
 	const cwd = overrides.cwd ?? process.cwd();
+	const model = overrides.model ?? makeModel("composer-2.5");
 	const base: ExtensionContext = {
 		ui: createMinimalExtensionUi(),
 		mode: "tui",
@@ -80,17 +82,25 @@ function createMinimalExtensionContextInternal(overrides: ExtensionContextOverri
 		cwd,
 		sessionManager: createMinimalSessionManager(cwd, overrides.sessionManager),
 		modelRegistry: getSharedTestModelRegistry(),
-		model: makeModel("composer-2.5"),
-		scopedModels: [],
+		model,
+		models: {
+			list: vi.fn(() => (model ? [model] : [])),
+			current: vi.fn(() => model),
+			resolve: vi.fn(() => undefined),
+			family: vi.fn((candidate) => `${candidate.provider}/${candidate.id}`),
+		},
 		isIdle: vi.fn(() => true),
 		isProjectTrusted: vi.fn(() => true),
-		signal: undefined,
 		abort: vi.fn(),
 		hasPendingMessages: vi.fn(() => false),
 		shutdown: vi.fn(),
 		getContextUsage: vi.fn(() => undefined),
+		getAsyncJobSnapshot: vi.fn(() => null),
 		compact: vi.fn(),
-		getSystemPrompt: vi.fn(() => ""),
+		getSystemPrompt: vi.fn(() => []),
+		setInterval: vi.fn() as ExtensionContext["setInterval"],
+		setTimeout: vi.fn() as ExtensionContext["setTimeout"],
+		clearTimer: vi.fn(),
 	};
 	return {
 		...base,
@@ -113,11 +123,9 @@ function createMinimalExtensionCommandContextInternal(
 	return {
 		...base,
 		...overrides,
-		getSystemPromptOptions:
-			overrides.getSystemPromptOptions ?? vi.fn(() => createDefaultSystemPromptOptions(base.cwd)),
 		waitForIdle: overrides.waitForIdle ?? vi.fn(async () => undefined),
 		newSession: overrides.newSession ?? vi.fn(async () => ({ cancelled: false })),
-		fork: overrides.fork ?? vi.fn(async () => ({ cancelled: false })),
+		branch: overrides.branch ?? vi.fn(async () => ({ cancelled: false })),
 		navigateTree: overrides.navigateTree ?? vi.fn(async () => ({ cancelled: false })),
 		switchSession: overrides.switchSession ?? vi.fn(async () => ({ cancelled: false })),
 		reload: overrides.reload ?? vi.fn(async () => undefined),
@@ -144,7 +152,7 @@ export function createExtensionCommandContext(
 
 export function makeContext(messages: Context["messages"] = [{ role: "user", content: "Hello", timestamp: 1 }]): Context {
 	return {
-		systemPrompt: "Be helpful.",
+		systemPrompt: ["Be helpful."],
 		messages,
 	};
 }
@@ -153,8 +161,8 @@ export function makeAssistantMessage(text = "Done", timestamp = 2): AssistantMes
 	return {
 		role: "assistant",
 		content: [{ type: "text", text }],
+		provider: "cursor-sdk",
 		api: "cursor-sdk",
-		provider: "cursor",
 		model: "test-model",
 		usage: {
 			input: 0,

@@ -11,14 +11,10 @@ import { createCursorReplayOnlyToolDefinition } from "./cursor-native-tool-displ
 import { consumeCursorNativeToolDisplay } from "./cursor-native-tool-display-state.js";
 
 /**
- * OMP port: Pi 0.84 shadowed the builtin read/bash/edit/write/grep/find/ls
- * tools with wrapped definitions to render Cursor-native activity. OMP's
- * extension API exposes builtin tool metadata (getAllTools) but no wrapped
- * definition to delegate execution to, so the port registers only the
- * self-contained replay tool and leaves the builtins untouched. Recorded
- * Cursor activity still flows into results via the execute-time replay
- * consume; the Pi render-time replay cards are a documented fidelity
- * reduction.
+ * OMP exposes builtin tool metadata but not executable definitions that an
+ * extension can wrap safely. Cursor SDK activity therefore replays through the
+ * self-contained neutral `cursor` tool; OMP's read/bash/edit/write definitions
+ * remain untouched.
  */
 
 export function wrapNativeCursorTool<TParams extends TSchema, TDetails>(

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { Type } from "typebox";
+import { Type } from "@oh-my-pi/omptype/typebox"
 import {
 	resetCursorProviderTestState,
 	mockedCreate,
@@ -82,12 +82,12 @@ describe("native replay stress", () => {
 		await cursorProviderTestUtils.resetSessionCursorAgents();
 	});
 
-	it("plan strip then turn_start resync replays grep when context.tools match active tools", async () => {
+	it("plan strip then turn_start resync replays SDK grep through the neutral cursor tool", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		const pi = await createNativeToolDisplayPiForTest();
 		pi.setActiveTools(["read", "bash", "edit", "write"]);
 		await pi.runTurnStart({ model: CURSOR_MODEL });
-		expect(pi.getActiveTools()).toContain("grep");
+		expect(pi.getActiveTools()).not.toContain("grep");
 		expect(pi.getActiveTools()).toContain("cursor");
 
 		mockCreatedAgent({

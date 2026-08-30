@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelListItem } from "@cursor/sdk";
 import { SessionManager, type ExtensionContext, type SessionEntry } from "@oh-my-pi/pi-coding-agent";
+import { getAgentDir, setAgentDir } from "@oh-my-pi/pi-utils";
 import { CURSOR_HTTP1_ENV } from "../src/cursor-config.js";
 import {
 	__testUtils,
@@ -47,7 +48,7 @@ function createFastHarness(options: { modelId?: string; branch?: SessionEntry[] 
 	const pi = createPiHarness();
 	const ctx = createExtensionTestContext({
 		model: options.modelId
-			? { ...makeModel(options.modelId), provider: "cursor", api: "cursor-sdk" }
+			? { ...makeModel(options.modelId), provider: "cursor-sdk", api: "cursor-sdk" }
 			: undefined,
 		sessionManager: {
 			getBranch: vi.fn<ExtensionContext["sessionManager"]["getBranch"]>(() => options.branch ?? []),
@@ -67,10 +68,12 @@ describe("Cursor fast preference persistence", () => {
 	let tmpAgentDir: string;
 	const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 	const originalHttp1Env = process.env[CURSOR_HTTP1_ENV];
+	const originalResolvedAgentDir = getAgentDir();
 
 	beforeEach(() => {
 		tmpAgentDir = mkdtempSync(join(tmpdir(), "pi-cursor-fast-persistence-"));
 		process.env.PI_CODING_AGENT_DIR = tmpAgentDir;
+		setAgentDir(tmpAgentDir);
 		delete process.env[CURSOR_HTTP1_ENV];
 		__testUtils.sessionFastPreferences.clear();
 		__testUtils.resetCursorModeStateForTests();
@@ -78,6 +81,7 @@ describe("Cursor fast preference persistence", () => {
 	});
 
 	afterEach(() => {
+		setAgentDir(originalResolvedAgentDir);
 		if (originalAgentDir === undefined) {
 			delete process.env.PI_CODING_AGENT_DIR;
 		} else {
@@ -91,7 +95,7 @@ describe("Cursor fast preference persistence", () => {
 
 	it("toggles fast per session and writes the global default", async () => {
 		const { pi, ctx, commandCtx, commands } = createFastHarness({ modelId: "composer-2" });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
 
@@ -115,7 +119,7 @@ describe("Cursor fast preference persistence", () => {
 			fastDefaults: { "composer-2": true },
 		}));
 		const { pi, ctx, commandCtx, commands } = createFastHarness({ modelId: "composer-2" });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 
@@ -130,7 +134,7 @@ describe("Cursor fast preference persistence", () => {
 		const sentinel = "PI_CURSOR_MALFORMED_SECRET";
 		writeFileSync(__testUtils.getConfigPath(), `{"secret":"${sentinel}`);
 		const { pi, ctx, commandCtx, commands } = createFastHarness({ modelId: "composer-2" });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 
@@ -140,73 +144,41 @@ describe("Cursor fast preference persistence", () => {
 		expect(vi.mocked(ctx.ui.notify).mock.calls.flat().join("\n")).not.toContain(sentinel);
 	});
 
-	it("uses the selected Cursor SDK alias as the fast preference key", async () => {
-		const { pi, ctx, commandCtx, commands } = createFastHarness({ modelId: "composer-2-5" });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+	it("uses the canonical SDK model ID as the fast preference key", async () => {
+		const { pi, ctx, commandCtx, commands } = createFastHarness({ modelId: "composer-2.5" });
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 
 		expect(pi.appendEntry).toHaveBeenCalledWith(__testUtils.FAST_ENTRY_TYPE, {
-			modelId: "composer-2-5",
+			modelId: "composer-2.5",
 			fast: false,
 		});
-		expect(getEffectiveFastForModelId("composer-2-5")).toBe(false);
+		expect(getEffectiveFastForModelId("composer-2.5")).toBe(false);
 		expect(JSON.parse(readFileSync(__testUtils.getConfigPath(), "utf-8"))).toEqual({
-			fastDefaults: { "composer-2-5": false },
+			fastDefaults: { "composer-2.5": false },
 		});
 	});
 
-	it("restores legacy base-model fast preferences for Cursor SDK aliases", async () => {
-		const { pi, ctx } = createFastHarness({
-			modelId: "composer-2-5",
-			branch: [
-				{
-					type: "custom",
-					id: "fast-entry",
-					parentId: null,
-					timestamp: new Date(0).toISOString(),
-					customType: __testUtils.FAST_ENTRY_TYPE,
-					data: { baseModelId: "composer-2.5", fast: false },
-				},
-			],
-		});
+	it("ignores obsolete alias fast defaults", async () => {
+		writeFileSync(__testUtils.getConfigPath(), JSON.stringify({ fastDefaults: { "composer-2-5": false } }));
+		const { pi, ctx } = createFastHarness({ modelId: "composer-2.5" });
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
-		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
-		expect(getEffectiveFastForModelId("composer-2-5")).toBe(false);
-	});
-
-	it("keeps legacy session fast preferences above global alias defaults", async () => {
-		writeFileSync(__testUtils.getConfigPath(), JSON.stringify({ fastDefaults: { "composer-2-5": true } }));
-		const { pi, ctx } = createFastHarness({
-			modelId: "composer-2-5",
-			branch: [
-				{
-					type: "custom",
-					id: "fast-entry",
-					parentId: null,
-					timestamp: new Date(0).toISOString(),
-					customType: __testUtils.FAST_ENTRY_TYPE,
-					data: { baseModelId: "composer-2.5", fast: false },
-				},
-			],
-		});
-
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
-
-		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
-		expect(getEffectiveFastForModelId("composer-2-5")).toBe(false);
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
+		expect(getEffectiveFastForModelId("composer-2.5")).toBe(true);
 	});
 
 	it("does not update fast state when the global config cannot be saved", async () => {
 		const blockedAgentDir = join(tmpAgentDir, "not-a-directory");
 		writeFileSync(blockedAgentDir, "x");
 		process.env.PI_CODING_AGENT_DIR = blockedAgentDir;
+		setAgentDir(blockedAgentDir);
 		const { pi, ctx, commandCtx, commands } = createFastHarness({ modelId: "composer-2" });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 
@@ -222,7 +194,7 @@ describe("Cursor fast preference persistence", () => {
 		pi.appendEntry.mockImplementationOnce(() => {
 			throw new Error("journal unavailable");
 		});
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 
@@ -248,7 +220,7 @@ describe("Cursor fast preference persistence", () => {
 		pi.appendEntry.mockImplementationOnce(() => {
 			throw new Error("journal unavailable");
 		});
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 
@@ -285,7 +257,7 @@ describe("Cursor fast preference persistence", () => {
 				}
 				throw new Error("journal unavailable");
 			});
-			await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+			await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 			await commands.get("cursor-fast")!.handler("", commandCtx);
 			await pi.invokeEventWithContext("session_tree", { type: "session_tree", oldLeafId: null, newLeafId: null }, ctx);
@@ -309,7 +281,7 @@ describe("Cursor fast preference persistence", () => {
 		}];
 		const { pi, ctx, commandCtx, commands } = createFastHarness({ modelId: "composer-2", branch });
 		pi.appendEntry.mockImplementationOnce(() => { throw new Error("journal unavailable"); });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 		await commands.get("cursor-fast")!.handler("", commandCtx);
@@ -338,44 +310,23 @@ describe("Cursor fast preference persistence", () => {
 		}];
 		const { pi, ctx, commandCtx, commands } = createFastHarness({ modelId: "composer-2", branch });
 		pi.appendEntry.mockImplementationOnce(() => { throw new Error("journal unavailable"); });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "reload" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(getEffectiveFastForModelId("composer-2")).toBe(true);
 	});
 
-	it("keeps failed alias authority scoped away from legacy base-model preferences", async () => {
-		writeFileSync(__testUtils.getConfigPath(), JSON.stringify({ fastDefaults: { "composer-2-5": false } }));
-		const branch: SessionEntry[] = [{
-			type: "custom",
-			id: "legacy-fast",
-			parentId: null,
-			timestamp: new Date(0).toISOString(),
-			customType: __testUtils.FAST_ENTRY_TYPE,
-			data: { baseModelId: "composer-2.5", fast: false },
-		}];
-		const { pi, ctx, commandCtx, commands } = createFastHarness({ modelId: "composer-2-5", branch });
-		pi.appendEntry.mockImplementationOnce(() => { throw new Error("journal unavailable"); });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
-
-		await commands.get("cursor-fast")!.handler("", commandCtx);
-		await pi.invokeEventWithContext("session_tree", { type: "session_tree", oldLeafId: null, newLeafId: null }, ctx);
-
-		expect(getEffectiveFastForModelId("composer-2-5")).toBe(true);
-		expect(getEffectiveFastForModelId("composer-2.5")).toBe(false);
-	});
-
-	it("contracts Pi append failure as a possible in-memory partial commit", () => {
-		const manager = SessionManager.create(tmpAgentDir, tmpAgentDir, { id: "fast-append-contract" });
+	it("contracts OMP append as an in-memory commit after journal path replacement", () => {
+		const manager = SessionManager.create(tmpAgentDir, tmpAgentDir);
 		manager.appendMessage({ role: "user", content: "hello", timestamp: 1 });
 		manager.appendMessage(makeAssistantMessage("ready"));
 		const sessionFile = manager.getSessionFile()!;
 		rmSync(sessionFile);
 		mkdirSync(sessionFile);
 
-		expect(() => manager.appendCustomEntry(__testUtils.FAST_ENTRY_TYPE, { modelId: "composer-2", fast: false })).toThrow();
+		expect(() => manager.appendCustomEntry(__testUtils.FAST_ENTRY_TYPE, { modelId: "composer-2", fast: false })).not.toThrow();
 		expect(manager.getBranch()).toEqual(expect.arrayContaining([
 			expect.objectContaining({
 				type: "custom",

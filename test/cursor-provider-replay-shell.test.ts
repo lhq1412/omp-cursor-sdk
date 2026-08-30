@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Type } from "typebox";
+import { Type } from "@oh-my-pi/omptype/typebox"
 import {
 	resetCursorProviderTestState,
 	mockedCreate,
@@ -92,10 +92,10 @@ it("uses Cursor shell-output-delta as display-only fallback when completed shell
 
 		expect(collectThinkingDeltas(firstEvents)).toContain("Cursor shell stdout: background job done");
 		expect(firstDone.reason).toBe("toolUse");
-		expect(toolCall!.name).toBe("bash");
+		expect(toolCall!.name).toBe("cursor");
 		expect(toolCall!.arguments).toEqual({ command });
 
-		const bashTool = registeredTools.find((tool) => tool.name === "bash");
+		const bashTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await bashTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		expect(toolResult).toMatchObject({
 			content: [{ type: "text", text: "background job done" }],

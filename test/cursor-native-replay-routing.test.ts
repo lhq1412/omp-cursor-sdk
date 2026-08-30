@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import type { Context } from "@oh-my-pi/pi-ai";
-import { __testUtils as nativeToolDisplayTestUtils } from "../src/cursor-native-tool-display-state.js";
+import {
+	__testUtils as nativeToolDisplayTestUtils,
+	resolveRegisteredCursorNativeToolName,
+} from "../src/cursor-native-tool-display-state.js";
 import {
 	isNativeToolActiveInContext,
 	partitionNativeToolsByActiveContext,
@@ -10,14 +13,14 @@ import {
 describe("cursor-native-replay-routing", () => {
 	beforeEach(() => {
 		nativeToolDisplayTestUtils.reset();
-		nativeToolDisplayTestUtils.registerNativeToolNameForTests("grep");
+		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor");
 	});
 	it("queues replay when tool is active in context and live run exists", () => {
 		expect(
 			resolveNativeReplayDisposition({
-				toolName: "grep",
+				toolName: "cursor",
 				useNativeToolReplay: true,
-				activeToolNames: new Set(["grep", "read"]),
+				activeToolNames: new Set(["cursor", "read"]),
 				hasLiveRun: true,
 			}),
 		).toBe("queue_replay");
@@ -26,7 +29,7 @@ describe("cursor-native-replay-routing", () => {
 	it("returns inactive_trace when tool is missing from context snapshot", () => {
 		expect(
 			resolveNativeReplayDisposition({
-				toolName: "grep",
+				toolName: "cursor",
 				useNativeToolReplay: true,
 				activeToolNames: new Set(["read"]),
 				hasLiveRun: true,
@@ -37,12 +40,18 @@ describe("cursor-native-replay-routing", () => {
 	it("returns transcript_trace when native replay is disabled", () => {
 		expect(
 			resolveNativeReplayDisposition({
-				toolName: "grep",
+				toolName: "cursor",
 				useNativeToolReplay: false,
-				activeToolNames: new Set(["grep"]),
+				activeToolNames: new Set(["cursor"]),
 				hasLiveRun: true,
 			}),
 		).toBe("transcript_trace");
+	});
+
+	it("maps SDK builtin activity onto OMP's neutral replay tool", () => {
+		expect(resolveRegisteredCursorNativeToolName("read")).toBe("cursor");
+		expect(resolveRegisteredCursorNativeToolName("bash")).toBe("cursor");
+		expect(resolveRegisteredCursorNativeToolName("unknown")).toBeUndefined();
 	});
 
 	it("treats undefined activeToolNames as all tools active", () => {

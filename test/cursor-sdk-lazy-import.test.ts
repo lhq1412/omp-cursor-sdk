@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, wr
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import ts from "typescript";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { getAgentDir, setAgentDir } from "@oh-my-pi/pi-utils";
 import { fingerprintApiKey, saveModelListCache } from "../src/model-list-cache.js";
 import type { ModelListItem } from "@cursor/sdk";
 
@@ -398,14 +399,14 @@ function collectUnsafeHostPeerLoads(
 
 describe("Cursor SDK lazy runtime imports", () => {
 	const originalEnv = process.env;
+	const originalResolvedAgentDir = getAgentDir();
 	let tmpAgentDir: string | undefined;
 
 	afterEach(() => {
 		if (tmpAgentDir) rmSync(tmpAgentDir, { recursive: true, force: true });
 		tmpAgentDir = undefined;
 		process.env = originalEnv;
-		vi.doUnmock("@cursor/sdk");
-		vi.resetModules();
+		setAgentDir(originalResolvedAgentDir);
 	});
 
 	it("keeps heavy SDK value imports behind lazy runtime boundaries", () => {
@@ -426,7 +427,7 @@ describe("Cursor SDK lazy runtime imports", () => {
 	});
 
 	it("pins TypeScript import elision used by the graph", () => {
-		const config = ts.getParsedCommandLineOfConfigFile(join(process.cwd(), "tsconfig.build.json"), {}, {
+		const config = ts.getParsedCommandLineOfConfigFile(join(process.cwd(), "tsconfig.json"), {}, {
 			...ts.sys,
 			onUnRecoverableConfigFileDiagnostic: (diagnostic) => {
 				throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
@@ -638,23 +639,23 @@ describe("Cursor SDK lazy runtime imports", () => {
 		expect(findings).toContain("unresolved relative dynamic import ./missing.js");
 	});
 
-	it("serves a warm model catalog without evaluating @cursor/sdk", async () => {
+	it("hydrates a warm selection catalog through the fallback-only path", async () => {
 		tmpAgentDir = mkdtempSync(join(tmpdir(), "pi-cursor-sdk-lazy-import-"));
 		process.env = { ...originalEnv, PI_CODING_AGENT_DIR: tmpAgentDir, CURSOR_API_KEY: "warm-cache-key" };
+		setAgentDir(tmpAgentDir);
 		const model: ModelListItem = {
-			id: "composer-2",
-			displayName: "Composer 2",
-			variants: [{ params: [], displayName: "Composer 2", isDefault: true }],
+			id: "future-cached-model",
+			displayName: "Future Cached Model",
+			variants: [{ params: [{ id: "private-preview", value: "true" }], displayName: "Future Cached Model", isDefault: true }],
 		};
 		expect(saveModelListCache(fingerprintApiKey("warm-cache-key"), [model])).toBe(true);
-		vi.doMock("@cursor/sdk", () => {
-			throw new Error("@cursor/sdk should not be evaluated on a warm cached discovery path");
-		});
 
-		const { discoverModels } = await import("../src/model-discovery.js");
-		const models = await discoverModels();
+		const { getCursorFallbackModels, getCursorModelMetadata } = await import("../src/model-discovery.js");
+		await getCursorFallbackModels();
 
-		expect(models.map((entry) => entry.id)).toEqual(["composer-2"]);
+		expect(getCursorModelMetadata("future-cached-model")?.defaultParams).toEqual([
+			{ id: "private-preview", value: "true" },
+		]);
 	});
 
 	it("loads the installed SDK checkpoint store without the old root sqlite dependency", async () => {

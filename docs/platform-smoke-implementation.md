@@ -1,220 +1,216 @@
-# Platform Smoke Implementation Reference
+# Platform smoke implementation reference
 
-Back to the canonical [Platform Smoke Gate runbook](./platform-smoke.md) for release commands, required targets and suites, artifacts, assertions, security, and the release bar.
+This document describes the current `omp-cursor-sdk` platform-smoke harness. User-facing commands and release policy live in [Platform smoke gate](./platform-smoke.md).
 
-This document records detailed detector, registry, command-rendering, implementation-history, replacement, and portability material. The phase plan is retained as implementation history, not as active release instructions.
+## Entry points
 
-## Visual evidence detector
+- `scripts/platform-smoke.mjs` — CLI and required-target orchestration.
+- `scripts/platform-smoke/targets.mjs` — reusable target leases, suite execution, package preparation, and evidence collection.
+- `scripts/platform-smoke/scenarios.mjs` — live scenario prompts and assertion contracts.
+- `scripts/platform-smoke/local-resume-suites.mjs` — resume lane definitions.
+- `scripts/platform-smoke/doctor.mjs` — fail-fast host/provider/target checks.
+- `platform-smoke.config.mjs` — package, model, target, image, and artifact defaults.
 
-The detector operates on host-rendered terminal HTML and PNG evidence. It must not pass from prompt text alone.
+Maintainer orchestration is Node ESM. OMP 18's CLI is launched with Bun on every target.
 
-Required behavior:
+## Target adapters
 
-- render ANSI with xterm/Playwright and assert the terminal DOM/theme is present, styled, non-empty, and screenshotted;
-- search the rendered xterm buffer for suite-owned evidence patterns that correspond to actual tool output/results, not instructions in the prompt;
-- scroll to each evidence line and write `cards/<evidence-id>.png` screenshots plus `visual-evidence.json`;
-- write `cards.json` for the legacy rendered-evidence inventory;
-- fail when required visual evidence is missing;
-- fail when a card/evidence item has the wrong success/error state;
-- fail when footer/status is missing or unreadable.
+`scripts/platform-smoke/crabbox-runner.mjs` owns all Crabbox process calls:
 
-Meaningful gap closed: earlier card assertions could pass when the prompt mentioned `pi__read` or a missing-file path even if the actual tool card/result never rendered. The gate now requires JSONL result evidence and per-evidence rendered screenshots for native read, native shell success/failure, native edit diffs, bridge read success/failure, and bridge shell success.
+- safe environment construction;
+- Ubuntu image preparation;
+- macOS/Ubuntu/Windows target arguments;
+- reusable lease warmup;
+- sync/no-sync execution;
+- target cleanup.
 
-## Registry visual classification
+Target identity:
 
-The implementation must classify every `CURSOR_TOOL_PRESENTATION_SPECS` entry from `src/cursor-tool-presentation-registry.ts` as required or excluded for the release visual gate. A validation check fails when a registry entry lacks classification.
+| Smoke target | Crabbox provider | Runtime surface |
+|---|---|---|
+| `macos` | `ssh` | native PTY |
+| `ubuntu` | `local-container` | Linux PTY |
+| `windows-native` | `parallels` | Windows ConPTY |
 
-Required deterministic cards:
+One lease is reused sequentially for the target's required suites. Required targets themselves also run sequentially to avoid shared-host and API contention.
 
-- `read`
-- `grep`
-- `glob` / find
-- `shell`
-- `write`
-- `edit`
-- failed `read`
+The generated Ubuntu image copies the pinned Bun binary from `oven/bun:1.3.14` into the configured Node 24 base and executes `bun --version` during the build. macOS and Windows doctor probes require Bun on the native target.
 
-Excluded from release visual matrix with required rationale:
+## Package preparation
 
-- `delete`: destructive and redundant with file mutation card coverage.
-- `readLints`: dependent on target diagnostics state.
-- `updateTodos`: model workflow dependent.
-- `createPlan`: model workflow dependent.
-- `task`: model/task orchestration dependent.
-- `generateImage`: external image generation surface.
-- `mcp`: separate MCP integration surface beyond built-in bridge smoke.
-- `semSearch`: semantic index state dependent.
-- `recordScreen`: desktop capture dependency outside terminal smoke.
-- `webSearch`: network/search dependent.
-- `webFetch`: network dependent.
+The `platform-build` path in `scripts/platform-smoke/targets.mjs`:
 
-Adding a registry entry requires adding it to the required or excluded list with rationale. `ls` is currently excluded from the required one-prompt matrix because composer-2-5 does not route the deterministic source-enumeration step through the native `ls` surface reliably; the suite instead gates that behavior through a successful native `find` result for `src/cursor-provider.ts`.
+1. runs target-local `npm ci`;
+2. runs package checks and tests;
+3. creates the npm tarball;
+4. installs the tarball into a clean target-local project;
+5. verifies package identity and manifest;
+6. returns paths consumed by live suites.
 
-## Platform command rendering
+The packed manifest exposes `src/index.ts` directly through OMP's extension field. No `dist/` directory or compile-before-launch step exists.
 
-Scenario commands are not raw shell strings. The runner renders commands per target:
-
-- `posix` for macOS and Ubuntu.
-- `powershell` for Windows native.
-
-Scenario shape:
-
-```js
-{
-  id: "cursor-native-visual-matrix",
-  requires: ["cursor-auth", "pty", "packed-install"],
-  promptTemplate: "... <platform-command:shellSmoke> ...",
-  commands: {
-    shellSmoke: {
-      posix: "printf 'cursor visual smoke\\n'",
-      powershell: "Write-Output 'cursor visual smoke'",
-    },
-  },
-  assertions: ["final-marker", "required-cards", "jsonl-tools"],
-}
-```
-
-The renderer owns quoting, path normalization, environment assignment, and canonical gzip JSON/base64 artifact encoding.
-
-## Implementation phases
-
-### Phase 0: plan-only branch state
-
-Create this plan on `feat/crabbox-platform-smoke`. Do not implement code in this phase.
-
-### Phase 1: dependency spike
-
-Verify `node-pty` and ConPTY on every target before committing the dependency.
-
-Exit criteria:
-
-- node-pty self-test passes on macOS;
-- node-pty self-test passes on Ubuntu local-container;
-- node-pty self-test passes on Windows native Node 24.
-
-### Phase 2: config and doctor
-
-Add config, CLI skeleton, doctor, and npm scripts.
-
-Exit criteria:
+Project activation uses OMP's package manager:
 
 ```bash
-npm run smoke:platform:doctor
+omp plugin install --scope project <tarball>
+omp plugin list --scope project
 ```
 
-passes only when all required local setup exists.
+## OMP launch
 
-### Phase 3: target session manager
+`scripts/platform-smoke/live-suite-runner.mjs` owns the target-side live invocation.
 
-Implement Crabbox target lifecycle for all three targets.
+It resolves the installed `@oh-my-pi/pi-coding-agent/dist/cli.js` entry and launches:
 
-Exit criteria:
+```text
+bun <omp-cli-entry> --auto-approve --model cursor-sdk/grok-4.6 ...
+```
 
-- each target can acquire/warm;
-- each target can sync;
-- each target can run `node --version`;
-- each target can package/download a trivial artifact;
-- each target can stop/cleanup;
-- one lease per target session.
+The prompt is a positional interactive message. Session continuation uses `--session-dir` and `--continue`; OMP 18 has no `--session-id` launch flag.
 
-### Phase 4: `platform-build`
+Every suite gets:
 
-Implement build/package/install suite.
+- an isolated workspace;
+- an isolated `PI_CODING_AGENT_DIR`;
+- explicit environment allowlisting;
+- bounded timeout and output;
+- a suite-specific terminal-final marker;
+- provider/debug metadata paths.
 
-Exit criteria: `platform-build` passes on all targets through `smoke:platform:all -- --suite platform-build` without live Cursor calls.
+## Native replay evidence
 
-### Phase 5: PTY capture and host render
+Cursor SDK-native activity must not register or replace OMP builtins.
 
-Implement PTY/ConPTY capture and host-side xterm/Playwright render.
+The extension registers one neutral replay tool:
 
-Exit criteria:
+```text
+cursor
+```
 
-- ANSI capture works on all targets;
-- host render writes HTML, full PNG, and final viewport PNG;
-- visual evidence detector can capture fixture evidence screenshots.
+For source activity such as `read`, `grep`, `find`, `bash`, `edit`, or `write`:
 
-### Phase 6: native visual matrix
+- history `toolCall.name` is `cursor`;
+- display/result details retain `sourceToolName`;
+- an unknown replay ID remains display-only and cannot execute real work.
 
-Implement one-call native matrix.
+`cursor-native-visual-matrix` correlates those details with ANSI cards and the underlying session JSONL.
 
-Exit criteria:
+## Bridge evidence
 
-- all required native visual evidence screenshots are captured on every target;
-- JSONL assertions pass on every target;
-- Cursor call budget remains one call per target.
+Bridge calls remain ordinary OMP tool calls:
 
-### Phase 7: bridge visual matrix
+```text
+Cursor agent -> loopback MCP pi__* -> OMP tool -> MCP result
+```
 
-Implement one-call bridge matrix.
+The bridge matrix uses exactly:
 
-Exit criteria:
+- `pi__bash`;
+- successful `pi__read`;
+- failing `pi__read`.
 
-- all required bridge visual evidence screenshots are captured on every target;
-- bridge diagnostics assertions pass on every target;
-- JSONL assertions pass on every target.
+Its JSONL therefore records `bash`/`read`, not the neutral replay name. Diagnostics correlate endpoint and tool-call identity while redacting endpoint tokens and authorization data.
 
-### Phase 8: abort cleanup
+## Session and resume lanes
 
-Implement interrupted bridge run.
+`scripts/platform-smoke/local-resume-suites.mjs` defines bounded scenarios for:
 
-Exit criteria:
+- restart reuse;
+- unsafe copied-session rejection;
+- tool-surface invalidation;
+- abort cleanup;
+- tree navigation;
+- copy/switch lineage;
+- missing-agent fallback;
+- compaction generation;
+- default dry-run precedence;
+- recorded-ID-only cleanup.
 
-- no leftovers on any target;
-- no false success in JSONL;
-- target session stops cleanly.
+The concrete target runner records both OMP session JSONL and Cursor lifecycle/lineage state. Assistant text is never accepted as resume proof.
 
-### Phase 9: docs and legacy cleanup
+## PTY/ConPTY capture
 
-Update:
+Target launch uses real terminal semantics. The capture path records:
 
-- `README.md`
-- `docs/cursor-live-smoke-checklist.md`
-- `docs/cursor-testing-lessons.md`
-- `docs/cursor-native-tool-visual-audit.md`
+- raw ANSI;
+- normalized plain text;
+- process exit and timeout state;
+- final marker;
+- session JSONL location;
+- provider/debug artifacts.
 
-They must state:
+`wrapped-line-match.mjs` matches bounded terminal wrapping without flattening unrelated text.
 
-- required local release gate is `npm run smoke:platform:all`;
-- cloud-runtime changes additionally require `npm run smoke:cloud`;
-- legacy smoke scripts are inner-loop/debug helpers;
-- `tmux` visual smoke is not the canonical cross-platform gate.
+## Rendering
 
-## Gate replacement criteria
+`scripts/lib/cursor-visual-render.mjs` and platform rendering helpers own the single canonical browser path:
 
-Replace or redesign this platform runner if any of these become true:
+```text
+ANSI -> xterm DOM -> HTML + PNG
+```
 
-- Parallels Windows linked clones are unreliable.
-- Windows native cannot run the required ConPTY visual matrix.
-- macOS static SSH localhost cannot run the required PTY visual matrix.
-- Ubuntu local-container cannot run the required PTY visual matrix.
-- Packed install cannot be tested uniformly across all targets.
-- Artifact transfer cannot be made uniform across success and failure.
-- The visual card detector cannot reliably identify required deterministic cards.
-- The full gate exceeds the fixed Cursor invocation budget.
-- Node 24 + `node-pty` cannot be made reliable on Windows native.
+Visual assertions require two independent signals:
 
-If the gate is replaced, document the new cross-platform release process before removing this one. Existing local smoke scripts remain inner-loop/debug helpers, not release gates.
+1. a rendered card/output pattern;
+2. a matching JSONL tool result.
 
-## Portability to other pi extensions
+This prevents prompt echo or assistant narration from satisfying an execution assertion.
 
-Repo-specific pieces:
+## Artifact bundle
 
-- `platform-smoke.config.mjs`
-- expected package name
-- model IDs
-- scenario prompts
-- required visual card matrix
-- final markers
+`artifact-bundle-contract.mjs` owns bundle path, size, and shape limits.
 
-Reusable pieces:
+`artifact-fs-safety.mjs` owns:
 
-- Crabbox target session manager
-- PTY/ConPTY capture
-- host-side ANSI render
-- artifact manifest writer
-- JSONL parser
-- visual evidence detector
-- process cleanup checker
-- target doctor
+- canonical relative-path validation;
+- no-follow traversal;
+- bounded reads;
+- extraction preflight;
+- safe spill writes.
 
-The framework is successful when another pi extension can copy the runner and change only its config plus scenarios.
+`artifact-anchored-extract.mjs` delegates POSIX mutation to `artifact-openat-extract.c`, using directory-descriptor-relative operations and rollback. Windows controller extraction fails closed where equivalent handle-relative mutation is unavailable.
+
+Every file is size-checked and checksummed. Canonical base64 and aggregate inflated-byte limits prevent alternate encodings and decompression amplification.
+
+## Secret handling
+
+`artifact-secrets.mjs` uses the shared Cursor secret scrubber for both producer and controller checks.
+
+The harness does not include:
+
+- `CURSOR_API_KEY`;
+- saved OMP credentials;
+- authorization/cookie headers;
+- tokenized bridge URLs;
+- unbounded raw SDK event captures.
+
+Secrets enter target processes only through explicit environment allowlists. Crabbox commands and captured command metadata omit their values.
+
+## Failure semantics
+
+A suite writes evidence on success and failure. The runner then:
+
+1. records assertions and command status;
+2. redacts and scans the bundle;
+3. attempts target/process cleanup;
+4. extracts bounded artifacts;
+5. updates run summary/latest metadata;
+6. returns nonzero for any missing prerequisite, assertion, cleanup, or extraction proof.
+
+An artifact transport error does not downgrade to missing evidence. It fails the suite.
+
+## Extension points
+
+Add a platform suite only when it proves a distinct runtime contract.
+
+Required additions:
+
+1. register the suite centrally;
+2. declare target and live/auth requirements;
+3. reuse package preparation and launch helpers;
+4. define bounded terminal and JSONL assertions;
+5. include cleanup proof;
+6. update the user-facing platform runbook;
+7. add focused tests for pure parsing, routing, and artifact boundaries.
+
+Do not duplicate process launch, secret redaction, ANSI rendering, or filesystem extraction code inside a suite.

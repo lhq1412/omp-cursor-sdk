@@ -1,9 +1,16 @@
+import {
+	CURSOR_REPLAY_ACTIVITY_TOOL_NAME,
+	isCursorReplayToolName,
+} from "./cursor-tool-presentation-registry.js";
+import { isNativeCursorToolName } from "./cursor-native-tool-names.js";
 import type { CursorPiToolDisplay } from "./cursor-transcript-utils.js";
 import { parseOptionalEnvBoolean } from "./cursor-env-boolean.js";
 
 export interface CursorNativeToolDisplayItem extends CursorPiToolDisplay {
 	id: string;
 	terminate?: boolean;
+	/** SDK/display identity retained when OMP executes the neutral replay tool. */
+	sourceToolName?: string;
 }
 
 export const NATIVE_CURSOR_TOOL_DISPLAY_ENV = "PI_CURSOR_NATIVE_TOOL_DISPLAY";
@@ -42,8 +49,24 @@ export function isCursorNativeToolDisplayRuntimeEnabled(): boolean {
 	return nativeToolDisplayRuntimeRequested && readBooleanEnv(NATIVE_CURSOR_TOOL_DISPLAY_ENV) !== false && registeredNativeToolNames.size > 0;
 }
 
+/**
+ * Resolves an SDK display name to the extension tool that can replay it.
+ * OMP registers one neutral `cursor` tool rather than shadowing host builtins.
+ */
+export function resolveRegisteredCursorNativeToolName(toolName: string): string | undefined {
+	if (registeredNativeToolNames.has(toolName)) return toolName;
+	if (
+		registeredNativeToolNames.has(CURSOR_REPLAY_ACTIVITY_TOOL_NAME) &&
+		isNativeCursorToolName(toolName) &&
+		!isCursorReplayToolName(toolName)
+	) {
+		return CURSOR_REPLAY_ACTIVITY_TOOL_NAME;
+	}
+	return undefined;
+}
+
 export function canRenderCursorToolNatively(toolName: string): boolean {
-	return registeredNativeToolNames.has(toolName);
+	return resolveRegisteredCursorNativeToolName(toolName) !== undefined;
 }
 
 export function isRegisteredCursorNativeToolName(toolName: string): boolean {

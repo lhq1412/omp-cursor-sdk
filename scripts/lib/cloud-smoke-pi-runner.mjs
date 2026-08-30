@@ -15,8 +15,8 @@ import {
 
 export function createCloudSmokePiRunner({ root, model, shutdown, buildEnv, buildWorkspace }) {
 	const findPiBin = () => {
-		const local = join(root, "node_modules", ".bin", process.platform === "win32" ? "pi.cmd" : "pi");
-		return existsSync(local) ? local : process.platform === "win32" ? "pi.cmd" : "pi";
+		const local = join(root, "node_modules", ".bin", process.platform === "win32" ? "omp.cmd" : "omp");
+		return existsSync(local) ? local : process.platform === "win32" ? "omp.cmd" : "omp";
 	};
 
 	const spawnPi = (artifactDir, args, envOptions, stdio) => {
@@ -34,7 +34,7 @@ export function createCloudSmokePiRunner({ root, model, shutdown, buildEnv, buil
 		shutdown.throwIfRequested();
 		const child = spawnPi(
 			artifactDir,
-			(sessionDir) => ["-e", root, "--model", model, "--approve", "--session-dir", sessionDir, "--session-id", sessionId, "-p", message],
+			(sessionDir) => ["-e", root, "--model", model, "--auto-approve", "--session-dir", sessionDir, "-p", message],
 			envOptions,
 			["ignore", "pipe", "pipe"],
 		);
@@ -100,7 +100,7 @@ export function createCloudSmokePiRunner({ root, model, shutdown, buildEnv, buil
 		shutdown.throwIfRequested();
 		const child = spawnPi(
 			artifactDir,
-			(sessionDir) => ["--mode", "rpc", "-e", root, "--model", model, "--approve", "--session-dir", sessionDir, "--session-id", sessionId],
+			(sessionDir) => ["--mode", "rpc", "-e", root, "--model", model, "--auto-approve", "--session-dir", sessionDir],
 			{ contextHandoff, ...envOptions },
 			["pipe", "pipe", "pipe"],
 		);

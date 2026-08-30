@@ -37,7 +37,7 @@ export async function executeLocalResumeSuite(
 		targetName,
 		variant.script,
 		prepDir,
-		config.packageName ?? "pi-cursor-sdk",
+		config.packageName ?? "omp-cursor-sdk",
 		suiteName,
 	);
 	writeCommand(suiteDir, command);
@@ -237,7 +237,7 @@ export function buildLocalResumeSuiteCommand(
 	targetName,
 	script = "smoke:local-resume",
 	prepDir = ".platform-smoke-runs/local-resume-prep",
-	packageName = "pi-cursor-sdk",
+	packageName = "omp-cursor-sdk",
 	suiteName = "cursor-local-resume-restart",
 ) {
 	const powershellTarget = platformFor(targetName) === "powershell";

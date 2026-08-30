@@ -16,7 +16,7 @@ const CARD_PATTERNS = [
 		pattern: /^\s*read\s+(?:(?:\.\/)?package\.json|.*[\\/]package\.json)(?:\s+·\s+local file preview)?\s*$/i,
 		wrappedPattern: /^\s*read\s+.*[\\/]package\.(?:json|js\s+on|j\s*son)(?:\s+·\s+local file preview)?\s*$/i,
 	},
-	{ id: "grep", pattern: /^\s*grep \/pi-cursor-sdk\/ in\s+(?:(?:\S+[\\/])?README\.md)\s*$/i },
+	{ id: "grep", pattern: /^\s*grep \/omp-cursor-sdk\/ in\s+(?:(?:\S+[\\/])?README\.md)\s*$/i },
 	{ id: "find", pattern: /^\s*find README\.md in\s+\S+/i },
 	{ id: "list", pattern: /^\s*(?:find \* in src|find src\/\* in \.|Get-ChildItem -Name \.\/src)\s*/i },
 	{ id: "shell-success", pattern: /^\s*cursor visual smoke\s*$/i },
@@ -31,7 +31,7 @@ const CARD_PATTERNS = [
 	{ id: "bridge-read-failure", pattern: /^\s*(?:read \.\/definitely-missing-platform-smoke-file\.txt|ENOENT: no such file)\s*/i },
 	{ id: "bridge-shell-success", pattern: /^\s*bridge visual smoke\s*$/i },
 	{ id: "http1-status", pattern: /\bcursor:local\b.*\bhttp1\b/i },
-	{ id: "footer-status", pattern: /\bgrok-4\.6\b|\bcomposer-2-5\b|\bcomposer-2\.5\b/i },
+	{ id: "footer-status", pattern: /\bgrok-4\.6\b|\bcomposer-2\.5\b/i },
 ];
 
 function cleanLine(line) {

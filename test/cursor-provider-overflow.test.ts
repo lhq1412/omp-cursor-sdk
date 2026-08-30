@@ -3,7 +3,6 @@ import {
 	CURSOR_OVERFLOW_MARKER,
 	normalizeCursorOverflowErrorMessage,
 	rewriteCursorOverflowAssistantMessage,
-	registerCursorOverflowNormalization,
 } from "../src/cursor-provider-overflow.js";
 import { makeAssistantMessage } from "./helpers/pi-harness.js";
 import type { AssistantMessage } from "@oh-my-pi/pi-ai";
@@ -53,7 +52,7 @@ describe("normalizeCursorOverflowErrorMessage", () => {
 describe("rewriteCursorOverflowAssistantMessage", () => {
 	it("rewrites a Cursor context-overflow error so pi auto-compacts", () => {
 		const result = rewriteCursorOverflowAssistantMessage(
-			assistantError("cursor", "prompt is too long for the model context window"),
+			assistantError("cursor-sdk", "prompt is too long for the model context window"),
 			true,
 		);
 		expect(result).toMatchObject({
@@ -73,27 +72,16 @@ describe("rewriteCursorOverflowAssistantMessage", () => {
 	});
 
 	it("ignores Cursor non-error messages", () => {
-		const success = { ...assistantError("cursor"), stopReason: "stop" as const };
+		const success = { ...assistantError("cursor-sdk"), stopReason: "stop" as const };
 		expect(rewriteCursorOverflowAssistantMessage(success, true)).toBeUndefined();
 	});
 
 	it("ignores Cursor throttling messages", () => {
 		expect(
 			rewriteCursorOverflowAssistantMessage(
-				assistantError("cursor", "Too many requests, retry after 10s"),
+				assistantError("cursor-sdk", "Too many requests, retry after 10s"),
 				true,
 			),
 		).toBeUndefined();
-	});
-});
-
-describe("registerCursorOverflowNormalization", () => {
-	it("registers a message_end handler", () => {
-		const registered: string[] = [];
-		const fakeApi = { on: (event: string) => registered.push(event) } as unknown as Parameters<
-			typeof registerCursorOverflowNormalization
-		>[0];
-		registerCursorOverflowNormalization(fakeApi);
-		expect(registered).toContain("message_end");
 	});
 });

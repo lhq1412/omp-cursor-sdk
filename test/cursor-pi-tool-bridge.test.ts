@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { McpServerConfig } from "@cursor/sdk";
 import type { Context } from "@oh-my-pi/pi-ai";
 import type { ExtensionHandler, SessionShutdownEvent, ToolInfo } from "@oh-my-pi/pi-coding-agent";
-import { Type, type TSchema } from "typebox";
+import { Type, type TSchema } from "@oh-my-pi/omptype/typebox"
 import {
 	createBridgePiHarness,
 	createBuiltinToolInfo,
@@ -148,8 +148,8 @@ describe("cursor pi tool bridge flags and snapshots", () => {
 		expect(snapshot.mcpToolNameToPiToolName.get("pi__custom_read")).toBe("custom_read");
 		expect(snapshot.piToolNameToMcpToolName.get("sem_reindex")).toBe("pi__sem_reindex");
 		expect(snapshot.tools[0].description).toBe("Custom read files");
-		expect(snapshot.tools[0].inputSchema).toBe(readParameters);
-		expect(snapshot.tools[1].inputSchema).toBe(dynamicParameters);
+		expect(snapshot.tools[0].inputSchema).toEqual(readParameters.toJsonSchema({ target: "draft-2020-12" }));
+		expect(snapshot.tools[1].inputSchema).toEqual(dynamicParameters.toJsonSchema({ target: "draft-2020-12" }));
 		expect(pi.setActiveTools).not.toHaveBeenCalled();
 	});
 
@@ -263,9 +263,7 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 			expect(request.bridgeCallId).not.toContain(endpointToken);
 			expect(request.piToolCallId).not.toContain(endpointToken);
 
-			await run.resolveToolResultsFromContext({
-				systemPrompt: "",
-				messages: [
+			await run.resolveToolResultsFromContext({ systemPrompt: [""], messages: [
 					{
 						role: "toolResult",
 						toolCallId: historicalSequentialToolCallId,
@@ -274,13 +272,10 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 						isError: false,
 						timestamp: 1,
 					},
-				],
-			});
+				] });
 			expect(run.hasPendingPiToolCallId(request.piToolCallId)).toBe(true);
 
-			await run.resolveToolResultsFromContext({
-				systemPrompt: "",
-				messages: [
+			await run.resolveToolResultsFromContext({ systemPrompt: [""], messages: [
 					{
 						role: "toolResult",
 						toolCallId: request.piToolCallId,
@@ -289,8 +284,7 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 						isError: false,
 						timestamp: 2,
 					},
-				],
-			});
+				] });
 			await expect(callPromise).resolves.toMatchObject({ content: [{ type: "text", text: "current result" }] });
 		} finally {
 			await client.close().catch(() => undefined);
@@ -455,9 +449,7 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 			expect(resolvedRequest.piToolCallId).toContain(run.id);
 			expect(resolvedRequest.bridgeCallId).not.toContain(endpointToken);
 			expect(resolvedRequest.piToolCallId).not.toContain(endpointToken);
-			await run.resolveToolResultsFromContext({
-				systemPrompt: "",
-				messages: [
+			await run.resolveToolResultsFromContext({ systemPrompt: [""], messages: [
 					{
 						role: "toolResult",
 						toolCallId: resolvedRequest.piToolCallId,
@@ -466,8 +458,7 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 						isError: false,
 						timestamp: 1,
 					},
-				],
-			});
+				] });
 			await expect(resolvedCallPromise).resolves.toMatchObject({
 				content: [{ type: "text", text: "raw result with bearer token and file contents" }],
 			});
@@ -566,12 +557,12 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 			const listed = await client.listTools();
 			expect(listed.tools.map((tool) => tool.name)).toEqual(["pi__read"]);
 			expect(listed.tools[0].description).toContain("Read files");
-			expect(listed.tools[0].description).toContain("Pi tool prompt guidelines:");
+			expect(listed.tools[0].description).toContain("OMP tool prompt guidelines:");
 			expect(listed.tools[0].description).toContain("- Use read when exact file contents are required.");
 			expect(listed.tools[0].description).toContain("- Do not use read for directory listings.");
-			expect(listed.tools[0].description).toContain("Call MCP name pi__read (pi tool: read)");
+			expect(listed.tools[0].description).toContain("Call MCP name pi__read (OMP tool: read)");
 			expect(listed.tools[0].description).toContain("Full tool-surface rules are in the session bootstrap prompt.");
-			expect(listed.tools[0].description).not.toContain("Pi bridge contract:");
+			expect(listed.tools[0].description).not.toContain("OMP bridge contract:");
 		} finally {
 			await client.close();
 			await transport.close();
@@ -582,7 +573,7 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 		expect(registry.getHttpServerAddress()).toBeUndefined();
 	});
 
-	it("queues MCP calls, maps them back to real pi tool names, and resolves from pi tool results", async () => {
+	it("queues MCP calls, maps them back to real OMP tool names, and resolves from OMP tool results", async () => {
 		const registry = __testUtils.createRegistry(
 			createBridgePiHarness({ active: ["read"], tools: [createToolInfo("read", "Read files", Type.Object({ path: Type.String() }))] }),
 			{ PI_CURSOR_EXPOSE_BUILTIN_TOOLS: "1" },
@@ -609,9 +600,7 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 			expect(run.isBridgeMcpToolCall({ name: "external_search", id: request.cursorMcpCallId })).toBe(false);
 			expect(run.isBridgeMcpToolCall({ name: "mcp", id: request.cursorMcpCallId })).toBe(true);
 
-			const context: Context = {
-				systemPrompt: "",
-				messages: [
+			const context: Context = { systemPrompt: [""], messages: [
 					{
 						role: "toolResult",
 						toolCallId: request.piToolCallId,
@@ -620,8 +609,7 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 						isError: false,
 						timestamp: 1,
 					},
-				],
-			};
+				] };
 			await run.resolveToolResultsFromContext(context);
 
 			await expect(callPromise).resolves.toMatchObject({
@@ -650,7 +638,6 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 			const observedCallError = callPromise.catch((error: unknown) => error);
 			const [request] = await waitForQueuedRequests(run);
 			const agentAbort = vi.fn();
-			const abortController = new AbortController();
 			const bashInput = request.args as { command: string };
 
 			const hookResult = await pi.runToolCall(
@@ -661,7 +648,6 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 					input: bashInput,
 				},
 				{
-					signal: abortController.signal,
 					abort: agentAbort,
 				},
 			);
@@ -697,50 +683,6 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 		}
 	});
 
-	it("aborts active bridged pi tool execution when the tool context signal aborts", async () => {
-		const pi = createBridgePiHarness({
-			active: ["bash"],
-			tools: [createBuiltinToolInfo("bash", Type.Object({ command: Type.String() }), "Run shell commands")],
-		});
-		process.env.PI_CURSOR_EXPOSE_BUILTIN_TOOLS = "1";
-		const bridge = registerCursorPiToolBridge(pi);
-		const run = await bridge.createRun();
-		const { client, transport } = await connectClient(getCursorPiBridgeMcpUrl(run));
-		try {
-			const callPromise = client.callTool({ name: "pi__bash", arguments: { command: "sleep 30" } });
-			const observedCallError = callPromise.catch((error: unknown) => error);
-			const [request] = await waitForQueuedRequests(run);
-			const agentAbort = vi.fn();
-			const abortController = new AbortController();
-			const bashInput = request.args as { command: string };
-
-			await pi.runToolCall(
-				{
-					type: "tool_call",
-					toolCallId: request.piToolCallId,
-					toolName: "bash",
-					input: bashInput,
-				},
-				{
-					signal: abortController.signal,
-					abort: agentAbort,
-				},
-			);
-			expect(__testUtils.getActiveBridgeToolExecutionAbortCount()).toBe(1);
-
-			abortController.abort();
-
-			expect(agentAbort).toHaveBeenCalledOnce();
-			expect(__testUtils.getActiveBridgeToolExecutionAbortCount()).toBe(0);
-			const error = await observedCallError;
-			expect(error).toBeInstanceOf(Error);
-			expect((error as Error).message).toMatch(/aborted|MCP error/i);
-		} finally {
-			await client.close().catch(() => undefined);
-			await transport.close().catch(() => undefined);
-			await run.dispose();
-		}
-	});
 
 	it("cleans active bridged pi tool execution on session shutdown without a tool result", async () => {
 		const pi = createBridgePiHarness({
@@ -756,7 +698,6 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 			const observedCallError = callPromise.catch((error: unknown) => error);
 			const [request] = await waitForQueuedRequests(run);
 			const agentAbort = vi.fn();
-			const abortController = new AbortController();
 			const bashInput = request.args as { command: string };
 
 			await pi.runToolCall(
@@ -767,13 +708,12 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 					input: bashInput,
 				},
 				{
-					signal: abortController.signal,
 					abort: agentAbort,
 				},
 			);
 			expect(__testUtils.getActiveBridgeToolExecutionAbortCount()).toBe(1);
 
-			await pi.runSessionShutdown({ reason: "new" });
+			await pi.runSessionShutdown({});
 
 			expect(agentAbort).toHaveBeenCalledOnce();
 			expect(__testUtils.getActiveBridgeToolExecutionAbortCount()).toBe(0);
@@ -809,7 +749,6 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 					input: bashInput,
 				},
 				{
-					signal: new AbortController().signal,
 					abort: () => {
 						throw new Error("abort failed");
 					},
@@ -840,7 +779,7 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 			const observedCallError = callPromise.catch((error: unknown) => error);
 			await waitForQueuedRequests(run);
 
-			await pi.runSessionShutdown({ reason: "new" });
+			await pi.runSessionShutdown({});
 
 			const error = await observedCallError;
 			expect(error).toBeInstanceOf(Error);

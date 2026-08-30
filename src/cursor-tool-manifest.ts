@@ -27,19 +27,19 @@ export function buildCursorToolManifestText(options: {
 	const lines = [
 		"Callable tool surfaces this run:",
 		`- Cursor host/MCP: ${CURSOR_HOST_TOOL_MANIFEST_SUMMARY}; configured MCP depends on Cursor settings.`,
-		"- Pi tool toggles affect pi tools/bridge exposure only; they do not disable Cursor host/configured MCP tools.",
+		"- OMP tool toggles affect OMP tools/bridge exposure only; they do not disable Cursor host/configured MCP tools.",
 	];
 	const bridgeTools = includePiBridgeGuidance ? options.bridgeSnapshot?.tools ?? [] : [];
 	if (includePiBridgeGuidance) {
 		if (!piBridgeEnabled) {
-			lines.push("- Pi bridge: disabled (PI_CURSOR_PI_TOOL_BRIDGE=0).");
+			lines.push("- OMP bridge: disabled (PI_CURSOR_PI_TOOL_BRIDGE=0).");
 		} else if (bridgeTools.length === 0) {
-			lines.push("- Pi bridge: no pi__* tools exposed this run.");
+			lines.push("- OMP bridge: no pi__* tools exposed this run.");
 		} else {
 			const names = [...bridgeTools.map((tool) => tool.mcpToolName)].sort().join(", ");
-			lines.push(`- Pi bridge: call exposed pi__* MCP names (${names}); pi shows real pi names.`);
+			lines.push(`- OMP bridge: call exposed pi__* MCP names (${names}); OMP shows real tool names.`);
 		}
 	}
-	lines.push("- Not callable: cursor-replay-* IDs, pi history names, transcript labels.");
+	lines.push("- Not callable: cursor-replay-* IDs, OMP history names, transcript labels.");
 	return lines.join("\n");
 }

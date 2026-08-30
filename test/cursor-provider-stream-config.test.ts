@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Type } from "typebox";
+import { Type } from "@oh-my-pi/omptype/typebox";
 import {
 	resetCursorProviderTestState,
 	mockedCreate,
@@ -26,15 +26,20 @@ import { registerCursorRuntimeControls } from "../src/cursor-state.js";
 import { __testUtils as contextWindowCacheTestUtils } from "../src/context-window-cache.js";
 import { __testUtils as modelDiscoveryTestUtils } from "../src/model-discovery.js";
 import { __testUtils as cursorSessionScopeTestUtils } from "../src/cursor-session-scope.js";
-import type { Context } from "@oh-my-pi/pi-ai";
+import { Effort, type Context } from "@oh-my-pi/pi-ai";
+import { CONFIG_DIR_NAME } from "@oh-my-pi/pi-utils";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
+function makeExtendedContextModel(id: string) {
+	return { ...makeModel(id), contextWindow: 1_000_000 };
+}
+
 async function setCursorModeForProviderTest(mode: "agent" | "plan"): Promise<void> {
 	const pi = createPiHarness({ flagValues: { "cursor-mode": mode } });
 	registerCursorRuntimeControls(pi);
-	await pi.runSessionStart({ model: makeModel("gpt-5.5@1m") });
+	await pi.runSessionStart({ model: makeModel("gpt-5.5") });
 }
 
 describe("streamCursor prompt and model config", () => {
@@ -53,7 +58,7 @@ describe("streamCursor prompt and model config", () => {
 			}),
 		});
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedCreate.mock.calls[0][0].local).toMatchObject({
 			cwd: process.cwd(),
@@ -80,7 +85,7 @@ describe("streamCursor prompt and model config", () => {
 			});
 		});
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedCreate).toHaveBeenCalledTimes(1);
 		expect(pathAtCreate).toBeTruthy();
@@ -103,7 +108,7 @@ describe("streamCursor prompt and model config", () => {
 			}),
 		});
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedCreate.mock.calls[0][0].local).toMatchObject({ autoReview: true, sandboxOptions: { enabled: true } });
 	});
@@ -111,9 +116,9 @@ describe("streamCursor prompt and model config", () => {
 	it("passes trusted project local safety config into Agent.create", async () => {
 		const root = mkdtempSync(join(tmpdir(), "pi-cursor-local-safety-"));
 		const cwd = join(root, "repo");
-		mkdirSync(join(cwd, ".pi"), { recursive: true });
-		writeFileSync(join(cwd, ".pi", "settings.json"), "{}\n");
-		writeFileSync(join(cwd, ".pi", "cursor-sdk.json"), JSON.stringify({ local: { autoReview: true, sandboxOptions: { enabled: true } } }));
+		mkdirSync(join(cwd, CONFIG_DIR_NAME), { recursive: true });
+		writeFileSync(join(cwd, CONFIG_DIR_NAME, "settings.json"), "{}\n");
+		writeFileSync(join(cwd, CONFIG_DIR_NAME, "cursor-sdk.json"), JSON.stringify({ local: { autoReview: true, sandboxOptions: { enabled: true } } }));
 		cursorSessionScopeTestUtils.set(cwd, "/tmp/session-local-safety.jsonl", "test-session", true);
 		mockCreatedAgent({
 			send: vi.fn().mockResolvedValue({
@@ -128,7 +133,7 @@ describe("streamCursor prompt and model config", () => {
 		});
 
 		try {
-			await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+			await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 		} finally {
 			rmSync(root, { recursive: true, force: true });
 		}
@@ -141,7 +146,7 @@ describe("streamCursor prompt and model config", () => {
 		process.env.PI_CURSOR_SANDBOX = "0";
 		const pi = createPiHarness({ flagValues: { "cursor-auto-review": true, "cursor-sandbox": true } });
 		registerCursorRuntimeControls(pi);
-		await pi.runSessionStart({ model: makeModel("gpt-5.5@1m") });
+		await pi.runSessionStart({ model: makeModel("gpt-5.5") });
 		mockCreatedAgent({
 			send: vi.fn().mockResolvedValue({
 				id: "run-1",
@@ -154,7 +159,7 @@ describe("streamCursor prompt and model config", () => {
 			}),
 		});
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedCreate.mock.calls[0][0].local).toMatchObject({ autoReview: true, sandboxOptions: { enabled: true } });
 	});
@@ -167,9 +172,9 @@ describe("streamCursor prompt and model config", () => {
 		mockCreatedAgent({ send: mockSend });
 		const pi = createPiHarness({ flagValues: { [flag]: value } });
 		registerCursorRuntimeControls(pi);
-		await pi.runSessionStart({ model: makeModel("gpt-5.5@1m") });
+		await pi.runSessionStart({ model: makeModel("gpt-5.5") });
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(getErrorEvent(events).error.errorMessage).toContain(expectedError);
 		expect(mockedCreate).not.toHaveBeenCalled();
@@ -185,7 +190,7 @@ describe("streamCursor prompt and model config", () => {
 		mockCreatedAgent({ send: mockSend });
 		process.env[envName] = value;
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(getErrorEvent(events).error.errorMessage).toContain(expectedError);
 		expect(mockedCreate).not.toHaveBeenCalled();
@@ -197,7 +202,7 @@ describe("streamCursor prompt and model config", () => {
 		process.env.PI_CURSOR_RUNTIME = "cloud";
 		process.env.PI_CURSOR_LOCAL_FORCE = "1";
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(getErrorEvent(events).error.errorMessage).toContain("Cursor cloud runtime is not ready to start");
 		expect(getErrorEvent(events).error.errorMessage).toContain("--cursor-cloud-ack");
@@ -221,7 +226,7 @@ describe("streamCursor prompt and model config", () => {
 		});
 		mockCreatedAgent({ agentId: "bc-00000000-0000-0000-0000-000000000001", send: mockSend });
 		const context: Context = {
-			systemPrompt: "Keep this Pi project instruction.",
+			systemPrompt: ["Keep this Pi project instruction."],
 			messages: [
 				{ role: "user", content: "old local context", timestamp: 1 },
 				makeAssistantMessage("old assistant context"),
@@ -229,7 +234,7 @@ describe("streamCursor prompt and model config", () => {
 			],
 		};
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), context, { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), context, { apiKey: "test-key" }));
 
 		expect(getTextEndEvent(events).content).toBe("cloud done");
 		expect(mockedCreate.mock.calls[0][0]).toMatchObject({
@@ -272,7 +277,7 @@ describe("streamCursor prompt and model config", () => {
 			}),
 		});
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedCreate.mock.calls[0][0]).toMatchObject({
 			cloud: {
@@ -296,7 +301,7 @@ describe("streamCursor prompt and model config", () => {
 			},
 		});
 		registerCursorRuntimeControls(pi);
-		await pi.runSessionStart({ model: makeModel("gpt-5.5@1m") });
+		await pi.runSessionStart({ model: makeModel("gpt-5.5") });
 		mockCreatedAgent({
 			agentId: "bc-00000000-0000-0000-0000-000000000001",
 			send: vi.fn().mockResolvedValue({
@@ -310,7 +315,7 @@ describe("streamCursor prompt and model config", () => {
 			}),
 		});
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedCreate.mock.calls[0][0]).toMatchObject({
 			cloud: {
@@ -321,7 +326,7 @@ describe("streamCursor prompt and model config", () => {
 		});
 	});
 
-	it("names cloud agents from the normalized current pi session", async () => {
+	it("names cloud agents from the normalized current OMP session", async () => {
 		process.env.PI_CURSOR_RUNTIME = "cloud";
 		process.env.PI_CURSOR_CLOUD_ALLOW_LOCAL_STATE = "1";
 		process.env.PI_CURSOR_CLOUD_ACK = "1";
@@ -339,7 +344,7 @@ describe("streamCursor prompt and model config", () => {
 			}),
 		});
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedCreate.mock.calls[0][0]).toMatchObject({ name: "Cloud status slice" });
 	});
@@ -362,7 +367,7 @@ describe("streamCursor prompt and model config", () => {
 		cursorLiveRuns.markFinished(liveRun, "local live result");
 
 		try {
-			const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+			const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 			expect(getErrorEvent(events).error.errorMessage).toContain("local Cursor live run is pending");
 			expect(resolveToolResults).not.toHaveBeenCalled();
@@ -386,7 +391,7 @@ describe("streamCursor prompt and model config", () => {
 			return asMockSdkAgent({ agentId: "bc-00000000-0000-0000-0000-000000000001", send: mockSend, [Symbol.asyncDispose]: mockDispose });
 		});
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key", signal: abortController.signal }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key", signal: abortController.signal }));
 
 		expect(mockSend).not.toHaveBeenCalled();
 		expect(lifecyclePi.appendEntry).toHaveBeenCalledWith(CLOUD_LIFECYCLE_ENTRY_TYPE, expect.objectContaining({
@@ -411,13 +416,13 @@ describe("streamCursor prompt and model config", () => {
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
 		const context: Context = {
-			systemPrompt: "Keep this system prompt.",
+			systemPrompt: ["Keep this system prompt."],
 			messages: [
 				{ role: "user", content: `old request ${"x".repeat(1200)}`, timestamp: 1 },
 				{ role: "user", content: "latest request must remain", timestamp: 2 },
 			],
 		};
-		const smallModel = { ...makeModel("gpt-5.5@1m"), contextWindow: 250, maxTokens: 50 };
+		const smallModel = { ...makeModel("gpt-5.5"), contextWindow: 250, maxTokens: 50 };
 
 		const stream = streamCursor(smallModel, context, { apiKey: "test-key" });
 		await collectEvents(stream);
@@ -444,7 +449,7 @@ describe("streamCursor prompt and model config", () => {
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
 		const context: Context = {
-			systemPrompt: "Keep image prompt compact.",
+			systemPrompt: ["Keep image prompt compact."],
 			messages: [
 				{ role: "user", content: `old request ${"x".repeat(1200)}`, timestamp: 1 },
 				{
@@ -457,7 +462,7 @@ describe("streamCursor prompt and model config", () => {
 				},
 			],
 		};
-		const smallModel = { ...makeModel("gpt-5.5@1m"), contextWindow: 250, maxTokens: 50 };
+		const smallModel = { ...makeModel("gpt-5.5"), contextWindow: 250, maxTokens: 50 };
 
 		const stream = streamCursor(smallModel, context, { apiKey: "test-key" });
 		await collectEvents(stream);
@@ -489,7 +494,7 @@ describe("streamCursor prompt and model config", () => {
 		context.tools = [];
 
 		try {
-			await collectEvents(streamCursor(makeModel("gpt-5.5@272k"), context, { apiKey: "test-key", reasoning: "medium" }));
+			await collectEvents(streamCursor(makeModel("gpt-5.5"), context, { apiKey: "test-key", reasoning: Effort.Medium }));
 		} finally {
 			if (previousManifest === undefined) delete process.env.PI_CURSOR_TOOL_MANIFEST;
 			else process.env.PI_CURSOR_TOOL_MANIFEST = previousManifest;
@@ -500,8 +505,8 @@ describe("streamCursor prompt and model config", () => {
 		expect(sentMessage.text).toContain("Call only Cursor SDK/MCP tools exposed in this run");
 		expect(sentMessage.text).toContain("Callable tool surfaces this run:");
 		expect(sentMessage.text).toContain("Cursor host/MCP");
-		expect(sentMessage.text).not.toContain("Bridged pi tools:");
-		expect(sentMessage.text).not.toContain("Pi bridge");
+		expect(sentMessage.text).not.toContain("Bridged OMP tools:");
+		expect(sentMessage.text).not.toContain("OMP bridge");
 		expect(sentMessage.text).not.toContain("Use pi__cursor_ask_question");
 		expect(sentMessage.text).not.toContain("prefer pi__mcp");
 	});
@@ -530,16 +535,16 @@ describe("streamCursor prompt and model config", () => {
 		context.tools = [];
 
 		try {
-			await collectEvents(streamCursor(makeModel("gpt-5.5@272k"), context, { apiKey: "test-key", reasoning: "medium" }));
+			await collectEvents(streamCursor(makeModel("gpt-5.5"), context, { apiKey: "test-key", reasoning: Effort.Medium }));
 		} finally {
 			if (previousManifest === undefined) delete process.env.PI_CURSOR_TOOL_MANIFEST;
 			else process.env.PI_CURSOR_TOOL_MANIFEST = previousManifest;
 		}
 
 		const sentMessage = mockSend.mock.calls[0]?.[0] as { text: string };
-		expect(sentMessage.text).toContain("For exposed pi bridge tools");
+		expect(sentMessage.text).toContain("For exposed OMP bridge tools");
 		expect(sentMessage.text).not.toContain("Use pi__cursor_ask_question");
-		expect(sentMessage.text).toContain("Pi bridge: call exposed pi__* MCP names");
+		expect(sentMessage.text).toContain("OMP bridge: call exposed pi__* MCP names");
 		expect(sentMessage.text).toContain("prefer pi__mcp for MCP work and pi__subagent for delegation");
 		expect(sentMessage.text).toContain("pi__sem_reindex");
 	});
@@ -559,7 +564,7 @@ describe("streamCursor prompt and model config", () => {
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
 		const context: Context = {
-			systemPrompt: "Be helpful.",
+			systemPrompt: ["Be helpful."],
 			messages: [
 				{
 					role: "user",
@@ -572,7 +577,7 @@ describe("streamCursor prompt and model config", () => {
 			],
 		};
 
-		const stream = streamCursor(makeModel("gpt-5.5@1m"), context, { apiKey: "test-key" });
+		const stream = streamCursor(makeModel("gpt-5.5"), context, { apiKey: "test-key" });
 		await collectEvents(stream);
 
 		expect(mockSend).toHaveBeenCalledWith(
@@ -637,7 +642,7 @@ describe("streamCursor prompt and model config", () => {
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeExtendedContextModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedCreate).toHaveBeenCalledWith(expect.objectContaining({ mode: "plan" }));
 		expect(mockSend.mock.calls[0]?.[1]).toMatchObject({
@@ -670,77 +675,25 @@ describe("streamCursor prompt and model config", () => {
 		});
 
 		await setCursorModeForProviderTest("agent");
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 		expect(mockedCreate).toHaveBeenCalledWith(expect.objectContaining({ mode: "agent" }));
 		expect(mockSend.mock.calls[0]?.[1]).toMatchObject({ mode: "agent" });
 
 		await setCursorModeForProviderTest("plan");
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 		expect(mockedCreate).toHaveBeenCalledTimes(1);
 		expect(mockSend.mock.calls[1]?.[1]).toMatchObject({ mode: "plan" });
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 		expect(mockSend.mock.calls[2]?.[1]).toMatchObject({ mode: "plan" });
 
 		await setCursorModeForProviderTest("agent");
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 		expect(mockSend.mock.calls[3]?.[1]).toMatchObject({ mode: "agent" });
 	});
 
-	it("passes Cursor alias model selection back to the SDK", async () => {
-		modelDiscoveryTestUtils.registerModelItems([
-			{
-				id: "gpt-5.5",
-				displayName: "GPT-5.5",
-				aliases: ["gpt-latest"],
-				parameters: [
-					{ id: "context", displayName: "Context", values: [{ value: "1m" }, { value: "272k" }] },
-					{ id: "reasoning", displayName: "Reasoning", values: [{ value: "none" }, { value: "medium" }] },
-				],
-				variants: [
-					{
-						params: [
-							{ id: "context", value: "1m" },
-							{ id: "reasoning", value: "medium" },
-						],
-						displayName: "GPT-5.5",
-						isDefault: true,
-					},
-				],
-			},
-		]);
-		const mockSend = vi.fn().mockResolvedValue({
-			id: "run-1",
-			agentId: "agent-1",
-			status: "finished",
-			wait: vi.fn().mockResolvedValue({ id: "run-1", status: "finished" }),
-			cancel: vi.fn(),
-			supports: () => true,
-			unsupportedReason: () => undefined,
-		});
-		mockCreatedAgent({
-			send: mockSend,
-			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
-		});
-
-		const stream = streamCursor(makeModel("gpt-latest@272k"), makeContext(), { apiKey: "test-key", reasoning: "medium" });
-		await collectEvents(stream);
-
-		expect(mockedCreate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				model: {
-					id: "gpt-latest",
-					params: [
-						{ id: "context", value: "272k" },
-						{ id: "reasoning", value: "medium" },
-					],
-				},
-			}),
-		);
-	});
-
 	it("passes Cursor model selection with context and pi thinking off to Agent.create", async () => {
-		const modelWithParams = makeModel("gpt-5.5@1m");
+		const modelWithParams = makeExtendedContextModel("gpt-5.5");
 		const mockSend = vi.fn().mockResolvedValue({
 			id: "run-1",
 			agentId: "agent-1",
@@ -774,7 +727,7 @@ describe("streamCursor prompt and model config", () => {
 
 	it("applies pi medium thinking level to Cursor reasoning parameter", async () => {
 		const modelWithParams = {
-			...makeModel("gpt-5.5@1m"),
+			...makeExtendedContextModel("gpt-5.5"),
 			reasoning: true,
 			thinkingLevelMap: { low: "low", medium: "medium", high: "high", xhigh: "extra-high", off: null, minimal: null },
 		};
@@ -792,7 +745,7 @@ describe("streamCursor prompt and model config", () => {
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
 
-		const stream = streamCursor(modelWithParams, makeContext(), { apiKey: "test-key", reasoning: "medium" });
+		const stream = streamCursor(modelWithParams, makeContext(), { apiKey: "test-key", reasoning: Effort.Medium });
 		await collectEvents(stream);
 
 		expect(mockedCreate).toHaveBeenCalledWith(
@@ -809,9 +762,10 @@ describe("streamCursor prompt and model config", () => {
 		);
 	});
 
-	it("maps pi xhigh thinking to Cursor extra-high reasoning for a sibling context", async () => {
+	it("maps pi xhigh thinking with OMP's effective standard context", async () => {
 		const modelWithParams = {
-			...makeModel("gpt-5.5@272k"),
+			...makeModel("gpt-5.5"),
+			contextWindow: 272_000,
 			reasoning: true,
 			thinkingLevelMap: { low: "low", medium: "medium", high: "high", xhigh: "extra-high", off: null, minimal: null },
 		};
@@ -829,7 +783,7 @@ describe("streamCursor prompt and model config", () => {
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
 
-		const stream = streamCursor(modelWithParams, makeContext(), { apiKey: "test-key", reasoning: "xhigh" });
+		const stream = streamCursor(modelWithParams, makeContext(), { apiKey: "test-key", reasoning: Effort.XHigh });
 		await collectEvents(stream);
 
 		expect(mockedCreate).toHaveBeenCalledWith(
@@ -848,7 +802,7 @@ describe("streamCursor prompt and model config", () => {
 
 	it("applies pi thinking level to Cursor Claude effort and thinking parameters", async () => {
 		const modelWithParams = {
-			...makeModel("claude-opus-4-7@1m"),
+			...makeExtendedContextModel("claude-opus-4-7"),
 			reasoning: true,
 			thinkingLevelMap: {
 				off: "false",
@@ -872,7 +826,7 @@ describe("streamCursor prompt and model config", () => {
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
 
-		const stream = streamCursor(modelWithParams, makeContext(), { apiKey: "test-key", reasoning: "xhigh" });
+		const stream = streamCursor(modelWithParams, makeContext(), { apiKey: "test-key", reasoning: Effort.XHigh });
 		await collectEvents(stream);
 
 		expect(mockedCreate).toHaveBeenCalledWith(
@@ -891,7 +845,7 @@ describe("streamCursor prompt and model config", () => {
 
 	it("turns Cursor thinking off when pi thinking is off", async () => {
 		const modelWithParams = {
-			...makeModel("claude-sonnet-4-6@1m"),
+			...makeExtendedContextModel("claude-sonnet-4-6"),
 			reasoning: true,
 			thinkingLevelMap: { off: "false", low: "low", medium: "medium", high: "high", xhigh: "xhigh" },
 		};

@@ -117,7 +117,7 @@ describe("cloud provider captured activity callbacks", () => {
 			listArtifacts: vi.fn().mockResolvedValue([]),
 		});
 
-		const events = await collectEvents(streamCursor(makeModel("composer-2-5"), makeContext(), { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("composer-2.5"), makeContext(), { apiKey: "test-key" }));
 		const trace = collectThinkingDeltas(events);
 		const done = getDoneEvent(events);
 		const createOptions = getCreatedAgentOptions();
@@ -147,7 +147,7 @@ describe("cloud provider captured activity callbacks", () => {
 		expect(done.message.content.some(isToolCallBlock)).toBe(false);
 		expect(done.message.content.map((block) => block.type)).not.toContain("toolCall");
 
-		initTheme("dark", false);
+		await initTheme(false);
 		const renderedLines = new AssistantMessageComponent(done.message).render(RENDER_WIDTH);
 		expect(renderedLines.length).toBeGreaterThan(0);
 		expect(renderedLines.length).toBeLessThan(40);

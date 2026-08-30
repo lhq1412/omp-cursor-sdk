@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@oh-my-pi/pi-coding-agent";
+import { CONFIG_DIR_NAME } from "@oh-my-pi/pi-utils";
 import {
 	registerCursorCloudLifecycleLedger,
 	runCursorCloudLifecycleCommand,
@@ -42,8 +43,8 @@ export const CURSOR_RUNTIME_ENTRY_TYPE = "cursor-runtime-state";
 
 export const CURSOR_CLOUD_ACK_DISCLOSURE = [
 	"Cursor Cloud executes this work remotely.",
-	"Fresh context is used by default; prior Pi context is included only with explicit bootstrap opt-in.",
-	"Pi-local tools and the Pi bridge are unavailable, and Pi environment variables are not forwarded.",
+	"Fresh context is used by default; prior OMP context is included only with explicit bootstrap opt-in.",
+	"OMP-local tools and the OMP bridge are unavailable, and OMP environment variables are not forwarded.",
 	"Cursor may create branches, commit, push, and open pull requests.",
 	"Cloud agents remain until you archive or delete them.",
 	"Cloud Agents run in Max Mode, are billed at Cursor API pricing, and may require spend-limit setup.",
@@ -333,7 +334,7 @@ function registerCursorRuntimeFlags(pi: Pick<ExtensionAPI, "registerFlag">): voi
 		default: false,
 	});
 	pi.registerFlag("cursor-local-resume", {
-		description: `Resume recorded local Cursor SDK agents for matching pi session branches (default; or set ${CURSOR_LOCAL_RESUME_ENV}=1)`,
+		description: `Resume recorded local Cursor SDK agents for matching OMP session branches (default; or set ${CURSOR_LOCAL_RESUME_ENV}=1)`,
 		type: "boolean",
 		default: false,
 	});
@@ -394,7 +395,7 @@ function registerCursorRuntimeCommand(
 			}
 			if (saveProject && (getCursorSessionCwd() !== ctx.cwd || !getCursorSessionProjectTrusted())) {
 				ctx.ui.notify(
-					"Cannot save Cursor project config without explicit project-trust provenance. Ensure .pi/settings.json or another Pi project resource exists, trust the project, then restart pi; or restart with --approve. Project-local package installs must use --approve on every run that reads or writes .pi/cursor-sdk.json.",
+					`Cannot save Cursor project config without explicit project-trust provenance. Ensure ${CONFIG_DIR_NAME}/settings.json or another OMP project resource exists, trust the project, then restart OMP; or restart with --approve. Project-local package installs must use --approve on every run that reads or writes ${CONFIG_DIR_NAME}/cursor-sdk.json.`,
 					"error",
 				);
 				return;

@@ -230,9 +230,7 @@ export function isToolCallBlock(block: AssistantMessage["content"][number]): blo
 }
 
 export type CursorAgentCreateOptions = NonNullable<Parameters<typeof Agent.create>[0]>;
-export type CursorAgentPlatformForTest = Partial<Awaited<ReturnType<typeof createAgentPlatform>>> & {
-	checkpointStore: Awaited<ReturnType<typeof createAgentPlatform>>["checkpointStore"];
-};
+export type CursorAgentPlatformForTest = Awaited<ReturnType<typeof createAgentPlatform>>;
 
 export function getCreatedAgentOptions(callIndex = 0): CursorAgentCreateOptions {
 	const options = mockedCreate.mock.calls[callIndex]?.[0];
@@ -250,7 +248,7 @@ export function createMockAgentPlatform(
 			getBlobStore: vi.fn().mockResolvedValue({}),
 			getFullConversation: vi.fn().mockResolvedValue({}),
 		},
-	};
+	} as unknown as CursorAgentPlatformForTest;
 }
 
 export interface NativeToolDisplayTestPi {
@@ -261,7 +259,7 @@ export interface NativeToolDisplayTestPi {
 
 export async function createNativeToolDisplayPiForTest(registeredTools: RegisteredTool[] = []): Promise<NativeToolDisplayTestPi> {
 	const pi = createPiHarness({
-		initialTools: ["read", "bash", "grep", "find", "ls", "edit", "write", "cursor"].map((name) =>
+		initialTools: ["read", "bash", "grep", "find", "ls", "edit", "write"].map((name) =>
 			createBuiltinToolInfo(name),
 		),
 	});
@@ -279,9 +277,7 @@ export async function createNativeToolDisplayPiForTest(registeredTools: Register
 	await pi.runSessionStart({ hasUI: false });
 	return {
 		getActiveTools: () => pi.getActiveTools(),
-		setActiveTools: (toolNames) => {
-			pi.setActiveTools(toolNames);
-		},
+		setActiveTools: (toolNames) => pi.setActiveTools(toolNames),
 		runTurnStart: (ctxOverrides = {}) => pi.runTurnStart({ hasUI: false, ...ctxOverrides }),
 	};
 }

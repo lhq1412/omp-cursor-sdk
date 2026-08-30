@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Validate assistant presence and usage fields in pi session JSONL files under a smoke directory.
+ * Validate assistant presence and usage fields in OMP session JSONL files under a smoke directory.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -13,11 +13,11 @@ const REPLAY_TOOL_NOT_FOUND = [
 ];
 
 function printHelp() {
-	console.log(`Validate assistant presence and usage metadata in pi smoke session JSONL files.
+	console.log(`Validate assistant presence and usage metadata in OMP smoke session JSONL files.
 
 Usage:
   node scripts/validate-smoke-jsonl.mjs <smoke-dir>
-  SMOKE_DIR=/tmp/pi-cursor-smoke node scripts/validate-smoke-jsonl.mjs
+  SMOKE_DIR=/tmp/omp-cursor-sdk-smoke node scripts/validate-smoke-jsonl.mjs
 
 Arguments:
   smoke-dir                     Directory containing smoke session subdirs and JSONL files.

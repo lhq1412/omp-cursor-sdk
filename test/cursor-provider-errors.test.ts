@@ -117,7 +117,7 @@ function makeCursorExtensionNetworkConnectError(): Error & { rawMessage: string;
 	const error = makeCursorSdkNetworkConnectError();
 	error.stack =
 		"ConnectError: [aborted] read ECONNRESET\n" +
-		"    at file:///C:/Users/example/.pi/agent/git/github.com/fitchmultz/pi-cursor-sdk/node_modules/@connectrpc/connect-node/dist/esm/node-universal-client.js:293:63";
+		"    at file:///C:/Users/example/.omp/agent/git/github.com/lhq1412/omp-cursor-sdk/node_modules/@connectrpc/connect-node/dist/esm/node-universal-client.js:293:63";
 	return error;
 }
 
@@ -230,7 +230,7 @@ describe("cursor-provider-errors", () => {
 		const error = new AuthenticationError("Invalid User API Key at https://alice:pw@api.cursor.com");
 		const localMessage = "Invalid User API Key at https://[redacted]@api.cursor.com";
 		const cloudMessage =
-			"Cursor Cloud Agents request failed because Cloud API authentication rejected the API key. Use a user API key from Cursor Dashboard -> API Keys or a service account API key from Team settings; Team Admin API keys are not supported as Cursor Cloud Agents credentials. Configure the key with /login -> Use an API key -> Cursor, CURSOR_API_KEY, or --api-key, then retry.";
+			"Cursor Cloud Agents request failed because Cloud API authentication rejected the Cursor SDK API key. Use a user API key from Cursor Dashboard -> API Keys or a service account API key from Team settings; Team Admin API keys are not supported as Cursor Cloud Agents credentials. Configure it with /login cursor-sdk, CURSOR_API_KEY, or --api-key, then retry.";
 
 		expect(sanitizeCursorProviderError(error, "secret-key")).toBe(localMessage);
 		expect(sanitizeCursorProviderError(error, "secret-key", "local")).toBe(localMessage);
@@ -327,7 +327,7 @@ describe("cursor-provider-errors", () => {
 		expect(sanitizeCursorProviderError(new Error("ConnectError: [unavailable] read ETIMEDOUT"), "test-key")).toContain(
 			"failed during network or service I/O",
 		);
-		expect(sanitizeCursorProviderError("ConnectError: read ETIMEDOUT", "test-key")).toContain("pi will retry automatically");
+		expect(sanitizeCursorProviderError("ConnectError: read ETIMEDOUT", "test-key")).toContain("OMP will retry automatically");
 		expect(sanitizeCursorProviderError(new Error("ConnectError: [unavailable] read ETIMEDOUT"), "test-key")).not.toContain(
 			"ETIMEDOUT",
 		);
@@ -341,7 +341,7 @@ describe("cursor-provider-errors", () => {
 		expect(classification).toEqual({ kind: "network", source: "cursor-sdk-stack" });
 		expect(message).toContain("Network error");
 		expect(message).toContain("failed during network or service I/O");
-		expect(message).toContain("pi will retry automatically");
+		expect(message).toContain("OMP will retry automatically");
 		expect(message).not.toContain("ECONNRESET");
 	});
 
@@ -352,7 +352,7 @@ describe("cursor-provider-errors", () => {
 
 		expect(classification).toEqual({ kind: "network", source: "cursor-sdk-stack" });
 		expect(message).toContain("Network error");
-		expect(message).toContain("pi will retry automatically");
+		expect(message).toContain("OMP will retry automatically");
 		expect(message).not.toContain("NGHTTP2_ENHANCE_YOUR_CALM");
 	});
 
@@ -363,7 +363,7 @@ describe("cursor-provider-errors", () => {
 
 		expect(classification).toEqual({ kind: "network", source: "cursor-sdk-stack" });
 		expect(message).toContain("Network error");
-		expect(message).toContain("pi will retry automatically");
+		expect(message).toContain("OMP will retry automatically");
 		expect(message).not.toContain("operation was aborted");
 	});
 
@@ -376,7 +376,7 @@ describe("cursor-provider-errors", () => {
 		expect(isCursorSdkConnectionStalledError(error)).toBe(true);
 		const message = sanitizeCursorProviderError(error, "test-key");
 		expect(message).toContain("Network error");
-		expect(message).toContain("pi will retry automatically");
+		expect(message).toContain("OMP will retry automatically");
 		expect(message).not.toMatch(/stalled(?: repeatedly)?/i);
 	});
 
@@ -388,7 +388,7 @@ describe("cursor-provider-errors", () => {
 		expect(classification).toEqual({ kind: "network", source: "cursor-backend-details" });
 		expect(message).toContain("Network error");
 		expect(message).toContain("failed during network or service I/O");
-		expect(message).toContain("pi will retry automatically");
+		expect(message).toContain("OMP will retry automatically");
 		expect(message).not.toContain("[unavailable] Error");
 	});
 

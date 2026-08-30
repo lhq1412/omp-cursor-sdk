@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { Type } from "typebox";
+import { Type } from "@oh-my-pi/omptype/typebox"
 import {
 	__testUtils,
 	registerCursorPiToolBridge,
@@ -58,7 +58,7 @@ describe("cursor pi tool bridge CallTool deadline", () => {
 			const abort = vi.fn();
 			await pi.runToolCall(
 				{ type: "tool_call", toolCallId: request.piToolCallId, toolName: "bash", input: request.args },
-				{ signal: new AbortController().signal, abort },
+				{ abort },
 			);
 
 			const result = await Promise.race([
@@ -95,16 +95,18 @@ describe("cursor pi tool bridge CallTool deadline", () => {
 				{ signal: clientAbort.signal },
 			).catch((error: unknown) => error);
 			const request = await waitForQueuedRequest(run);
-			const abort = vi.fn();
+			const abortCalled = Promise.withResolvers<void>();
+			const abort = vi.fn(() => abortCalled.resolve());
 			await pi.runToolCall(
 				{ type: "tool_call", toolCallId: request.piToolCallId, toolName: "bash", input: request.args },
-				{ signal: new AbortController().signal, abort },
+				{ abort },
 			);
 
 			clientAbort.abort();
 
 			expect(await callResult).toBeInstanceOf(Error);
-			await vi.waitFor(() => expect(abort).toHaveBeenCalledOnce());
+			await abortCalled.promise;
+			expect(abort).toHaveBeenCalledOnce();
 			expect(__testUtils.getActiveBridgeToolExecutionAbortCount()).toBe(0);
 			expect(run.hasPendingPiToolCallId(request.piToolCallId)).toBe(false);
 		} finally {
@@ -137,7 +139,7 @@ describe("cursor pi tool bridge CallTool deadline", () => {
 				input: request.args,
 			});
 
-			expect(hookResult).toEqual({ block: true, reason: "Cursor pi bridge tool call is no longer pending" });
+			expect(hookResult).toEqual({ block: true, reason: "Cursor OMP bridge tool call is no longer pending" });
 		} finally {
 			await client.close().catch(() => undefined);
 			await transport.close().catch(() => undefined);
@@ -168,7 +170,6 @@ describe("cursor pi tool bridge CallTool deadline", () => {
 					input: request.args,
 				},
 				{
-					signal: new AbortController().signal,
 					abort: vi.fn(),
 				},
 			);
@@ -176,9 +177,7 @@ describe("cursor pi tool bridge CallTool deadline", () => {
 			expect(hookResult).toBeUndefined();
 			expect(run.hasPendingPiToolCallId(request.piToolCallId)).toBe(true);
 
-			await run.resolveToolResultsFromContext({
-				systemPrompt: "",
-				messages: [
+			await run.resolveToolResultsFromContext({ systemPrompt: [""], messages: [
 					{
 						role: "toolResult",
 						toolCallId: request.piToolCallId,
@@ -187,8 +186,7 @@ describe("cursor pi tool bridge CallTool deadline", () => {
 						isError: false,
 						timestamp: 1,
 					},
-				],
-			});
+				] });
 			await expect(callPromise).resolves.toMatchObject({
 				content: [{ type: "text", text: "ok" }],
 			});
@@ -215,7 +213,7 @@ describe("cursor pi tool bridge CallTool deadline", () => {
 			const abort = vi.fn();
 			await pi.runToolCall(
 				{ type: "tool_call", toolCallId: request.piToolCallId, toolName: "bash", input: request.args },
-				{ signal: new AbortController().signal, abort },
+				{ abort },
 			);
 
 			run.cancel("cancelled by test");

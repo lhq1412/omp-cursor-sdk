@@ -1,27 +1,42 @@
-export const CURSOR_API_KEY_ENV_VAR = "CURSOR_API_KEY";
-
+import type { ProviderConfig } from "@oh-my-pi/pi-coding-agent";
 import { resolveApiKeyOnce, type ApiKey } from "@oh-my-pi/pi-ai";
 
-// Non-secret literal sentinel for pi's provider registry. Pi 0.77 treats `$ENV_VAR`
-// values as unconfigured when the env var is absent, which hides fallback models
-// before `/login`. Keep the provider available and resolve the real key in the
-// Cursor provider turn path from pi auth or CURSOR_API_KEY.
-export const CURSOR_API_KEY_CONFIG_VALUE = "omp-cursor-sdk-cursor-api-key-placeholder";
+export const CURSOR_API_KEY_ENV_VAR = "CURSOR_API_KEY";
 
-const CURSOR_API_KEY_PLACEHOLDERS = new Set([
-	CURSOR_API_KEY_ENV_VAR,
-	`$${CURSOR_API_KEY_ENV_VAR}`,
-	`\${${CURSOR_API_KEY_ENV_VAR}}`,
-	CURSOR_API_KEY_CONFIG_VALUE,
-	// Legacy placeholder written into configs by earlier port versions.
-	"pi-cursor-sdk-cursor-api-key-placeholder",
-]);
+const CURSOR_API_KEY_PLACEHOLDERS: Record<string, true> = {
+	[CURSOR_API_KEY_ENV_VAR]: true,
+	[`$${CURSOR_API_KEY_ENV_VAR}`]: true,
+	[`\${${CURSOR_API_KEY_ENV_VAR}}`]: true,
+};
+const LEGACY_CURSOR_API_KEY_PLACEHOLDER = "pi-cursor-sdk-cursor-api-key-placeholder";
+export function isRemovedCursorApiKeyPlaceholder(apiKey: ApiKey | undefined): boolean {
+	return typeof apiKey === "string" && apiKey.trim() === LEGACY_CURSOR_API_KEY_PLACEHOLDER;
+}
 
 export function resolveCursorApiKey(apiKey?: string): string | undefined {
 	const trimmed = apiKey?.trim();
 	if (!trimmed) return undefined;
-	if (CURSOR_API_KEY_PLACEHOLDERS.has(trimmed)) return process.env.CURSOR_API_KEY?.trim() || undefined;
+	if (isRemovedCursorApiKeyPlaceholder(trimmed)) return undefined;
+	if (CURSOR_API_KEY_PLACEHOLDERS[trimmed]) return process.env.CURSOR_API_KEY?.trim() || undefined;
 	return trimmed;
+}
+
+export function getCursorSdkProviderApiKeyConfig(): string | undefined {
+	return process.env[CURSOR_API_KEY_ENV_VAR]?.trim() ? CURSOR_API_KEY_ENV_VAR : undefined;
+}
+
+export function createCursorSdkApiKeyLogin(): NonNullable<ProviderConfig["oauth"]> {
+	return {
+		name: "Cursor SDK API key",
+		login: async (callbacks) => {
+			const apiKey = (await callbacks.onPrompt({
+				message: "Paste a Cursor SDK API key from Cursor Dashboard → API Keys",
+				placeholder: "crsr_...",
+			})).trim();
+			if (!apiKey) throw new Error("A Cursor SDK API key is required.");
+			return apiKey;
+		},
+	};
 }
 
 /**
@@ -44,17 +59,10 @@ export function resolveCursorStringApiKeySync(apiKey: ApiKey | undefined): strin
 }
 
 /**
- * Resolve the runtime API key for discovery and turns.
- *
- * Env-only by design: OMP auto-loads ~/.omp/.env, so CURSOR_API_KEY is in
- * process.env. Earlier versions also opened a second sqlite connection to
- * OMP's agent.db (SqliteAuthCredentialStore) to read/write a stored
- * credential; that second connection's close() triggered macOS EXC_GUARD
- * kills (bun/sqlite guarded-fd close from a background thread — 9 identical
- * crash reports). The stored credential was never required: provider
- * availability comes from config (cursor removed from disabledProviders +
- * modelRoles), and keys saved through OMP's own login flows are resolved by
- * ctx.modelRegistry.getApiKeyForProvider at turn time.
+ * Resolve the environment fallback used by startup discovery and turns.
+ * OMP resolves CLI, provider-config, and login-saved `cursor-sdk` credentials;
+ * this fallback covers `CURSOR_API_KEY`, including OMP's auto-loaded
+ * `~/.omp/.env`, without opening a second credential-store connection.
  */
 export async function resolveCursorRuntimeApiKey(): Promise<string | undefined> {
 	return resolveCursorApiKey(process.env.CURSOR_API_KEY);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Type } from "typebox";
+import { Type } from "@oh-my-pi/omptype/typebox"
 import {
 	resetCursorProviderTestState,
 	mockedCreate,
@@ -325,7 +325,7 @@ describe("streamCursor bridge MCP", () => {
 		expect(getCreatedAgentOptions().mcpServers).toBeUndefined();
 	});
 
-	it("emits bridge MCP requests as real pi tool calls and resumes the same Cursor run after tool results in plan mode", async () => {
+	it("emits bridge MCP requests as real OMP tool calls and resumes the same Cursor run after tool results in plan mode", async () => {
 		await setCursorModeForBridgeTest("plan");
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
 		process.env.PI_CURSOR_EXPOSE_BUILTIN_TOOLS = "1";
@@ -341,16 +341,13 @@ describe("streamCursor bridge MCP", () => {
 
 		let onDelta: CursorDeltaHandler | undefined;
 		let onStep: CursorStepHandler | undefined;
-		let resolveRun: (result: { id: string; status: "finished"; result: string }) => void = () => {};
-		const runWait = vi.fn(
-			() =>
-				new Promise<{ id: string; status: "finished"; result: string }>((resolve) => {
-					resolveRun = resolve;
-				}),
-		);
+		const runOutcome = Promise.withResolvers<{ id: string; status: "finished"; result: string }>();
+		const sendStarted = Promise.withResolvers<void>();
+		const runWait = vi.fn(() => runOutcome.promise);
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler; onStep: CursorStepHandler }) => {
 			onDelta = opts.onDelta;
 			onStep = opts.onStep;
+			sendStarted.resolve();
 			return asMockCursorRun({
 				id: "run-1",
 				agentId: "agent-1",
@@ -368,7 +365,7 @@ describe("streamCursor bridge MCP", () => {
 		});
 
 		const firstEventsPromise = collectEvents(streamCursor(makeModel("composer-2"), makeContext(), { apiKey: "test-key" }));
-		await vi.waitFor(() => expect(mockSend).toHaveBeenCalled());
+		await sendStarted.promise;
 		const createOptions = getCreatedAgentOptions();
 		const { client, transport } = await connectMcpClient(getPiToolsMcpUrlFromAgentCreateOptions(createOptions));
 		try {
@@ -443,7 +440,7 @@ describe("streamCursor bridge MCP", () => {
 			const replayEventsPromise = collectEvents(streamCursor(makeModel("composer-2"), replayContext, { apiKey: "test-key" }));
 			await expect(readCallPromise).resolves.toMatchObject({ content: [{ type: "text", text: "file contents" }] });
 			await expect(bashCallPromise).resolves.toMatchObject({ content: [{ type: "text", text: "/repo" }] });
-			resolveRun({ id: "run-1", status: "finished", result: "Bridge complete." });
+			runOutcome.resolve({ id: "run-1", status: "finished", result: "Bridge complete." });
 			const replayEvents = await replayEventsPromise;
 			const replayText = collectTextDeltas(replayEvents);
 			const replayDone = getDoneEvent(replayEvents);
@@ -508,23 +505,26 @@ describe("streamCursor bridge MCP", () => {
 		expect(hasEventType(events, "toolcall_start")).toBe(false);
 	});
 
-	it("rejects pending bridge MCP waits, clears live runs on idle disposal, and abandons the session agent", async () => {
+	it("rejects pending bridge MCP waits, clears live runs on release, and abandons the session agent", async () => {
 		process.env.PI_CURSOR_EXPOSE_BUILTIN_TOOLS = "1";
-		cursorProviderTestUtils.setCursorNativeReplayIdleDisposeMs(1);
 		registerBridgeForProviderTest({
 			active: ["read"],
 			tools: [createTestToolInfo("read", Type.Object({ path: Type.String() }), "Read files")],
 		});
 		const mockDispose = vi.fn().mockResolvedValue(undefined);
 		const runWait = vi.fn(() => new Promise<{ id: string; status: "finished"; result: string }>(() => {}));
-		const mockSend = vi.fn().mockResolvedValue({
-			id: "run-1",
-			agentId: "agent-1",
-			status: "running",
-			wait: runWait,
-			cancel: vi.fn(),
-			supports: () => true,
-			unsupportedReason: () => undefined,
+		const sendStarted = Promise.withResolvers<void>();
+		const mockSend = vi.fn().mockImplementation(async () => {
+			sendStarted.resolve();
+			return {
+				id: "run-1",
+				agentId: "agent-1",
+				status: "running",
+				wait: runWait,
+				cancel: vi.fn(),
+				supports: () => true,
+				unsupportedReason: () => undefined,
+			};
 		});
 		mockCreatedAgent({
 			agentId: "agent-1",
@@ -533,7 +533,7 @@ describe("streamCursor bridge MCP", () => {
 		});
 
 		const firstEventsPromise = collectEvents(streamCursor(makeModel("composer-2"), makeContext(), { apiKey: "test-key" }));
-		await vi.waitFor(() => expect(mockSend).toHaveBeenCalled());
+		await sendStarted.promise;
 		const createOptions = getCreatedAgentOptions();
 		const { client, transport } = await connectMcpClient(getPiToolsMcpUrlFromAgentCreateOptions(createOptions));
 		try {
@@ -544,7 +544,7 @@ describe("streamCursor bridge MCP", () => {
 			expect(firstDone.reason).toBe("toolUse");
 			expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(1);
 
-			await vi.waitFor(() => expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0));
+			await cursorProviderTestUtils.releaseAllPendingCursorLiveRunsForTests();
 			const error = await callErrorPromise;
 			expect(error).toBeInstanceOf(Error);
 			expect((error as Error).message).toMatch(/disposed|cancelled|MCP error/i);

@@ -2,7 +2,7 @@
  * Platform smoke doctor — preflight checks before any Cursor token spend.
  *
  * Implements doctor checks from docs/platform-smoke.md:
- * env vars, Crabbox, providers, Docker, SSH, Parallels, Node, tools,
+ * env vars, Crabbox, providers, Docker, SSH, Parallels, Node, Bun, tools,
  * artifacts, git status, forbidden files, Cursor auth, node-pty.
  */
 
@@ -63,7 +63,7 @@ function windowsParallelsDefaults(config = {}) {
 		vm: windows.sourceVm || "pi-extension-windows-template",
 		snapshot: windows.snapshot || "crabbox-ready",
 		user: windows.user || env("USER"),
-		workRoot: windows.workRoot || "C:\\crabbox\\pi-cursor-sdk",
+		workRoot: windows.workRoot || "C:\\crabbox\\omp-cursor-sdk",
 	};
 }
 
@@ -105,21 +105,23 @@ function crabbox(cbox, args, timeout = 300_000) {
 }
 
 function disposableWindowsSshProbe(cbox, config = {}) {
-	const slug = "pi-cursor-sdk-doctor-windows";
+	const slug = "omp-cursor-sdk-doctor-windows";
 	const baseArgs = windowsCrabboxBaseArgs(config);
 	const warm = crabbox(cbox, ["warmup", ...baseArgs, "--slug", slug, "--keep", "--reclaim"], 300_000);
 	const leaseId = parseLeaseId(warm.stdout) ?? parseLeaseId(warm.stderr) ?? slug;
 	try {
 		if (!warm.ok) return { ok: false, message: `disposable Windows warmup failed: ${(warm.stderr || warm.stdout).slice(-500)}` };
-		const probeCommand = "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command 'Get-Command node,npm,git,tar -ErrorAction Stop | Out-Null; node --version; npm --version; git --version; tar --version | Select-Object -First 1; whoami'";
+		const probeCommand = "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command 'Get-Command node,npm,bun,git,tar -ErrorAction Stop | Out-Null; node --version; npm --version; bun --version; git --version; tar --version | Select-Object -First 1; whoami'";
 		const run = crabbox(cbox, ["run", ...baseArgs, "--id", leaseId, "--no-sync", "--shell", probeCommand], 120_000);
 		if (!run.ok) return { ok: false, message: `disposable Windows probe failed: ${(run.stderr || run.stdout).slice(-500)}` };
-		const lines = run.stdout.trim().split(/\r?\n/).slice(-5);
+		const lines = run.stdout.trim().split(/\r?\n/).slice(-6);
 		if (!/^v\d+\./.test(lines[0] ?? "")) return { ok: false, message: `disposable Windows node probe missing or invalid: ${lines.join(" | ")}` };
 		if (!/^\d+\.\d+\./.test(lines[1] ?? "")) return { ok: false, message: `disposable Windows npm probe missing or invalid: ${lines.join(" | ")}` };
-		if (!/^git version/i.test(lines[2] ?? "")) return { ok: false, message: `disposable Windows git probe missing or invalid: ${lines.join(" | ")}` };
-		if (!/tar/i.test(lines[3] ?? "")) return { ok: false, message: `disposable Windows tar probe missing or invalid: ${lines.join(" | ")}` };
-		if (!(lines[4] ?? "").trim()) return { ok: false, message: `disposable Windows whoami probe missing: ${lines.join(" | ")}` };
+		if (!/^\d+\.\d+\./.test(lines[2] ?? "")) return { ok: false, message: `disposable Windows Bun probe missing or invalid: ${lines.join(" | ")}` };
+		if (!versionAtLeast(lines[2], config?.bunValidationMinimum ?? "1.3.14")) return { ok: false, message: `disposable Windows Bun ${lines[2]} is below required minimum ${config?.bunValidationMinimum ?? "1.3.14"}` };
+		if (!/^git version/i.test(lines[3] ?? "")) return { ok: false, message: `disposable Windows git probe missing or invalid: ${lines.join(" | ")}` };
+		if (!/tar/i.test(lines[4] ?? "")) return { ok: false, message: `disposable Windows tar probe missing or invalid: ${lines.join(" | ")}` };
+		if (!(lines[5] ?? "").trim()) return { ok: false, message: `disposable Windows whoami probe missing: ${lines.join(" | ")}` };
 		return { ok: true, message: lines.join(" | ") };
 	} finally {
 		crabbox(cbox, ["stop", ...baseArgs, "--id", leaseId], 60_000);
@@ -282,7 +284,7 @@ async function runChecks(config) {
 		}
 		const sshHost = env("PLATFORM_SMOKE_MAC_HOST") || "localhost";
 		const sshUser = env("PLATFORM_SMOKE_MAC_USER") || env("USER");
-		const sshRoot = env("PLATFORM_SMOKE_MAC_WORK_ROOT") || `/Users/${env("USER")}/crabbox/pi-cursor-sdk`;
+		const sshRoot = env("PLATFORM_SMOKE_MAC_WORK_ROOT") || `/Users/${env("USER")}/crabbox/omp-cursor-sdk`;
 		const sshDoc = silent(cbox, [
 			"doctor", "--provider", "ssh", "--target", "macos",
 			"--static-host", sshHost, "--static-user", sshUser,
@@ -310,15 +312,18 @@ async function runChecks(config) {
 	console.log("\n── macOS SSH ──");
 	const host = env("PLATFORM_SMOKE_MAC_HOST") || "localhost";
 	const user = env("PLATFORM_SMOKE_MAC_USER") || env("USER");
-	const sshOut = shell(`ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no ${user}@${host} 'whoami && node --version && npm --version && git --version && rsync --version | head -1 && tar --version | head -1'`);
+	const sshOut = shell(`ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no ${user}@${host} 'whoami && node --version && npm --version && bun --version && git --version && rsync --version | head -1 && tar --version | head -1'`);
 	if (sshOut) {
 		const lines = sshOut.trim().split("\n");
 		ok(`SSH to ${host}: ${lines[0]}`);
 		if (lines[1]) ok(`remote Node ${lines[1]}`); else fail("remote node probe missing output");
 		if (lines[2]) ok(`remote npm ${lines[2]}`); else fail("remote npm probe missing output");
-		if (lines[3]) ok(`remote ${lines[3]}`); else fail("remote git probe missing output");
-		if (lines[4]) ok(`remote ${lines[4]}`); else fail("remote rsync probe missing output");
-		if (lines[5]) ok(`remote ${lines[5]}`); else fail("remote tar probe missing output");
+		if (!lines[3]) fail("remote Bun probe missing output");
+		else if (!versionAtLeast(lines[3], config?.bunValidationMinimum ?? "1.3.14")) fail(`remote Bun ${lines[3]} is below required minimum ${config?.bunValidationMinimum ?? "1.3.14"}`);
+		else ok(`remote Bun ${lines[3]}`);
+		if (lines[4]) ok(`remote ${lines[4]}`); else fail("remote git probe missing output");
+		if (lines[5]) ok(`remote ${lines[5]}`); else fail("remote rsync probe missing output");
+		if (lines[6]) ok(`remote ${lines[6]}`); else fail("remote tar probe missing output");
 	} else {
 		fail(`SSH to ${host} failed`);
 	}
@@ -404,8 +409,8 @@ async function runChecks(config) {
 		}
 	}
 
-	// ── Phase 7: Node.js ──
-	console.log("\n── Node.js ──");
+	// ── Phase 7: Runtimes ──
+	console.log("\n── Runtimes ──");
 	const nv = shell("node --version");
 	if (nv) {
 		const major = parseInt(nv.replace("v", "").split(".")[0], 10);
@@ -415,6 +420,11 @@ async function runChecks(config) {
 	} else {
 		fail("node not found");
 	}
+	const bv = shell("bun --version");
+	const minimumBunVersion = config?.bunValidationMinimum ?? "1.3.14";
+	if (!bv) fail("Bun not found");
+	else if (!versionAtLeast(bv, minimumBunVersion)) fail(`Bun ${bv} — need ${minimumBunVersion}+`);
+	else ok(`Bun ${bv} (>= ${minimumBunVersion})`);
 
 	// ── Phase 8: Tools ──
 	console.log("\n── Tools ──");

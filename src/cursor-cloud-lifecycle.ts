@@ -3,6 +3,7 @@ import { closeSync, constants, existsSync, fchmodSync, fstatSync, fsyncSync, lst
 import { dirname, join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, SessionEntry } from "@oh-my-pi/pi-coding-agent";
 import { resolveCursorApiKey } from "./cursor-api-key.js";
+import { CURSOR_SDK_PROVIDER_ID } from "./cursor-model.js";
 import {
 	MAX_CLOUD_REPORT_BRANCHES,
 	type CursorCloudRunReport,
@@ -355,7 +356,7 @@ export function createCursorCloudLifecyclePersistenceError(
 			? "Cancellation requested/confirmed."
 			: "Cancellation requested but unconfirmed.";
 	return new Error(scrubSensitiveText(
-		`Cursor Cloud ${phase === "intent" ? "send intent" : "run"} blocked because its lifecycle record could not be persisted for agent ${boundedAgentId}. Cloud requires a writable persisted pi session; do not use --no-session. ${cancellation} Open the Cursor Cloud dashboard and manually archive or delete agent ${boundedAgentId} before retrying.`,
+		`Cursor Cloud ${phase === "intent" ? "send intent" : "run"} blocked because its lifecycle record could not be persisted for agent ${boundedAgentId}. Cloud requires a writable persisted OMP session; do not use --no-session. ${cancellation} Open the Cursor Cloud dashboard and manually archive or delete agent ${boundedAgentId} before retrying.`,
 		apiKey,
 	));
 }
@@ -607,9 +608,9 @@ function formatCloudLifecycleError(error: unknown, apiKey: string | undefined): 
 }
 
 async function resolveCloudLifecycleMutationApiKey(ctx: CloudLifecycleCommandContext): Promise<string | undefined> {
-	const apiKey = resolveCursorApiKey(await (runtimeApiKeyResolverForTests?.() ?? ctx.modelRegistry.getApiKeyForProvider("cursor")));
+	const apiKey = resolveCursorApiKey(await (runtimeApiKeyResolverForTests?.() ?? ctx.modelRegistry.getApiKeyForProvider(CURSOR_SDK_PROVIDER_ID)));
 	if (apiKey) return apiKey;
-	ctx.ui.notify("Cursor cloud lifecycle mutations require a Cursor API key; run /login or set CURSOR_API_KEY, then retry.", "error");
+	ctx.ui.notify("Cursor cloud lifecycle mutations require a Cursor SDK API key; run /login cursor-sdk or set CURSOR_API_KEY, then retry.", "error");
 	return undefined;
 }
 

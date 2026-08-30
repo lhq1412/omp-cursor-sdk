@@ -1,28 +1,30 @@
-import type { BuildSystemPromptOptions } from "@oh-my-pi/pi-coding-agent";
 import {
-	PI_PROJECT_INSTRUCTIONS_OPEN_PREFIX,
-	serializePiProjectContextSection,
-	serializePiProjectInstructionsBlock,
-	type PiAgentsContextFile,
+	OMP_REPO_RULES_CLOSE,
+	OMP_REPO_RULES_OPEN,
+	type OmpRepoRuleFile,
 } from "../../src/cursor-agents-context.js";
 
-export { PI_PROJECT_INSTRUCTIONS_OPEN_PREFIX, serializePiProjectContextSection, serializePiProjectInstructionsBlock };
-
-export function makeSystemPromptOptions(
-	contextFiles: PiAgentsContextFile[],
-	cwd = "/repo",
-): BuildSystemPromptOptions {
-	return { cwd, contextFiles, selectedTools: [] };
+export function serializeOmpRepoRuleFile(file: OmpRepoRuleFile): string {
+	return `<file path="${file.path}">\n${file.content}\n</file>`;
 }
 
-/** Minimal pi-like system prompt containing only the project_context subset this feature owns. */
-export function buildPiSystemPromptWithContextFiles(
-	contextFiles: PiAgentsContextFile[],
+export function serializeOmpRepoRulesSection(contextFiles: readonly OmpRepoRuleFile[]): string {
+	if (contextFiles.length === 0) return "";
+	return [
+		OMP_REPO_RULES_OPEN,
+		"MUST follow these context files for all tasks:",
+		...contextFiles.map(serializeOmpRepoRuleFile),
+		OMP_REPO_RULES_CLOSE,
+	].join("\n");
+}
+
+export function buildOmpSystemPromptWithContextFiles(
+	contextFiles: readonly OmpRepoRuleFile[],
 	cwd = "/repo",
 ): string {
-	let prompt =
-		"You are an expert coding assistant operating inside pi, a coding agent harness.\n\nGuidelines:\n- Be concise in your responses";
-	prompt += serializePiProjectContextSection(contextFiles);
-	prompt += `\nCurrent date: 2026-01-01\nCurrent working directory: ${cwd}`;
-	return prompt;
+	return [
+		"You are an expert coding assistant operating inside OMP.",
+		serializeOmpRepoRulesSection(contextFiles),
+		`Current working directory: ${cwd}`,
+	].filter(Boolean).join("\n\n");
 }

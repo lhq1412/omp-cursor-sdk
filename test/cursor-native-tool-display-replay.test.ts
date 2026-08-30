@@ -11,7 +11,7 @@ import {
 } from "../src/cursor-native-tool-display-replay.js";
 import { LOCAL_READ_PREVIEW_NOTICE } from "../src/cursor-transcript-utils.js";
 import { Text } from "@oh-my-pi/pi-tui";
-import { createRenderContext, createRenderTheme } from "./helpers/render-fixtures.js";
+import { createRenderArgs, createRenderTheme } from "./helpers/render-fixtures.js";
 
 const theme = createRenderTheme();
 
@@ -24,7 +24,7 @@ function renderReplayResultWithDetails(details: unknown): string {
 		{ content: [{ type: "text", text: "ok" }], details },
 		{ expanded: false, isPartial: false },
 		taggedTheme,
-		createRenderContext({ isError: false, showImages: false }),
+		createRenderArgs({}),
 		false,
 	)
 		.render(240)
@@ -164,7 +164,7 @@ describe("cursor native replay rendering", () => {
 			expandedText: `${preamble}\n\nwrite new.txt\n\nCreated 1 lines\n\nhello world\n`,
 		});
 
-		expect(rendered).toContain("<toolOutput>hello world</toolOutput>");
+		expect(rendered).toContain("hello world");
 		expect(rendered).not.toContain("preamble note");
 		expect(rendered).not.toContain("<muted>hello world</muted>");
 	});
@@ -178,7 +178,7 @@ describe("cursor native replay rendering", () => {
 			result,
 			{ expanded: false, isPartial: false },
 			theme,
-			createRenderContext({ isError: false, args: { path: "README.md", localReadPreview: true } }),
+			createRenderArgs({ path: "README.md", localReadPreview: true }),
 			() => new Text("", 0, 0),
 		)
 			.render(120)

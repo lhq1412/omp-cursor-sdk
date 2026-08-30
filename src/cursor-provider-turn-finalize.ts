@@ -6,7 +6,11 @@ import {
 	type CursorCloudRunReport,
 } from "./cursor-cloud-reporting.js";
 import { recordCursorCloudLifecycleRun } from "./cursor-cloud-lifecycle.js";
-import { getCheckpointContextWindow, saveCachedContextWindow } from "./context-window-cache.js";
+import {
+	getCheckpointContextWindow,
+	getCursorContextWindowCacheKey,
+	saveCachedContextWindow,
+} from "./context-window-cache.js";
 import { scrubSensitiveText } from "./cursor-sensitive-text.js";
 import type { CursorSdkEventDebugSink } from "./cursor-sdk-event-debug.js";
 import type { CursorSdkTurnCoordinator } from "./cursor-provider-turn-coordinator.js";
@@ -214,7 +218,7 @@ export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorR
 	if (params.prepared.runtimeTarget === "local" && params.cacheContextWindow !== false) {
 		await cacheSdkContextWindow(
 			params.contextWindowAgentId ?? params.run.agentId,
-			params.modelId,
+			getCursorContextWindowCacheKey(params.modelId, params.prepared.meta.modelSelection),
 			params.prepared.cwd,
 			params.prepared.sessionAgentLease.store,
 		);

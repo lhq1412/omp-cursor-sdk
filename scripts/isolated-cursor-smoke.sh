@@ -1,5 +1,5 @@
 #!/bin/bash
-# Isolated /tmp install + fail-fast live smoke for pi-cursor-sdk native replay.
+# Isolated /tmp install + fail-fast live smoke for omp-cursor-sdk native replay.
 #
 # Validates packed extension load, plan-strip resync, and absence of "Tool * not found".
 set -euo pipefail
@@ -10,10 +10,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SMOKE_LOG_PREFIX=isolated-smoke
 
 REAL_HOME="${REAL_HOME:-$HOME}"
-PI_AGENT_DIR="${PI_AGENT_DIR:-$REAL_HOME/.pi/agent}"
-AUTH_JSON="${AUTH_JSON:-$PI_AGENT_DIR/auth.json}"
-REPO="${REPO:-$ROOT}"
-ISOLATED="${ISOLATED:-/tmp/pi-cursor-sdk-isolated-$(date +%Y%m%dT%H%M%S)}"
+ISOLATED="${ISOLATED:-/tmp/omp-cursor-sdk-isolated-$(date +%Y%m%dT%H%M%S)}"
 PI_LIVE_TIMEOUT="${PI_LIVE_TIMEOUT:-45}"
 SKIP_LIVE="${SKIP_LIVE:-0}"
 SKIP_UNIT="${SKIP_UNIT:-0}"
@@ -39,7 +36,7 @@ PI_NONE_ENV=()
 SELF_TEST_TEMP_DIR=""
 
 print_help() {
-	printf '%s\n' 'Isolated /tmp install smoke for pi-cursor-sdk (native replay + plan-strip resync).
+	printf '%s\n' 'Isolated /tmp install smoke for omp-cursor-sdk (native replay + plan-strip resync).
 
 Usage:
   ./scripts/isolated-cursor-smoke.sh
@@ -48,21 +45,20 @@ Usage:
 
 Environment:
   REPO                          Repo under test (default: script parent directory).
-  ISOLATED                      Artifact root (default: /tmp/pi-cursor-sdk-isolated-<timestamp>).
-  REAL_HOME                     Source for auth.json (default: $HOME).
-  AUTH_JSON                     Path to pi auth.json to seed isolated HOME (default: ~/.pi/agent/auth.json).
-  PI_LIVE_TIMEOUT               Per live pi check timeout in seconds (default: 45).
-  PI_BIN                        Optional pi command/path to resolve from the parent PATH (default: pi).
+  ISOLATED                      Artifact root (default: /tmp/omp-cursor-sdk-isolated-<timestamp>).
+  REAL_HOME                     Source HOME for optional .secrets loading.
+  PI_LIVE_TIMEOUT               Per live OMP check timeout in seconds (default: 45).
+  PI_BIN                        Optional OMP command/path from the parent PATH (default: omp).
   SKIP_LIVE=1                   Run unit tests + pack only; skip live Cursor calls.
   SKIP_UNIT=1                   Skip repo unit tests (live checks only).
-  CURSOR_API_KEY                Optional fallback when auth.json lacks cursor provider.
+  CURSOR_API_KEY                Required for isolated live Cursor calls.
 
 Prerequisites:
-  SKIP_LIVE=1: node, npm, env, tar on PATH; pi is not required.
-  Live checks: pi, rg, python3, and ~/.pi/agent/auth.json with cursor provider OR CURSOR_API_KEY.
-  Resolved node/npm/env paths from the parent shell are reused for pack-only work; live checks then resolve pi/rg.
-  Pi and npm shims run with the resolved node directory first on PATH.
-  Child pi runs clear Cursor SDK event-debug env. Live provider checks force PI_CURSOR_SETTING_SOURCES=none; install/list checks explicitly unset it.
+  SKIP_LIVE=1: node, npm, env, tar on PATH; OMP is not required.
+  Live checks: omp, rg, and CURSOR_API_KEY.
+  Resolved node/npm/env paths from the parent shell are reused for pack-only work; live checks then resolve omp/rg.
+  OMP and npm shims run with the resolved node directory first on PATH.
+  Child OMP runs clear Cursor SDK event-debug env. Live provider checks force PI_CURSOR_SETTING_SOURCES=none; install/list checks explicitly unset it.
 
 Options:
   -h, --help                    Show this help.
@@ -75,8 +71,7 @@ Exit codes:
 
 log() { smoke_log "$@"; }
 fail() { smoke_fail "$@"; }
-seed_pi_agent_home() { smoke_seed_pi_agent_home "$@"; }
-has_auth_provider() { smoke_has_auth_provider "$1" "$HOME_DIR/.pi/agent/auth.json"; }
+has_auth_provider() { [[ -n "${CURSOR_API_KEY:-}" ]]; }
 run_with_timeout() { smoke_run_with_timeout_or_fail "$@"; }
 
 build_smoke_env_arrays() {
@@ -123,12 +118,12 @@ run_self_test() {
 	local temp_dir bin_dir fake_pi fake_node fake_node_marker env_capture hostile_path captured_path node_dir name
 	local old_path old_pi_bin old_pi_bin_was_set
 	local no_pi_bin fake_npm fake_npm_marker no_pi_repo no_pi_isolated no_pi_path no_pi_output_file no_pi_status
-	temp_dir="$(mktemp -d /tmp/pi-cursor-sdk-isolated-smoke-self-test.XXXXXX)"
+	temp_dir="$(mktemp -d /tmp/omp-cursor-sdk-isolated-smoke-self-test.XXXXXX)"
 	SELF_TEST_TEMP_DIR="$temp_dir"
 	trap '[[ -z "${SELF_TEST_TEMP_DIR:-}" ]] || rm -rf "$SELF_TEST_TEMP_DIR"' EXIT
 	bin_dir="$temp_dir/bin"
 	mkdir -p "$bin_dir"
-	fake_pi="$bin_dir/pi"
+	fake_pi="$bin_dir/omp"
 	fake_node="$bin_dir/node"
 	fake_node_marker="$temp_dir/fake-node-used"
 	env_capture="$temp_dir/fake-pi.env"
@@ -157,9 +152,9 @@ EOF_SELFTEST_NODE
 	[[ ${PI_BIN+x} ]] && old_pi_bin_was_set=1
 	unset PI_BIN
 	PATH="$hostile_path"
-	[[ "$(smoke_resolve_cmd "${PI_BIN:-pi}")" == "$fake_pi" ]] || fail "self-test failed: default PI_BIN did not resolve through parent PATH"
+	[[ "$(smoke_resolve_cmd "${PI_BIN:-omp}")" == "$fake_pi" ]] || fail "self-test failed: default PI_BIN did not resolve the OMP command through parent PATH"
 	PI_BIN="$fake_pi"
-	[[ "$(smoke_resolve_cmd "${PI_BIN:-pi}")" == "$fake_pi" ]] || fail "self-test failed: absolute PI_BIN was not honored"
+	[[ "$(smoke_resolve_cmd "${PI_BIN:-omp}")" == "$fake_pi" ]] || fail "self-test failed: absolute PI_BIN OMP command was not honored"
 	PATH="$old_path"
 	if (( old_pi_bin_was_set )); then
 		PI_BIN="$old_pi_bin"
@@ -186,7 +181,7 @@ EOF_SELFTEST_NODE
 	[[ "${captured_path%%:*}" == "$node_dir" ]] || fail "self-test failed: PATH did not start with resolved node dir"
 	grep -qx "HOME=$HOME_DIR" "$env_capture" || fail "self-test failed: isolated HOME was not set"
 	grep -qx 'MISE_DISABLE=1' "$env_capture" || fail "self-test failed: MISE_DISABLE was not set"
-	grep -qx 'PI_CURSOR_SETTING_SOURCES=none' "$env_capture" || fail "self-test failed: live pi env did not force PI_CURSOR_SETTING_SOURCES=none"
+	grep -qx 'PI_CURSOR_SETTING_SOURCES=none' "$env_capture" || fail "self-test failed: live OMP env did not force PI_CURSOR_SETTING_SOURCES=none"
 	for name in "${SMOKE_CURSOR_SDK_EVENT_DEBUG_ENV_NAMES[@]}"; do
 		if grep -q "^${name}=" "$env_capture"; then
 			fail "self-test failed: $name was not cleared"
@@ -201,11 +196,11 @@ EOF_SELFTEST_NODE
 	PI_CURSOR_SDK_EVENT_DEBUG_STDERR=1 \
 		"${PI_DEFAULT_ENV[@]}" "$fake_pi" --version
 	if grep -q '^PI_CURSOR_SETTING_SOURCES=' "$env_capture"; then
-		fail "self-test failed: default pi env did not unset PI_CURSOR_SETTING_SOURCES"
+		fail "self-test failed: default OMP env did not unset PI_CURSOR_SETTING_SOURCES"
 	fi
 	for name in "${SMOKE_CURSOR_SDK_EVENT_DEBUG_ENV_NAMES[@]}"; do
 		if grep -q "^${name}=" "$env_capture"; then
-			fail "self-test failed: default pi env leaked $name"
+			fail "self-test failed: default OMP env leaked $name"
 		fi
 	done
 
@@ -258,16 +253,16 @@ EOF_SELFTEST_NPM
 	no_pi_path="$no_pi_bin:/usr/bin:/bin"
 	no_pi_output_file="$temp_dir/no-pi-output.txt"
 	set +e
-	env -i PATH="$no_pi_path" REAL_HOME="$temp_dir/no-auth" PI_BIN=pi-must-not-exist REPO="$no_pi_repo" ISOLATED="$no_pi_isolated" SKIP_LIVE=1 SKIP_UNIT=1 "$SHELL_BIN" "$ROOT/scripts/isolated-cursor-smoke.sh" >"$no_pi_output_file" 2>&1
+	env -i PATH="$no_pi_path" REAL_HOME="$temp_dir/no-auth" PI_BIN=omp-must-not-exist REPO="$no_pi_repo" ISOLATED="$no_pi_isolated" SKIP_LIVE=1 SKIP_UNIT=1 "$SHELL_BIN" "$ROOT/scripts/isolated-cursor-smoke.sh" >"$no_pi_output_file" 2>&1
 	no_pi_status=$?
 	set -e
 	if [[ "$no_pi_status" != "0" ]]; then
 		cat "$no_pi_output_file" >&2 || true
-		fail "self-test failed: SKIP_LIVE=1 required pi or another live-only prerequisite"
+		fail "self-test failed: SKIP_LIVE=1 required OMP or another live-only prerequisite"
 	fi
-	[[ -f "$fake_npm_marker" ]] || fail "self-test failed: no-pi SKIP_LIVE path did not run pack"
-	! grep -q 'missing required command: pi' "$no_pi_output_file" || fail "self-test failed: no-pi SKIP_LIVE path still resolved pi"
-	grep -q 'SKIP_LIVE=1' "$no_pi_output_file" || fail "self-test failed: no-pi SKIP_LIVE path did not reach skip-live exit"
+	[[ -f "$fake_npm_marker" ]] || fail "self-test failed: no-OMP SKIP_LIVE path did not run pack"
+	! grep -q 'missing required command: omp-must-not-exist' "$no_pi_output_file" || fail "self-test failed: no-OMP SKIP_LIVE path still resolved OMP"
+	grep -q 'SKIP_LIVE=1' "$no_pi_output_file" || fail "self-test failed: no-OMP SKIP_LIVE path did not reach skip-live exit"
 
 	printf '[isolated-smoke] self-test PASS\n'
 }
@@ -299,7 +294,6 @@ SEALED_PATH="$(smoke_build_sealed_node_path "$NODE_BIN" "$PATH")"
 build_smoke_env_arrays
 
 mkdir -p "$PACK_DIR" "$EXTRACT_DIR" "$PROJECT_DIR" "$SESSION_ROOT" "$HOME_DIR"
-seed_pi_agent_home "$HOME_DIR"
 
 log "isolated root: $ISOLATED"
 log "HOME=$HOME_DIR"
@@ -325,48 +319,47 @@ tar -xzf "$PACK_TGZ" -C "$EXTRACT_DIR"
 [[ -d "$EXTRACT_DIR/package" ]] || fail "extract missing package/ dir"
 
 if [[ "$SKIP_LIVE" == "1" ]]; then
-	log "SKIP_LIVE=1 — skipping live pi checks after unit + pack"
+	log "SKIP_LIVE=1 — skipping live OMP checks after unit + pack"
 	exit 0
 fi
 
-PI_BIN="$(smoke_resolve_cmd "${PI_BIN:-pi}")"
+PI_BIN="$(smoke_resolve_cmd "${PI_BIN:-omp}")"
 RG_BIN="$(smoke_resolve_cmd rg)"
-smoke_require_cmd python3
-log "pi=$PI_BIN"
+log "omp=$PI_BIN"
 log "rg=$RG_BIN"
 
-if ! has_auth_provider cursor && [[ -z "${CURSOR_API_KEY:-}" ]]; then
-	fail "no cursor auth in $HOME_DIR/.pi/agent/auth.json and CURSOR_API_KEY unset"
+if ! has_auth_provider; then
+	fail "CURSOR_API_KEY is required for isolated live Cursor SDK smoke"
 fi
 
 log "npm install packed extension deps"
 run_in_dir_capture_combined "npm install --omit=dev" 120 "$EXTRACT_DIR/package" "$ISOLATED/npm-install.log" "${TOOL_ENV[@]}" "$NPM_BIN" install --omit=dev
 
-log "pi install --approve -l (clean HOME)"
+log "omp plugin install --scope project (clean HOME)"
 cp "$REPO/README.md" "$PROJECT_DIR/README.md"
-run_in_dir_capture_combined "pi install" 30 "$PROJECT_DIR" "$ISOLATED/pi-install.log" "${PI_DEFAULT_ENV[@]}" "$PI_BIN" install --approve -l "$EXTRACT_DIR/package"
+run_in_dir_capture_combined "omp plugin install" 30 "$PROJECT_DIR" "$ISOLATED/omp-plugin-install.log" "${PI_DEFAULT_ENV[@]}" "$PI_BIN" plugin install --scope project "$EXTRACT_DIR/package"
 
-PI_LIST_OUT="$ISOLATED/pi-list.txt"
-run_in_dir_capture_combined "pi list" 15 "$PROJECT_DIR" "$PI_LIST_OUT" "${PI_DEFAULT_ENV[@]}" "$PI_BIN" list --approve
-"$RG_BIN" -q "extract/package" "$PI_LIST_OUT" || fail "packed extension not installed"
+PI_LIST_OUT="$ISOLATED/omp-plugin-list.txt"
+run_in_dir_capture_combined "omp plugin list" 15 "$PROJECT_DIR" "$PI_LIST_OUT" "${PI_DEFAULT_ENV[@]}" "$PI_BIN" plugin list --scope project
+"$RG_BIN" -q "omp-cursor-sdk" "$PI_LIST_OUT" || fail "packed extension not installed"
 
 PI_CURSOR_ENV=( "${PI_NONE_ENV[@]}" )
 if [[ -n "${CURSOR_API_KEY:-}" ]]; then
 	PI_CURSOR_ENV+=( CURSOR_API_KEY="$CURSOR_API_KEY" )
 fi
 
-log "check: list-models"
-LIST_OUT="$ISOLATED/list-models.txt"
-run_in_dir_capture_combined "list-models" 30 "$PROJECT_DIR" "$LIST_OUT" "${PI_CURSOR_ENV[@]}" \
-	"$PI_BIN" --approve --cursor-no-fast --list-models cursor
+log "check: models"
+LIST_OUT="$ISOLATED/models.txt"
+run_in_dir_capture_combined "models" 30 "$PROJECT_DIR" "$LIST_OUT" "${PI_CURSOR_ENV[@]}" \
+	"$PI_BIN" models cursor-sdk
 "$RG_BIN" -q "grok-4\\.6" "$LIST_OUT" || fail "grok-4.6 not listed (see $LIST_OUT)"
-"$RG_BIN" -q "composer-2\\.5|composer-2-5" "$LIST_OUT" || fail "composer-2-5 not listed (see $LIST_OUT)"
+"$RG_BIN" -q "composer-2\\.5" "$LIST_OUT" || fail "composer-2.5 not listed (see $LIST_OUT)"
 
 log "check: basic provider prompt"
 BASIC_DIR="$SESSION_ROOT/basic"
 mkdir -p "$BASIC_DIR"
 run_in_dir_capture_split "basic prompt" "$PI_LIVE_TIMEOUT" "$PROJECT_DIR" "$ISOLATED/basic.stdout.txt" "$ISOLATED/basic.stderr.txt" "${PI_CURSOR_ENV[@]}" \
-	"$PI_BIN" --approve --cursor-no-fast --model cursor/grok-4.6 --session-dir "$BASIC_DIR" --no-tools -p 'Reply exactly: PI_CURSOR_ISOLATED_OK'
+	"$PI_BIN" --auto-approve --cursor-no-fast --model cursor-sdk/grok-4.6 --session-dir "$BASIC_DIR" --no-tools -p 'Reply exactly: PI_CURSOR_ISOLATED_OK'
 "$RG_BIN" -q "PI_CURSOR_ISOLATED_OK" "$ISOLATED/basic.stdout.txt" || fail "basic prompt missing PI_CURSOR_ISOLATED_OK"
 validate_replay_jsonl "$BASIC_DIR"
 
@@ -374,14 +367,14 @@ log "check: native replay"
 REPLAY_DIR="$SESSION_ROOT/native-replay"
 mkdir -p "$REPLAY_DIR"
 run_in_dir_capture_split "native replay" "$PI_LIVE_TIMEOUT" "$PROJECT_DIR" "$ISOLATED/replay.stdout.txt" "$ISOLATED/replay.stderr.txt" "${PI_CURSOR_ENV[@]}" PI_CURSOR_NATIVE_TOOL_DISPLAY=1 \
-	"$PI_BIN" --approve --cursor-no-fast --model cursor/grok-4.6 --session-dir "$REPLAY_DIR" -p 'Read ./README.md briefly, then answer README_SEEN=yes if it mentions pi-cursor-sdk.'
+	"$PI_BIN" --auto-approve --cursor-no-fast --model cursor-sdk/grok-4.6 --session-dir "$REPLAY_DIR" -p 'Read ./README.md briefly, then answer README_SEEN=yes if it mentions omp-cursor-sdk.'
 validate_replay_jsonl "$REPLAY_DIR"
 
 log "check: plan-strip shim (plan-mode execute reset)"
 PLAN_DIR="$SESSION_ROOT/plan-strip"
 mkdir -p "$PLAN_DIR"
 run_in_dir_capture_split "plan-strip replay" "$PI_LIVE_TIMEOUT" "$PROJECT_DIR" "$ISOLATED/plan.stdout.txt" "$ISOLATED/plan.stderr.txt" "${PI_CURSOR_ENV[@]}" PI_CURSOR_NATIVE_TOOL_DISPLAY=1 \
-	"$PI_BIN" --approve -e "$SHIM_DIR" --cursor-no-fast --model cursor/grok-4.6 --session-dir "$PLAN_DIR" -p 'After reset, read README.md and answer PLAN_STRIP_OK=yes.'
+	"$PI_BIN" --auto-approve -e "$SHIM_DIR" --cursor-no-fast --model cursor-sdk/grok-4.6 --session-dir "$PLAN_DIR" -p 'After reset, read README.md and answer PLAN_STRIP_OK=yes.'
 validate_replay_jsonl "$PLAN_DIR"
 
-log "PASS isolated install smoke: $ISOLATED"
+log "PASS isolated OMP install smoke: $ISOLATED"

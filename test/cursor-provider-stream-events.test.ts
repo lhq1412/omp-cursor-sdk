@@ -17,7 +17,7 @@ import {
 	mockedCreate,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor, __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
-import type { Context } from "@oh-my-pi/pi-ai";
+import { Effort, type Context } from "@oh-my-pi/pi-ai";
 
 
 describe("streamCursor stream events", () => {
@@ -114,7 +114,7 @@ describe("streamCursor stream events", () => {
 				.mockResolvedValueOnce(asMockSdkAgent({ agentId: "second-agent", send: secondSend }));
 
 			const firstEventsPromise = collectEvents(streamCursor(makeModel("composer-2.5"), makeContext([{ role: "user", content: "first task", timestamp: 1 }]), { apiKey: "test-key" }));
-			const secondEventsPromise = collectEvents(streamCursor(makeModel("gpt-5.5@272k"), makeContext([{ role: "user", content: "second task", timestamp: 1 }]), { apiKey: "test-key", reasoning: "medium" }));
+			const secondEventsPromise = collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext([{ role: "user", content: "second task", timestamp: 1 }]), { apiKey: "test-key", reasoning: Effort.Medium }));
 			await vi.waitFor(() => expect(firstSend).toHaveBeenCalledTimes(1));
 			expect(secondSend).not.toHaveBeenCalled();
 
@@ -148,7 +148,7 @@ describe("streamCursor stream events", () => {
 			const firstEventsPromise = collectEvents(streamCursor(makeModel("composer-2.5"), makeContext([{ role: "user", content: "first task", timestamp: 1 }]), { apiKey: "test-key" }));
 			await vi.waitFor(() => expect(firstSend).toHaveBeenCalledTimes(1));
 			const controller = new AbortController();
-			const secondEventsPromise = collectEvents(streamCursor(makeModel("gpt-5.5@272k"), makeContext([{ role: "user", content: "second task", timestamp: 1 }]), { apiKey: "test-key", reasoning: "medium", signal: controller.signal }));
+			const secondEventsPromise = collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext([{ role: "user", content: "second task", timestamp: 1 }]), { apiKey: "test-key", reasoning: Effort.Medium, signal: controller.signal }));
 
 			controller.abort();
 			const secondEvents = await secondEventsPromise;
@@ -167,7 +167,7 @@ describe("streamCursor stream events", () => {
 				});
 			});
 			mockedCreate.mockResolvedValueOnce(asMockSdkAgent({ agentId: "third-agent", send: thirdSend }));
-			const thirdEventsPromise = collectEvents(streamCursor(makeModel("gpt-5.5@272k"), makeContext([{ role: "user", content: "third task", timestamp: 1 }]), { apiKey: "test-key", reasoning: "medium" }));
+			const thirdEventsPromise = collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext([{ role: "user", content: "third task", timestamp: 1 }]), { apiKey: "test-key", reasoning: Effort.Medium }));
 			await Promise.resolve();
 			expect(thirdSend).not.toHaveBeenCalled();
 

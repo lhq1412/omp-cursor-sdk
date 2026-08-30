@@ -50,7 +50,7 @@ import { scrubSensitiveText } from "../shared/cursor-sensitive-text.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const EVIDENCE_PATH = join(root, "docs", "evidence", "cursor-cloud-smoke-matrix-latest.json");
-const MODEL = "cursor/grok-4.6";
+const MODEL = "cursor-sdk/grok-4.6";
 const CLOUD_RUN_ID_PATTERN = /^run-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const cloudSmokeShutdown = createCloudSmokeShutdownController((child) => terminateChild(child, { graceMs: 15_000 }));
 const argv = process.argv.slice(2);
@@ -83,7 +83,7 @@ class SmokeFailure extends Error {
 }
 
 function printHelp() {
-	console.log(`Required live Cursor cloud release smoke for pi-cursor-sdk.
+	console.log(`Required live Cursor cloud release smoke for omp-cursor-sdk.
 
 Usage:
   npm run smoke:cloud
@@ -198,7 +198,7 @@ function command(commandName, commandArgs, options = {}) {
 
 async function runSuccessfulPrintLane({ artifactDir, envOptions, message, marker, sessionId, timeoutMs }) {
 	const run = await runPi({ artifactDir, envOptions, message, sessionId, timeoutMs });
-	if (run.code !== 0) fail(`pi cloud lane exited ${run.code}${run.signal ? ` (${run.signal})` : ""}`, `${run.stderr}\n${run.stdout}`.trim());
+	if (run.code !== 0) fail(`OMP cloud lane exited ${run.code}${run.signal ? ` (${run.signal})` : ""}`, `${run.stderr}\n${run.stdout}`.trim());
 	if (!run.stdout.includes(marker)) fail(`cloud lane output missing ${marker}`, `${run.stderr}\n${run.stdout}`.trim());
 	const latest = readLatestCloudSmokeMetadata(artifactDir);
 	if (!latest) fail("cloud lane metadata missing", artifactDir);
@@ -211,7 +211,7 @@ async function runSuccessfulPrintLane({ artifactDir, envOptions, message, marker
 
 function assertCloudMetadata(metadata, metadataPath, options = {}) {
 	if (metadata.providerMeta?.runtime !== "cloud") fail("provider metadata did not record cloud runtime", metadataPath);
-	if (metadata.send?.bridgeEnabled !== false) fail("cloud send unexpectedly enabled pi bridge", metadataPath);
+	if (metadata.send?.bridgeEnabled !== false) fail("cloud send unexpectedly enabled OMP bridge", metadataPath);
 	if (metadata.send?.useNativeToolReplay !== false) fail("cloud send unexpectedly enabled native replay", metadataPath);
 	if (metadata.send?.agentMode !== "agent") fail("cloud send did not use agent mode", metadataPath);
 	if (!CLOUD_AGENT_ID_PATTERN.test(metadata.run?.agentId ?? "")) fail("cloud run did not return an exact cloud agent id", metadataPath);
@@ -308,7 +308,7 @@ async function runContextScenario({ artifactRoot, contextHandoff, timeoutMs }) {
 	try {
 		const first = await promptAndRead({ rpc, artifactDir, message: `Remember exact marker ${marker}. Reply exactly FIRST_OK.`, timeoutMs, expectedContextHandoff: contextHandoff });
 		if (lastNonEmptyLine(first.text) !== "FIRST_OK") fail(`cloud ${contextHandoff} setup turn did not return FIRST_OK`, first.text);
-		const second = await promptAndRead({ rpc, artifactDir, message: "What exact CLOUD_CONTEXT marker did I ask you to remember earlier in this pi session? Reply exactly MARKER=<marker> if visible, otherwise NO_MARKER.", timeoutMs, expectedContextHandoff: contextHandoff });
+		const second = await promptAndRead({ rpc, artifactDir, message: "What exact CLOUD_CONTEXT marker did I ask you to remember earlier in this OMP session? Reply exactly MARKER=<marker> if visible, otherwise NO_MARKER.", timeoutMs, expectedContextHandoff: contextHandoff });
 		return { contextHandoff, marker, first, second };
 	} finally {
 		await rpc.stop();
@@ -524,7 +524,7 @@ async function main() {
 	if (!process.env.CURSOR_API_KEY) fail("CURSOR_API_KEY is required for cloud smoke and verified cleanup");
 	const timeoutMs = Number(process.env.CURSOR_CLOUD_SMOKE_TIMEOUT_MS || 300000);
 	if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) fail("CURSOR_CLOUD_SMOKE_TIMEOUT_MS must be a positive number");
-	const artifactRoot = mkdtempSync(join(tmpdir(), "pi-cursor-cloud-smoke-"));
+	const artifactRoot = mkdtempSync(join(tmpdir(), "omp-cursor-sdk-cloud-smoke-"));
 	installCloudSmokeSignalHandlers(cloudSmokeShutdown, process, () => { process.exitCode = 1; });
 	let failure;
 	console.error(scrubSmokeText(`[cloud-smoke] artifacts: ${artifactRoot}`));

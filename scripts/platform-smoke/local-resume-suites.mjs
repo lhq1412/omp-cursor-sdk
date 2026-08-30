@@ -5,7 +5,7 @@ export const LOCAL_RESUME_SUITES = [
 		script: "smoke:local-resume",
 		marker: "local-resume-smoke-ok",
 		stderrPattern: /agent-[0-9a-f-]{36}\s+resumed across restart/i,
-		description: "Prove guarded local resume across a pi process restart.",
+		description: "Prove guarded local resume across an OMP process restart.",
 		cursorCalls: 2,
 	},
 	{
@@ -25,7 +25,7 @@ export const LOCAL_RESUME_SUITES = [
 		script: "smoke:local-resume:tool-surface",
 		marker: "local-resume-tool-surface-smoke-ok",
 		stderrPattern: /rejected after bridge builtin tool surface change/i,
-		description: "Prove local resume rejects stale handles after a Pi bridge/tool-surface change.",
+		description: "Prove local resume rejects stale handles after an OMP bridge/tool-surface change.",
 		cursorCalls: 3,
 	},
 	{

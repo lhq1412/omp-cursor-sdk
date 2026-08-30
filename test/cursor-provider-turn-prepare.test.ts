@@ -16,33 +16,22 @@ const { mockResolveCursorProviderTurnConfig, mockPrepareCursorProviderTurn } = v
 	mockPrepareCursorProviderTurn: vi.fn(),
 }));
 
-vi.mock("../src/cursor-provider-turn-prepare.js", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("../src/cursor-provider-turn-prepare.js")>();
-	return {
-		...actual,
-		resolveCursorProviderTurnConfig: mockResolveCursorProviderTurnConfig,
-		prepareCursorProviderTurn: mockPrepareCursorProviderTurn,
-	};
-});
+vi.mock("../src/cursor-provider-turn-prepare.js", () => ({
+	resolveCursorProviderTurnConfig: mockResolveCursorProviderTurnConfig,
+	prepareCursorProviderTurn: mockPrepareCursorProviderTurn,
+	requireCursorApiKey: vi.fn(async () => "test-key"),
+}));
 
-vi.mock("../src/cursor-provider-live-run-drain.js", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("../src/cursor-provider-live-run-drain.js")>();
-	return {
-		...actual,
-		drainExistingCursorLiveRunBeforeSend: vi.fn(async () => {
-			// Simulate the config changing underneath the turn while the drain await is in flight.
-			mockResolveCursorProviderTurnConfig.mockReturnValue(makeResolvedConfig("cloud"));
-			return "continue_send";
-		}),
-	};
-});
 
 describe("CursorProviderTurnRunner config snapshotting (F3)", () => {
 	it("resolves the effective config exactly once per turn and threads the same snapshot into prepare, even if config changes during drain", async () => {
 		const { CursorProviderTurnRunner } = await import("../src/cursor-provider-turn-runner.js");
 
 		const localSnapshot = makeResolvedConfig("local");
-		mockResolveCursorProviderTurnConfig.mockReturnValueOnce(localSnapshot);
+		mockResolveCursorProviderTurnConfig.mockImplementationOnce(() => {
+			queueMicrotask(() => mockResolveCursorProviderTurnConfig.mockReturnValue(makeResolvedConfig("cloud")));
+			return localSnapshot;
+		});
 		const prepareMarker = new Error("stop after prepare capture");
 		mockPrepareCursorProviderTurn.mockImplementation(async () => {
 			throw prepareMarker;

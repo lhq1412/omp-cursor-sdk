@@ -42,8 +42,8 @@ Notes:
   - Cursor.models.list() is the source of truth for fallback catalog metadata.
   - Checkpoint-derived context windows are optional input because collecting them
     requires successful local SDK runs; this script does not start agents.
-  - Context-window keys are limited to current selectable model IDs. Redundant
-    @fast/@slow aliases that send the default parameters collapse to one key.`);
+  - Context-window keys are limited to canonical SDK base IDs or catalog context
+    evidence such as model@272k. SDK aliases and stale identities are omitted.`);
 }
 
 const fail = createScriptFail("refresh-cursor-snapshots");
@@ -171,7 +171,7 @@ function formatContextWindows(models, checkpointWindows, fallbackContextWindow) 
 	const date = new Date().toISOString().slice(0, 10);
 	const sorted = [...merged.entries()].sort(([a], [b]) => (a === "default" ? -1 : b === "default" ? 1 : a.localeCompare(b)));
 	const lines = sorted.map(([modelId, contextWindow]) => `\t${JSON.stringify(modelId)}: ${contextWindow},`);
-	return `// Generated from Cursor SDK checkpoint tokenDetails.maxTokens on ${date}.\n// Refresh with: npm run refresh:cursor-snapshots -- --write --context-windows ~/.omp/agent/cursor-sdk-context-windows.json\n// Keys are current selectable model IDs. Equivalent default @fast/@slow selections\n// collapse to one key; stale and ambiguous aliases are omitted. Values are observed\n// or conservative default/non-Max-mode limits and may override a catalog context\n// label when the completed SDK checkpoint reports a different effective limit.\nexport const BUNDLED_CONTEXT_WINDOWS = {\n${lines.join("\n")}\n} as const satisfies Record<string, number>;\n`;
+	return `// Generated from Cursor SDK checkpoint tokenDetails.maxTokens on ${date}.\n// Refresh with: npm run refresh:cursor-snapshots -- --write --context-windows ~/.omp/agent/cursor-sdk-context-windows.json\n// Keys are canonical SDK base IDs or catalog context evidence such as model@272k.\n// Two-tier contexts retain separate evidence keys even when their OMP model identity\n// converges. SDK aliases and stale IDs are omitted. Values are observed or conservative\n// default/non-Max-mode limits and may override a catalog context label when the\n// completed SDK checkpoint reports a different effective limit.\nexport const BUNDLED_CONTEXT_WINDOWS = {\n${lines.join("\n")}\n} as const satisfies Record<string, number>;\n`;
 }
 
 const args = parseRefreshArgs(process.argv.slice(2));

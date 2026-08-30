@@ -12,6 +12,7 @@ import {
 	runCursorCloudLifecycleCommand,
 } from "../src/cursor-cloud-lifecycle.js";
 import { MAX_CLOUD_REPORT_BRANCHES } from "../src/cursor-cloud-reporting.js";
+import { CURSOR_SDK_PROVIDER_ID } from "../src/cursor-model.js";
 import { createPiHarness, makeAssistantMessage, type PiHarness } from "./helpers/pi-harness.js";
 
 function lifecycleEntry(id: string, data: Record<string, unknown>): SessionEntry {
@@ -108,7 +109,7 @@ describe("Cursor cloud lifecycle ledger", () => {
 	it("tracks Pi's installed first-assistant persistence boundary", () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "cursor-cloud-pi-session-"));
 		try {
-			const manager = SessionManager.create(tempDir, tempDir, { id: "cloud-lifecycle-contract" });
+			const manager = SessionManager.create(tempDir, tempDir);
 			manager.appendCustomEntry(CLOUD_LIFECYCLE_ENTRY_TYPE, { contract: true });
 			expect(existsSync(manager.getSessionFile()!)).toBe(false);
 		} finally {
@@ -130,7 +131,7 @@ describe("Cursor cloud lifecycle ledger", () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "cursor-cloud-journal-nofollow-"));
 		const outsideDir = mkdtempSync(join(tmpdir(), "cursor-cloud-journal-target-"));
 		try {
-			const manager = SessionManager.create(tempDir, tempDir, { id: "journal-nofollow" });
+			const manager = SessionManager.create(tempDir, tempDir);
 			manager.appendMessage({ role: "user", content: "root", timestamp: 1 });
 			manager.appendMessage(makeAssistantMessage("persist session"));
 			const recordedAgent = cloudAgentId(1);
@@ -181,13 +182,13 @@ describe("Cursor cloud lifecycle ledger", () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "cursor-cloud-lifecycle-"));
 		const sessionId = "first-turn-cloud-recovery";
 		try {
-			const firstManager = SessionManager.create(tempDir, tempDir, { id: sessionId });
+			const firstManager = SessionManager.create(tempDir, tempDir);
 			firstManager.appendMessage({ role: "user", content: "start cloud work", timestamp: 1 });
 			const firstSessionFile = firstManager.getSessionFile()!;
 			const firstSessionManager = {
 				getBranch: () => firstManager.getBranch(),
 				getSessionFile: () => firstSessionFile,
-				getSessionId: () => firstManager.getSessionId(),
+				getSessionId: () => sessionId,
 			};
 			const pi = createPiHarness();
 			pi.appendEntry.mockImplementation((customType, data) => firstManager.appendCustomEntry(customType, data));
@@ -210,12 +211,12 @@ describe("Cursor cloud lifecycle ledger", () => {
 			});
 
 			await new Promise((resolve) => setTimeout(resolve, 2));
-			const recoveryManager = SessionManager.create(tempDir, tempDir, { id: sessionId });
+			const recoveryManager = SessionManager.create(tempDir, tempDir);
 			const recoverySessionFile = recoveryManager.getSessionFile()!;
 			const recoverySessionManager = {
 				getBranch: () => recoveryManager.getBranch(),
 				getSessionFile: () => recoverySessionFile,
-				getSessionId: () => recoveryManager.getSessionId(),
+				getSessionId: () => sessionId,
 			};
 			expect(recoverySessionFile).not.toBe(firstSessionFile);
 			expect(cloudLifecycleTestUtils.durableLedgerPath(recoverySessionFile, sessionId)).toBe(ledgerPath);
@@ -244,7 +245,7 @@ describe("Cursor cloud lifecycle ledger", () => {
 		resetCloudLifecycleTestState();
 		const tempDir = mkdtempSync(join(tmpdir(), "cursor-cloud-first-turn-branch-"));
 		try {
-			const manager = SessionManager.create(tempDir, tempDir, { id: "first-turn-branch" });
+			const manager = SessionManager.create(tempDir, tempDir);
 			const rootUserId = manager.appendMessage({ role: "user", content: "root", timestamp: 1 });
 			const sessionManager = {
 				getBranch: () => manager.getBranch(),
@@ -289,7 +290,7 @@ describe("Cursor cloud lifecycle ledger", () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "cursor-cloud-reused-session-"));
 		const sessionId = "reused-session";
 		try {
-			const manager = SessionManager.create(tempDir, tempDir, { id: sessionId });
+			const manager = SessionManager.create(tempDir, tempDir);
 			const sessionFile = manager.getSessionFile()!;
 			const journalPath = cloudLifecycleTestUtils.durableLedgerPath(sessionFile, sessionId);
 			const base = {
@@ -327,7 +328,7 @@ describe("Cursor cloud lifecycle ledger", () => {
 		resetCloudLifecycleTestState();
 		const tempDir = mkdtempSync(join(tmpdir(), "cursor-cloud-sibling-"));
 		try {
-			const manager = SessionManager.create(tempDir, tempDir, { id: "cloud-sibling-session" });
+			const manager = SessionManager.create(tempDir, tempDir);
 			manager.appendMessage({ role: "user", content: "root", timestamp: 1 });
 			const sharedParentId = manager.appendMessage(makeAssistantMessage("root"));
 			manager.appendMessage({ role: "user", content: "branch A", timestamp: 3 });
@@ -363,7 +364,7 @@ describe("Cursor cloud lifecycle ledger", () => {
 		resetCloudLifecycleTestState();
 		const tempDir = mkdtempSync(join(tmpdir(), "cursor-cloud-delete-reconcile-"));
 		try {
-			const manager = SessionManager.create(tempDir, tempDir, { id: "cloud-delete-reconcile" });
+			const manager = SessionManager.create(tempDir, tempDir);
 			manager.appendMessage({ role: "user", content: "root", timestamp: 1 });
 			manager.appendMessage(makeAssistantMessage("root"));
 			const sessionManager = {
@@ -404,7 +405,7 @@ describe("Cursor cloud lifecycle ledger", () => {
 		resetCloudLifecycleTestState();
 		const tempDir = mkdtempSync(join(tmpdir(), "cursor-cloud-mutation-protocol-"));
 		try {
-			const manager = SessionManager.create(tempDir, tempDir, { id: "cloud-mutation-protocol" });
+			const manager = SessionManager.create(tempDir, tempDir);
 			manager.appendMessage({ role: "user", content: "root", timestamp: 1 });
 			manager.appendMessage(makeAssistantMessage("root"));
 			const sessionManager = {
@@ -539,7 +540,7 @@ describe("Cursor cloud lifecycle ledger", () => {
 		resetCloudLifecycleTestState();
 		const tempDir = mkdtempSync(join(tmpdir(), "cursor-cloud-missing-auth-"));
 		try {
-			const original = SessionManager.create(tempDir, tempDir, { id: "missing-auth-orphan" });
+			const original = SessionManager.create(tempDir, tempDir);
 			original.appendMessage({ role: "user", content: "first turn", timestamp: 1 });
 			const originalSessionManager = {
 				getBranch: () => original.getBranch(),
@@ -554,7 +555,7 @@ describe("Cursor cloud lifecycle ledger", () => {
 			const journalPath = cloudLifecycleTestUtils.durableLedgerPath(original.getSessionFile()!, original.getSessionId());
 			const journalBefore = readFileSync(journalPath, "utf8");
 
-			const restarted = SessionManager.create(tempDir, tempDir, { id: original.getSessionId() });
+			const restarted = SessionManager.create(tempDir, tempDir);
 			pi.appendEntry.mockImplementation((customType, data) => restarted.appendCustomEntry(customType, data));
 			pi.appendEntry.mockClear();
 			await pi.runSessionStart({ cwd: tempDir, sessionManager: restarted });
@@ -640,7 +641,7 @@ describe("Cursor cloud lifecycle ledger", () => {
 				modelRegistry: { getApiKeyForProvider } as never,
 				sessionManager: { getBranch: vi.fn(() => [recordEntry()]) },
 			});
-			expect(getApiKeyForProvider).toHaveBeenCalledWith("cursor");
+			expect(getApiKeyForProvider).toHaveBeenCalledWith(CURSOR_SDK_PROVIDER_ID);
 			expect(archive).toHaveBeenCalledWith(cloudAgentId(), { apiKey: "env-key" });
 		} finally {
 			if (originalKey === undefined) delete process.env.CURSOR_API_KEY;
