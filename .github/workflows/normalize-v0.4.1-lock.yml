@@ -1,0 +1,50 @@
+name: normalize-v0.4.1-lock
+
+on:
+  push:
+    branches:
+      - release/v0.4.1
+    paths:
+      - .github/workflows/normalize-v0.4.1-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: release/v0.4.1
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Restore baseline lockfile and bump only release version fields
+        run: |
+          git show 326d544e7df616c358a6ef80d35b19c2ac1b8937:package-lock.json > package-lock.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'package-lock.json';
+          let text = fs.readFileSync(path, 'utf8');
+          const from = '"version": "0.4.0"';
+          const to = '"version": "0.4.1"';
+          for (let i = 0; i < 2; i++) {
+            const index = text.indexOf(from);
+            if (index < 0) throw new Error(`Missing expected ${i + 1}/2 release version field`);
+            text = text.slice(0, index) + to + text.slice(index + from.length);
+          }
+          const lock = JSON.parse(text);
+          if (lock.version !== '0.4.1' || lock.packages?.['']?.version !== '0.4.1') {
+            throw new Error('Failed to set both package-lock release versions');
+          }
+          fs.writeFileSync(path, text);
+          NODE
+          git diff --check -- package-lock.json
+      - name: Commit normalized lockfile
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package-lock.json
+          git diff --cached --quiet && { echo 'No lockfile changes to commit'; exit 1; }
+          git commit -m 'chore(release): normalize v0.4.1 package lock'
+          git push origin HEAD:release/v0.4.1
