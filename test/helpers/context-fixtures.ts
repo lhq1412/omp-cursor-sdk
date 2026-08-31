@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { vi } from "vitest";
 import { AuthStorage, SqliteAuthCredentialStore } from "@oh-my-pi/pi-ai";
 import type { AssistantMessage, AssistantMessageEvent, Context } from "@oh-my-pi/pi-ai";
-import { ModelRegistry, type BuildSystemPromptOptions, type ExtensionCommandContext, type ExtensionContext } from "@oh-my-pi/pi-coding-agent";
+import { ModelRegistry, type ExtensionCommandContext, type ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { makeModel } from "./model-fixtures.js";
 import type { ExtensionCommandContextOverrides, ExtensionContextOverrides } from "./pi-harness-types.js";
 
@@ -17,10 +17,6 @@ const sharedTestModelRegistry = new ModelRegistry(
 
 function getSharedTestModelRegistry(): ModelRegistry {
 	return sharedTestModelRegistry;
-}
-
-export function createDefaultSystemPromptOptions(cwd: string): BuildSystemPromptOptions {
-	return { cwd };
 }
 
 function createMinimalSessionManager(cwd: string, overrides: Partial<ExtensionContext["sessionManager"]> = {}): ExtensionContext["sessionManager"] {

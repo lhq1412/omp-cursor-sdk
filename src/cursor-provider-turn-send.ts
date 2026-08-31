@@ -7,6 +7,7 @@ import {
 import { CursorLiveRunAbortError } from "./cursor-live-run-coordinator.js";
 import { cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
 import { consumeCursorLocalForceOverride } from "./cursor-runtime-state.js";
+import { initializeCursorLocalBilledUsage } from "./cursor-sdk-billed-usage.js";
 import { recordCursorSessionAgentLineage } from "./cursor-session-agent-lineage.js";
 import type { installCursorSdkProcessErrorGuard } from "./cursor-sdk-process-error-guard.js";
 import type {
@@ -76,6 +77,7 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 		throwIfAborted();
 		let cursorAgentMessageOffset: number | undefined;
 		if (prepared.runtimeTarget === "local") {
+			await initializeCursorLocalBilledUsage(agent, agent.agentId);
 			try {
 				cursorAgentMessageOffset = await countCursorAgentMessages(agent.agentId, cwd, prepared.sessionAgentLease.store);
 			} catch (error) {

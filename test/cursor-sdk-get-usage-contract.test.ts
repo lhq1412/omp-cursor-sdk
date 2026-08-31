@@ -29,6 +29,9 @@ describe("installed Cursor SDK 1.0.27 getUsage contract", () => {
 		expect(usageTypes).toContain("runId: string");
 		expect(usageTypes).toContain("rawCostCents: number");
 		expect(usageTypes).toContain("chargedCents: number");
+		expect(usageTypes).toContain("cost can lag briefly after a run ends while billing events land");
+		expect(usageTypes).toContain("Local agent entries are per-turn groups");
+		expect(usageTypes).toContain("keyed by usage UUID");
 
 		const bundle = readFileSync(require.resolve("@cursor/sdk"), "utf8");
 		expect(bundle).toContain(

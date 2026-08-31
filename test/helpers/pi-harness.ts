@@ -20,7 +20,6 @@ export type {
 export {
 	collectAssistantEvents,
 	collectEvents,
-	createDefaultSystemPromptOptions,
 	createExtensionCommandContext,
 	createExtensionTestContext,
 	makeAssistantMessage,

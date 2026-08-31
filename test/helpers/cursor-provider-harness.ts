@@ -49,6 +49,7 @@ import {
 import { __testUtils as cursorSessionScopeTestUtils } from "../../src/cursor-session-scope.js";
 import { __testUtils as cursorSessionResumeTestUtils } from "../../src/cursor-session-agent-resume.js";
 import { __testUtils as cursorSessionLineageTestUtils } from "../../src/cursor-session-agent-lineage.js";
+import { __testUtils as cursorBilledUsageTestUtils } from "../../src/cursor-sdk-billed-usage.js";
 import { __testUtils as cursorStateTestUtils } from "../../src/cursor-state.js";
 import { __testUtils as cursorHttp1TestUtils } from "../../src/cursor-http1.js";
 import { CURSOR_HTTP1_ENV } from "../../src/cursor-config.js";
@@ -58,7 +59,7 @@ import { __testUtils as modelDiscoveryTestUtils } from "../../src/model-discover
 import { __testUtils as nativeToolDisplayTestUtils } from "../../src/cursor-native-tool-display-state.js";
 import { registerCursorNativeToolDisplay } from "../../src/cursor-native-tool-display-registration.js";
 import type { CursorNativeToolDisplayExtensionApi } from "../../src/cursor-native-tool-display-registration.js";
-import type { ModelListItem, Run, SDKAgent, SendOptions } from "@cursor/sdk";
+import type { ModelListItem, Run } from "@cursor/sdk";
 import type { AssistantMessage, AssistantMessageEvent, TextContent, ImageContent, ToolCall } from "@oh-my-pi/pi-ai";
 import type { ExtensionAPI, ToolInfo } from "@oh-my-pi/pi-coding-agent";
 import { installCursorSessionStoreMock } from "./cursor-session-store.js";
@@ -67,12 +68,9 @@ import {
 	createBridgePiHarness,
 	createBuiltinToolInfo,
 	createExtensionCommandContext,
-	createExtensionTestContext,
 	createPiHarness,
 	getCursorPiBridgeMcpUrl,
-	makeAssistantMessage,
 	makeContext,
-	makeModel,
 	type ExtensionContextOverrides,
 	type RegisteredTool,
 } from "./pi-harness.js";
@@ -396,6 +394,7 @@ export async function resetCursorProviderTestState(): Promise<void> {
 	cursorProviderTestUtils.resetCursorNativeReplayIdleDisposeMs();
 	await cursorProviderTestUtils.resetSessionCursorAgents();
 	cursorProviderTestUtils.resetSessionTurnQueue();
+	cursorBilledUsageTestUtils.reset();
 	cursorSessionScopeTestUtils.reset();
 	cursorSessionResumeTestUtils.reset();
 	cursorSessionLineageTestUtils.reset();

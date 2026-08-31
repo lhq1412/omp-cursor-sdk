@@ -156,7 +156,7 @@ export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorR
 	});
 	const billed = await attachCursorSdkBilledTurnUsage({
 		agent: params.prepared.agent,
-		agentId: params.run.agentId,
+		agentId: params.prepared.runtimeTarget === "local" ? params.prepared.agent.agentId : params.run.agentId,
 		runtime: params.prepared.runtimeTarget,
 		runId: params.run.id,
 	});
