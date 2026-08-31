@@ -6,7 +6,7 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 
 ## Repository map
 
-- `src/index.ts` registers the OMP extension, independent provider, fallback warnings, Cursor runtime controls, native replay wrappers, question tool, and OMP tool bridge hooks.
+- `src/index.ts` registers the OMP extension, independent provider, Cursor runtime controls, native replay wrappers, question tool, and OMP tool bridge hooks.
 - `src/model-discovery.ts` discovers Cursor models, builds OMP model metadata, hydrates per-model selection metadata, and defines fallback models.
 - `shared/cursor-model-selection-identities.mjs` owns canonical selectable model/context identities, exactly-two-tier native `extendedContext` convergence, and context-window evidence-key normalization shared by runtime discovery and the snapshot generator; its `.d.mts` file owns the TypeScript contract.
 - `src/cursor-provider.ts` is a thin `streamCursor()` wrapper that delegates turn execution to the turn runner.
@@ -69,7 +69,6 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 - `src/cursor-pi-tool-bridge-diagnostics.ts` owns bridge debug diagnostics serialization and stderr logging.
 - `src/cursor-pi-tool-bridge-mcp.ts` owns MCP name/schema conversion and pi-to-MCP content helpers for the bridge.
 - `src/cursor-model-lifecycle.ts` owns the canonical effective Cursor model lifecycle/sync helper for `session_start`, `before_agent_start`, `model_select` with event-model override, and `turn_start`; callers keep Cursor-only filtering explicit.
-- `src/cursor-fallback-warning.ts` owns per-session Cursor fallback catalog warning activation.
 - `src/cursor-question-tool.ts` owns the bridge-exposed `cursor_ask_question` pi UI tool and the `pi-cursor-sdk:ask-question:blocked` wait-state event.
 - `src/cursor-native-tool-display-registration.ts` owns native replay tool registration and model-scoped activation.
 - `src/cursor-native-replay-routing.ts` owns canonical native replay disposition (`queue_replay` / `inactive_trace` / `transcript_trace`) and context-tool partitioning for drain.

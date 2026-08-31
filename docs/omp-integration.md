@@ -228,7 +228,7 @@ Tool visibility, aliases, labels, replay side-effect policy, and transcript form
 
 OMP 18 active skills come from `getActiveSkills()` and hidden skills are excluded from Cursor invocation.
 
-For local SDK runs with all Cursor setting sources enabled, the SDK also loads project instruction files. The extension removes only confidently matched OMP `<repo-rules>` entries for the same `AGENTS.md`/`CLAUDE.md` sources. Ambiguous markup fails closed and leaves the OMP prompt unchanged. Cloud runs preserve the full prompt because the remote environment cannot be assumed to load local files.
+For local SDK runs with all Cursor setting sources enabled, the SDK also loads project instruction files. The extension removes only confidently matched OMP `<repo-rules>` entries for the same `AGENTS.md`/`CLAUDE.md` sources. Ambiguous markup is preserved unchanged. Cloud runs preserve the full prompt because the remote environment cannot be assumed to load local files.
 
 ## 9. Roles, subagents, and fallback
 
@@ -244,6 +244,13 @@ retry:
 ```
 
 A contract test loads OMP 18's installed fallback resolver and proves both the empty-chain and explicit-chain cases. The extension must not add hidden aliases, retry shims, or credential crossover to simulate fallback.
+
+### Known Cursor SDK contract gaps
+
+The installed `@cursor/sdk@1.0.27` types leave two integrations deliberately blocked:
+
+- `ModelListItem` exposes catalog metadata but no local/cloud availability field, and there is no maintained account-scoped availability preflight. OMP therefore cannot annotate or filter `/model` safely by runtime; `Agent.create()` remains a best-effort catalog check and backend create/send errors are authoritative. Revisit runtime annotations, compatibility warnings, and catalog-drift tests only when the SDK/API exposes authoritative availability metadata; never infer compatibility from catalog size or model parameters.
+- `SDKCustomToolContext` exposes only `toolCallId`, with no abort signal, deadline, or cancellation channel. The loopback MCP bridge remains the canonical local OMP-tool transport. Revisit `local.customTools` only if the SDK adds that lifecycle contract or the extension explicitly owns aborts, timeouts, child cleanup, diagnostics, permissions, and equivalent platform-smoke coverage.
 
 ## 10. OMP host adaptation boundary
 

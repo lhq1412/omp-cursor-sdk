@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -44,6 +44,13 @@ const ownedRepo = {
 	ownershipToken,
 	description: ownedDescription,
 };
+function resolveNodeExecutable(): string {
+	const probe = spawnSync("node", ["-p", "process.execPath"], { encoding: "utf8" });
+	if (probe.status !== 0 || !probe.stdout.trim()) {
+		throw new Error(`Node executable is required for the EPIPE contract test: ${probe.stderr}`);
+	}
+	return probe.stdout.trim();
+}
 
 describe("cloud smoke helper contracts", () => {
 	it("fail-closes cloud agent cleanup", async () => {
@@ -629,9 +636,9 @@ describe("cloud smoke helper contracts", () => {
 	}, 15_000);
 
 	it.skipIf(process.platform === "win32")("routes an actual RPC stdin EPIPE into terminal state", async () => {
-		const child = spawn(process.execPath, [
+		const child = spawn(resolveNodeExecutable(), [
 			"-e",
-			"require('node:fs').closeSync(0); console.log('READY'); setTimeout(() => {}, 2000)",
+			"if (process.versions.bun) throw new Error('expected Node child'); require('node:fs').closeSync(0); console.log('READY_NODE'); setTimeout(() => {}, 2000)",
 		], { stdio: ["pipe", "pipe", "ignore"] });
 		const closed = new Promise<void>((resolveClose) => { child.once("close", () => resolveClose()); });
 		const shutdown = createCloudSmokeShutdownController(async () => {});
@@ -642,13 +649,14 @@ describe("cloud smoke helper contracts", () => {
 		const terminalState = createCloudSmokeTerminalFailureState(resolveTerminalError);
 		installCloudSmokeChildErrorHandlers(child, shutdown, () => { shutdownRoutes++; }, terminalState.record);
 		try {
-			await new Promise<void>((resolveReady, rejectReady) => {
+			const ready = await new Promise<string>((resolveReady, rejectReady) => {
 				const timer = setTimeout(() => rejectReady(new Error("EPIPE fixture did not become ready")), 5_000);
-				child.stdout.once("data", () => {
+				child.stdout.once("data", (chunk) => {
 					clearTimeout(timer);
-					resolveReady();
+					resolveReady(String(chunk));
 				});
 			});
+			expect(ready).toContain("READY_NODE");
 			child.stdin.write(Buffer.alloc(1024 * 1024));
 			const error = await new Promise<Error>((resolveError, rejectError) => {
 				const timer = setTimeout(() => rejectError(new Error("stdin EPIPE was not routed")), 5_000);

@@ -177,7 +177,7 @@ Cursor Cloud remains explicit opt-in and fail-closed. It requires acknowledgemen
 - `cursor_ask_question` and the active OMP skill registry are bridged when enabled.
 - OMP built-in `read`, `bash`, `edit`, `write`, `grep`, `find`, and `ls` definitions are never shadowed. OMP exposes metadata for those tools, not wrapped definitions that an extension can safely delegate to.
 - The extension registers only the neutral `cursor` replay tool for Cursor SDK activity cards. If another extension owns that name, registration is skipped and scrubbed transcript traces remain available.
-- For local Cursor runs with `PI_CURSOR_SETTING_SOURCES=all`, overlapping OMP `<repo-rules>` entries for project `AGENTS.md`/`CLAUDE.md` are removed before send because the Cursor SDK loads those sources itself. Ambiguous markup fails closed. Cloud runs preserve the complete OMP prompt.
+- For local Cursor runs with `PI_CURSOR_SETTING_SOURCES=all`, overlapping OMP `<repo-rules>` entries for project `AGENTS.md`/`CLAUDE.md` are removed before send because the Cursor SDK loads those sources itself. Ambiguous markup is preserved unchanged. Cloud runs preserve the complete OMP prompt.
 
 See [Cursor tool surfaces](docs/cursor-tool-surfaces.md) and [native replay](docs/cursor-native-tool-replay.md) for detailed controls.
 

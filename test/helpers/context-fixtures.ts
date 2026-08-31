@@ -1,11 +1,19 @@
+import { createRequire } from "node:module";
 import { vi } from "vitest";
-import { AuthStorage } from "@oh-my-pi/pi-ai";
+import { AuthStorage, SqliteAuthCredentialStore } from "@oh-my-pi/pi-ai";
 import type { AssistantMessage, AssistantMessageEvent, Context } from "@oh-my-pi/pi-ai";
 import { ModelRegistry, type BuildSystemPromptOptions, type ExtensionCommandContext, type ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { makeModel } from "./model-fixtures.js";
 import type { ExtensionCommandContextOverrides, ExtensionContextOverrides } from "./pi-harness-types.js";
 
-const sharedTestModelRegistry = new ModelRegistry(await AuthStorage.create(":memory:"), undefined, { ignoreLocalModelConfig: true });
+const require = createRequire(import.meta.url);
+type SqliteDatabase = ConstructorParameters<typeof SqliteAuthCredentialStore>[0];
+const { Database } = require("bun:sqlite") as { Database: new (filename: string) => SqliteDatabase };
+const sharedTestModelRegistry = new ModelRegistry(
+	new AuthStorage(new SqliteAuthCredentialStore(new Database(":memory:"))),
+	undefined,
+	{ ignoreLocalModelConfig: true },
+);
 
 function getSharedTestModelRegistry(): ModelRegistry {
 	return sharedTestModelRegistry;
