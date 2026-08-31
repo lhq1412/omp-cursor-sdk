@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3 - 2026-08-31
+
+### Changed
+
+- Restore direct GitHub source installation by keeping MCP SDK 1.30.0 and Hono 2.0.12 as exact ordinary dependencies instead of `bundledDependencies`.
+
 ## 0.4.2 - 2026-08-31
 
 ### Changed
