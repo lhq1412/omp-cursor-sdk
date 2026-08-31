@@ -109,6 +109,99 @@ describe("streamCursor local resume", () => {
 		expect(prompt.text).toContain("prefer pi__mcp for MCP work and pi__subagent for delegation");
 	});
 
+	it("baselines resumed billed history before send and charges only the new usage UUID", async () => {
+		process.env.PI_CURSOR_LOCAL_RESUME = "1";
+		const context = makeContext();
+		const historicalA = { inputTokens: 10, outputTokens: 2, cacheReadTokens: 4, cacheWriteTokens: 1 };
+		const historicalB = { inputTokens: 20, outputTokens: 3, cacheReadTokens: 8, cacheWriteTokens: 2 };
+		const currentC = { inputTokens: 30, outputTokens: 4, cacheReadTokens: 12, cacheWriteTokens: 3 };
+		const getUsage = vi.fn()
+			.mockResolvedValueOnce({
+				usage: { inputTokens: 30, outputTokens: 5, cacheReadTokens: 12, cacheWriteTokens: 3 },
+				runs: [
+					{ runId: "usage-a", usage: historicalA },
+					{ runId: "usage-b", usage: historicalB },
+				],
+			})
+			.mockResolvedValueOnce({
+				usage: { inputTokens: 60, outputTokens: 9, cacheReadTokens: 24, cacheWriteTokens: 6 },
+				runs: [
+					{ runId: "usage-a", usage: historicalA },
+					{ runId: "usage-b", usage: historicalB },
+					{ runId: "usage-c", usage: currentC },
+				],
+			});
+		const mockSend = vi.fn().mockResolvedValue(asMockCursorRun({
+			id: "run-resumed-billed",
+			agentId: "run-reported-agent",
+			status: "finished",
+			wait: vi.fn().mockResolvedValue({ id: "run-resumed-billed", status: "finished", result: "done" }),
+		}));
+		mockedResume.mockResolvedValueOnce(asMockSdkAgent({ agentId: "agent-old", getUsage, send: mockSend }));
+		seedResumeHandle("/tmp/resume-billed-session.jsonl", computeCursorContextFingerprint(context));
+
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), context, { apiKey: "test-key" }));
+
+		expect(getUsage).toHaveBeenCalledTimes(2);
+		expect(getUsage.mock.invocationCallOrder[0]).toBeLessThan(mockSend.mock.invocationCallOrder[0]!);
+		expect(getDoneEvent(events).message.usage).toMatchObject({
+			input: 15,
+			output: 4,
+			cacheRead: 12,
+			cacheWrite: 3,
+		});
+	});
+
+	it("retries a failed baseline before the next send and bills only that next turn", async () => {
+		const firstUsage = { inputTokens: 10, outputTokens: 2, cacheReadTokens: 4, cacheWriteTokens: 1 };
+		const secondUsage = { inputTokens: 20, outputTokens: 3, cacheReadTokens: 8, cacheWriteTokens: 2 };
+		const getUsage = vi.fn()
+			.mockRejectedValueOnce(new Error("usage unavailable"))
+			.mockResolvedValueOnce({ usage: firstUsage, runs: [{ runId: "usage-first", usage: firstUsage }] })
+			.mockResolvedValueOnce({
+				usage: { inputTokens: 30, outputTokens: 5, cacheReadTokens: 12, cacheWriteTokens: 3 },
+				runs: [
+					{ runId: "usage-first", usage: firstUsage },
+					{ runId: "usage-second", usage: secondUsage },
+				],
+			});
+		const mockSend = vi.fn()
+			.mockResolvedValueOnce(asMockCursorRun({
+				id: "run-first",
+				agentId: "run-reported-agent",
+				status: "finished",
+				wait: vi.fn().mockResolvedValue({ id: "run-first", status: "finished", result: "first" }),
+			}))
+			.mockResolvedValueOnce(asMockCursorRun({
+				id: "run-second",
+				agentId: "run-reported-agent",
+				status: "finished",
+				wait: vi.fn().mockResolvedValue({ id: "run-second", status: "finished", result: "second" }),
+			}));
+		mockCreatedAgent({ agentId: "agent-retry", getUsage, send: mockSend });
+		const firstContext = makeContext();
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), firstContext, { apiKey: "test-key" }));
+		expect(getUsage).toHaveBeenCalledTimes(1);
+
+		const secondContext = makeContext([
+			...firstContext.messages,
+			makeAssistantMessage("first"),
+			{ role: "user", content: "Follow up", timestamp: 3 },
+		]);
+		const secondEvents = await collectEvents(streamCursor(makeModel("gpt-5.5"), secondContext, { apiKey: "test-key" }));
+
+		expect(mockedCreate).toHaveBeenCalledTimes(1);
+		expect(mockSend).toHaveBeenCalledTimes(2);
+		expect(getUsage).toHaveBeenCalledTimes(3);
+		expect(getUsage.mock.invocationCallOrder[1]).toBeLessThan(mockSend.mock.invocationCallOrder[1]!);
+		expect(getDoneEvent(secondEvents).message.usage).toMatchObject({
+			input: 10,
+			output: 3,
+			cacheRead: 8,
+			cacheWrite: 2,
+		});
+	});
+
 	it.each([
 		{ reason: "incremental_threshold", fingerprint: (context: ReturnType<typeof makeContext>) => computeCursorContextFingerprint(context), count: 20 },
 		{ reason: "context_divergence", fingerprint: () => "stale-context", count: 0 },

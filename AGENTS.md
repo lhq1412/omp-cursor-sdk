@@ -12,7 +12,7 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 - `src/cursor-provider.ts` is a thin `streamCursor()` wrapper that delegates turn execution to the turn runner.
 - `src/cursor-provider-turn-runner.ts` orchestrates provider turns (pre-send drain, prepare, send, finalize, emit, cleanup).
 - `src/cursor-provider-turn-prepare.ts` owns turn prepare (auth, MCP timeout install, effective local HTTP transport configuration, session agent, live-run setup, coordinator).
-- `src/cursor-provider-turn-send.ts` owns SDK `agent.send()` wiring and abort listener registration.
+- `src/cursor-provider-turn-send.ts` owns pre-send local billed-usage baselining, SDK `agent.send()` wiring, and abort listener registration.
 - `src/cursor-provider-turn-finalize.ts` owns unified `awaitFinalizeCursorRunOutcome()` (wait, transcript replay, incomplete tools, artifacts, context cache).
 - `src/cursor-provider-turn-emit.ts` owns live vs direct emission from finalized outcomes.
 - `src/cursor-provider-turn-types.ts` owns immutable turn phase data and explicit phase result types; phase-local cleanup stays inside the owning phase.
@@ -52,7 +52,7 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 - `shared/cursor-sensitive-text.mjs` owns canonical secret scrubbing; `src/cursor-sensitive-text.ts` and maintainer scripts import it directly.
 - `shared/cursor-setting-sources.mjs` owns canonical `PI_CURSOR_SETTING_SOURCES` parsing/serialization; `src/cursor-setting-sources.ts` and maintainer scripts import it directly.
 - `src/cursor-usage-accounting.ts` owns pi usage mapping from local turn-ended and billed `Agent.getUsage()` spend, plus post-compaction occupancy floors.
-- `src/cursor-sdk-billed-usage.ts` owns `Agent.getUsage()` fetch, local usage-UUID watermarks, and billed turn selection.
+- `src/cursor-sdk-billed-usage.ts` owns `Agent.getUsage()` fetch, process-local per-SDKAgent first-send baselines, local usage-UUID watermarks, retryable fail-closed baseline state, and billed turn selection.
 - `scripts/lib/cursor-smoke-env.mjs`, `scripts/lib/cursor-smoke-shell.sh`, and `scripts/lib/cursor-visual-render.mjs` own maintainer smoke PATH/env isolation and browser-rendered visual artifacts; smoke runners should consume these helpers instead of duplicating debug env names, sealed Node PATH logic, or xterm/Playwright rendering.
 - `scripts/lib/cloud-smoke-github.mjs` owns throwaway GitHub repository identity, provisioning, and deletion proof; `scripts/lib/cloud-smoke-cleanup-evidence.mjs` owns Cloud agent cleanup, retained evidence/provenance, and release-gate resource coordination; `scripts/lib/cloud-smoke-shutdown.mjs` owns signal-safe detached-child shutdown; `scripts/lib/cloud-smoke-pi-runner.mjs` owns print/RPC child transport; `scripts/lib/cloud-smoke-artifacts.mjs` owns metadata and lifecycle artifact readers. `scripts/cloud-runtime-smoke.mjs` keeps concrete lane orchestration.
 - `scripts/platform-smoke/artifact-bundle-contract.mjs` owns the canonical platform artifact bundle path/size/shape contract; `scripts/platform-smoke/artifact-fs-safety.mjs` owns no-follow traversal, bounded reads, extraction preflight, and spill writes; `scripts/platform-smoke/artifact-anchored-extract.mjs` plus `artifact-openat-extract.c` own descriptor-relative POSIX extraction/rollback and fail-closed Windows-controller handling; `scripts/platform-smoke/artifact-secrets.mjs` owns bundle secret-scan/redaction; `scripts/platform-smoke/wrapped-line-match.mjs` owns terminal-wrap-aware line matching. Platform smoke scripts should consume these instead of duplicating fs-safety or redaction logic.
@@ -113,7 +113,7 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 
 ## Setup and commands
 
-- Install dependencies: `npm install`.
+- Install dependencies: `npm install`. CI uses `bun ci`; keep `bun.lock` and `package-lock.json` aligned whenever dependency specs change.
 - OMP loads the TypeScript extension source through Bun; this package has no build step. Direct development runs must load `./src/index.ts` or an installed package.
 - Run tests: `npm test`
 - Typecheck (src + tests): `npm run typecheck`

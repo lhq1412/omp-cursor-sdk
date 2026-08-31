@@ -21,6 +21,8 @@
 - Keep OMP's built-in `cursor/*` provider and credentials isolated from Cursor SDK turns; remove placeholder credentials and require an explicit `cursor-sdk` login, `--api-key`, provider credential, or `CURSOR_API_KEY`.
 - Stop shadowing OMP builtin tool names. Register only the neutral `cursor` replay surface, fail soft on ownership conflicts, and keep concurrent lifecycle registration idempotent without a permanent process latch.
 - Route generated fallback rows through OMP's authoritative dynamic discovery instead of static runtime overlays, preserving unauthenticated/empty-fetch availability while allowing native `extendedContext` policy to clamp and restore the effective model window.
+- Baseline whole-agent local billed-usage UUIDs before each local SDKAgent handle's first send in a process, so resumed agents do not charge the historical turns reported by that baseline to the current OMP message; failed baselines suppress billed spend for that turn and retry safely before the next send.
+- Synchronize `bun.lock` with the pinned Cursor SDK/OMP 18 dependency family, enforce direct-spec lock alignment in tests, and run frozen install, full typecheck, unit/platform contracts, and package-readiness checks in CI.
 
 ## 0.3.6 - 2026-08-18
 

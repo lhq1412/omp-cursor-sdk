@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
+import { parseConfigFileTextToJson } from "typescript";
 import { describe, expect, it } from "vitest";
 import { FALLBACK_MODEL_ITEMS } from "../src/cursor-fallback-models.generated.js";
 
@@ -17,10 +18,28 @@ const packageJson = require("../package.json") as {
 };
 const packageLock = require("../package-lock.json") as {
 	version: string;
-	packages: Record<string, { version?: string; resolved?: string; dependencies?: Record<string, string>; bundleDependencies?: boolean | string[] }>;
+	packages: Record<string, {
+		version?: string;
+		resolved?: string;
+		dependencies?: Record<string, string>;
+		devDependencies?: Record<string, string>;
+		bundleDependencies?: boolean | string[];
+	}>;
+};
+type BunLockHeader = {
+	workspaces: Record<string, {
+		dependencies?: Record<string, string>;
+		devDependencies?: Record<string, string>;
+	}>;
 };
 
 const BUNDLED_MCP_HONO_CLOSURE = ["@hono/node-server", "@modelcontextprotocol/sdk"] as const;
+
+function readBunLock(): BunLockHeader {
+	const parsed = parseConfigFileTextToJson("bun.lock", readFileSync(join(process.cwd(), "bun.lock"), "utf8"));
+	if (parsed.error) throw new Error("bun.lock is not valid JSONC");
+	return parsed.config as BunLockHeader;
+}
 
 function lockPackageVersion(packageName: string): string | undefined {
 	return packageLock.packages[`node_modules/${packageName}`]?.version;
@@ -72,6 +91,18 @@ describe("package metadata cutover baselines", () => {
 	it("pins Cursor SDK exactly", () => {
 		expect(packageJson.dependencies["@cursor/sdk"]).toBe("1.0.27");
 		expect(lockPackageVersion("@cursor/sdk")).toBe("1.0.27");
+	});
+
+	it("keeps Bun and npm direct dependency specs aligned with package metadata", () => {
+		const bunLock = readBunLock();
+		for (const group of ["dependencies", "devDependencies"] as const) {
+			expect(packageLock.packages[""]?.[group]).toEqual(packageJson[group]);
+			expect(bunLock.workspaces[""]?.[group]).toEqual(packageJson[group]);
+		}
+		for (const [packageName, version] of Object.entries(packageJson.dependencies)
+			.filter(([name]) => name === "@cursor/sdk" || name.startsWith("@oh-my-pi/"))) {
+			expect(lockPackageVersion(packageName)).toBe(version);
+		}
 	});
 
 	it("keeps lockfile resolved URLs on the public npm registry", () => {
