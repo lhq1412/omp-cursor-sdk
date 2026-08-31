@@ -144,7 +144,7 @@ Effective speed precedence:
 1. One-run CLI override: `--cursor-no-fast` or `--cursor-fast`; no-fast wins if both are present.
 2. Session override persisted by `/cursor-fast`.
 3. Configured per-model default.
-4. SDK default variant.
+4. Built-in local default: off. SDK catalog `defaultFast` metadata does not set runtime state.
 
 Speed is never encoded into the model identity. OMP 18.0.11 exposes built-in `/fast` only for fixed OpenAI, Anthropic, and Google service-tier families and provides no public custom-provider family registration API. Until OMP adds that hook, `/cursor-fast` is the canonical speed control for the independent `cursor-sdk` provider.
 

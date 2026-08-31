@@ -793,11 +793,10 @@ export function resolveCursorFastDefault(options: {
 	cliForceNoFast?: boolean;
 	sessionValue?: boolean;
 	userValue?: boolean;
-	modelDefault: boolean;
 }): CursorResolvedSetting<boolean> {
 	if (options.cliForceNoFast) return resolved("cli", false);
 	if (options.cliForceFast) return resolved("cli", true);
 	if (options.sessionValue !== undefined) return resolved("session", options.sessionValue);
 	if (options.userValue !== undefined) return resolved("user", options.userValue);
-	return resolved("builtin", options.modelDefault);
+	return resolved("builtin", false);
 }

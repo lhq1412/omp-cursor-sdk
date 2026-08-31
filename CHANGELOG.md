@@ -2,9 +2,13 @@
 
 ## 0.4.2 - 2026-08-31
 
+### Changed
+
+- Default local Cursor fast mode to off for every fast-capable model; explicit CLI, session, and configured per-model preferences keep their existing precedence.
+
 ### Fixed
 
-- Publish the bundled MCP/Hono package as a stable `omp-cursor-sdk.tgz` GitHub Release asset, with manual backfill support, so Bun installs every runtime dependency instead of omitting `bundledDependencies` from Git source archives.
+- Publish the bundled MCP/Hono package as a versioned npm tarball through a manual default-branch GitHub Release workflow, so Bun installs every runtime dependency instead of omitting `bundledDependencies` from Git source archives.
 
 ## 0.4.1 - 2026-08-31
 

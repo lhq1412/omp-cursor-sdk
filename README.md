@@ -20,7 +20,7 @@ The extension currently pins `@cursor/sdk@1.0.27`. It does not reuse Cursor Desk
 GitHub release v0.4.2:
 
 ```bash
-omp plugin install https://github.com/lhq1412/omp-cursor-sdk/releases/download/v0.4.2/omp-cursor-sdk.tgz
+omp plugin install https://github.com/lhq1412/omp-cursor-sdk/releases/download/v0.4.2/omp-cursor-sdk-0.4.2.tgz
 ```
 
 Git source-archive installation is unsupported because Bun does not materialize `bundledDependencies` from Git archives.
@@ -98,7 +98,7 @@ Normalization rules:
 - Only the SDK canonical `model.id` is used as the base identity.
 - Exactly two distinct, ordered context sizes collapse onto that base identity. OMP's native `/extended-context off` selects the smaller SDK context and `/extended-context on` selects the larger one.
 - Context catalogs with one, three or more, or non-orderable values do not collapse. Their base uses the SDK default and each non-default context remains an explicit `@context` row.
-- Speed is runtime state, not a model identity; the catalog never generates `@fast` or `@slow` rows.
+- Speed is runtime state, not a model identity; the catalog never generates `@fast` or `@slow` rows. Local fast defaults off unless overridden by CLI, `/cursor-fast` session state, or a configured per-model preference.
 - `/cursor-fast`, `--cursor-fast`, and `--cursor-no-fast` map to the SDK's boolean `fast` parameter when the selected model exposes it.
 - SDK aliases such as `gpt-5-5` and `composer-2-5` are raw catalog metadata, not OMP model rows.
 - The selected OMP ID, native extended-context setting, thinking level, and Cursor fast state map to the SDK's real model ID and parameter list at send time.

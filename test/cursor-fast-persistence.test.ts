@@ -97,18 +97,18 @@ describe("Cursor fast preference persistence", () => {
 		const { pi, ctx, commandCtx, commands } = createFastHarness({ modelId: "composer-2" });
 		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
-		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 
 		expect(pi.appendEntry).toHaveBeenCalledWith(__testUtils.FAST_ENTRY_TYPE, {
 			modelId: "composer-2",
-			fast: false,
+			fast: true,
 		});
-		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
-		expect(getEffectiveFastForModelId("composer-2")).toBe(false);
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
+		expect(getEffectiveFastForModelId("composer-2")).toBe(true);
 		expect(JSON.parse(readFileSync(__testUtils.getConfigPath(), "utf-8"))).toEqual({
-			fastDefaults: { "composer-2": false },
+			fastDefaults: { "composer-2": true },
 		});
 	});
 
@@ -148,17 +148,17 @@ describe("Cursor fast preference persistence", () => {
 		const { pi, ctx, commandCtx, commands } = createFastHarness({ modelId: "composer-2.5" });
 		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
-		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 
 		expect(pi.appendEntry).toHaveBeenCalledWith(__testUtils.FAST_ENTRY_TYPE, {
 			modelId: "composer-2.5",
-			fast: false,
+			fast: true,
 		});
-		expect(getEffectiveFastForModelId("composer-2.5")).toBe(false);
+		expect(getEffectiveFastForModelId("composer-2.5")).toBe(true);
 		expect(JSON.parse(readFileSync(__testUtils.getConfigPath(), "utf-8"))).toEqual({
-			fastDefaults: { "composer-2.5": false },
+			fastDefaults: { "composer-2.5": true },
 		});
 	});
 
@@ -168,8 +168,8 @@ describe("Cursor fast preference persistence", () => {
 
 		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
-		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
-		expect(getEffectiveFastForModelId("composer-2.5")).toBe(true);
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
+		expect(getEffectiveFastForModelId("composer-2.5")).toBe(false);
 	});
 
 	it("does not update fast state when the global config cannot be saved", async () => {
@@ -183,8 +183,8 @@ describe("Cursor fast preference persistence", () => {
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Failed to save Cursor fast preference"), "error");
-		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
-		expect(getEffectiveFastForModelId("composer-2")).toBe(true);
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
+		expect(getEffectiveFastForModelId("composer-2")).toBe(false);
 		expect(pi.appendEntry).not.toHaveBeenCalled();
 	});
 
@@ -226,7 +226,7 @@ describe("Cursor fast preference persistence", () => {
 
 		expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({
 			future: { enabled: true },
-			fastDefaults: { "composer-2": false, other: true },
+			fastDefaults: { "composer-2": true, other: true },
 		});
 		expect(existsSync(`${path}.lock`)).toBe(false);
 	});

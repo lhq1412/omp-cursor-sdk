@@ -1,12 +1,10 @@
 name: release-package
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
-      tag:
-        description: Existing release tag
+      version:
+        description: Package version (for example, 0.4.2)
         required: true
         type: string
 
@@ -14,22 +12,27 @@ permissions:
   contents: write
 
 jobs:
-  upload:
+  release:
     runs-on: ubuntu-latest
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.19.0
+      - name: Validate release source
+        run: |
+          test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
+          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json")).version')" = "$VERSION"
       - run: npm ci --ignore-scripts
-      - run: |
-          npm pack --ignore-scripts
-          mv -- ./*.tgz omp-cursor-sdk.tgz
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$TAG" omp-cursor-sdk.tgz --clobber
+        run: |
+          tag="v$VERSION"
+          tarball="$(npm pack --ignore-scripts)"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA"
+          gh release create "$tag" "$tarball" --verify-tag --title "$tag" --generate-notes

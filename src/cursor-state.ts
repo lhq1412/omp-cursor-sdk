@@ -205,7 +205,6 @@ function getEffectiveFast(modelId: string): boolean | undefined {
 			? undefined
 			: sessionFastPreferences.get(metadata.baseModelId),
 		userValue: globalFastPreferences.get(metadata.baseModelId),
-		modelDefault: metadata.defaultFast,
 	}).value;
 }
 

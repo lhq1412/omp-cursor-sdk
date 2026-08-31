@@ -131,8 +131,8 @@ For each SDK catalog item:
 - exactly two distinct, parseable context sizes collapse onto that base identity; OMP's native `extendedContext` setting selects the smaller or greater SDK value at send time
 - every other context catalog keeps the SDK-default base plus explicit non-default `@context` identities
 - SDK `aliases` remain raw catalog metadata and are never registered as OMP model rows
-- boolean `fast` parameters remain selection metadata; no `@fast` or `@slow` model identities are generated
-- speed is resolved independently at send time from Cursor runtime state and defaults
+- boolean `fast` parameters and `defaultFast` remain catalog discovery metadata; no `@fast` or `@slow` model identities are generated
+- speed is resolved independently at send time from explicit Cursor runtime state, falling back to built-in off
 
 OMP's `:level` suffix remains reserved for host thinking levels. It composes after the provider/model identity, for example `cursor-sdk/gpt-5.5:xhigh`.
 
@@ -163,7 +163,7 @@ Fast is Cursor-specific runtime state. Selection precedence is:
 1. one-run `--cursor-no-fast` / `--cursor-fast` override
 2. session state persisted by `/cursor-fast`
 3. configured per-model default
-4. SDK default
+4. built-in off
 
 OMP 18.0.11's built-in `/fast` is hard-wired to fixed OpenAI, Anthropic, and Google service-tier families and exposes no custom-provider family registration hook. `/cursor-fast` therefore remains the canonical control for the independent `cursor-sdk` provider. Cloud status reports fast as not applicable rather than pretending the Cloud API supports the local selection flag.
 

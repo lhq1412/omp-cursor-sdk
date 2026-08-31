@@ -182,6 +182,15 @@ describe("Cursor runtime state", () => {
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
 	});
 
+	it("defaults fresh fast-capable Composer sessions to fast off despite SDK catalog default=true", async () => {
+		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "composer-2" });
+
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
+
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
+		expect(getEffectiveFastForModelId("composer-2")).toBe(false);
+	});
+
 	it("forces Cursor SDK plan mode with --cursor-mode without writing session state", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5", cursorModeFlag: "plan" });
 
@@ -327,7 +336,7 @@ describe("Cursor runtime state", () => {
 		);
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith('Invalid --cursor-mode "review". Use "agent" or "plan".', "error");
-		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on · mode invalid");
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off · mode invalid");
 	});
 
 	it("rejects invalid --cursor-mode for Cursor provider runs", async () => {
@@ -389,8 +398,8 @@ describe("Cursor runtime state", () => {
 		expect(ctx.ui.notify).toHaveBeenCalledWith("Cursor mode is plan. Usage: /cursor-mode agent|plan", "info");
 	});
 
-	it("combines Cursor fast and plan mode in one status value", async () => {
-		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "composer-2", cursorModeFlag: "plan" });
+	it("combines explicit Cursor fast and plan mode in one status value", async () => {
+		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "composer-2", cursorFastFlag: true, cursorModeFlag: "plan" });
 
 		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
@@ -398,6 +407,7 @@ describe("Cursor runtime state", () => {
 	});
 
 	it("updates Cursor mode status when switching between Cursor models", async () => {
+		writeFileSync(__testUtils.getConfigPath(), JSON.stringify({ fastDefaults: { "composer-2": true } }));
 		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "composer-2", cursorModeFlag: "plan" });
 		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on · plan");
@@ -472,7 +482,7 @@ describe("Cursor runtime state", () => {
 
 		getBranch.mockReturnValue([]);
 		await pi.invokeEventWithContext("session_tree", { type: "session_tree", oldLeafId: null, newLeafId: null }, ctx);
-		expect(getEffectiveFastForModelId("composer-2")).toBe(true);
+		expect(getEffectiveFastForModelId("composer-2")).toBe(false);
 		expect(resolveCursorAgentMode()).toEqual({ kind: "valid", mode: "agent" });
 	});
 
@@ -604,7 +614,7 @@ describe("Cursor runtime state", () => {
 	it("clears Cursor status when model_select moves from Cursor fast model to non-cursor model", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "composer-2" });
 		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
-		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
 
 		const selectedModel = makeHarnessModel("anthropic", "anthropic-messages", "claude-sonnet-4-5");
 		await pi.invokeEventWithContext(
@@ -669,7 +679,7 @@ describe("Cursor runtime state", () => {
 		ctx.model = makeModel("composer-2");
 		await pi.invokeEventWithContext("turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, ctx);
 
-		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
 	});
 
 	it("ignores cursor-sdk API models outside the independent provider", async () => {
