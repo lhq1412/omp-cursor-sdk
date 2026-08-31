@@ -217,20 +217,20 @@ describe("Cursor SDK config resolver", () => {
 	});
 
 	it("preserves current fast precedence through the resolver", () => {
-		expect(resolveCursorFastDefault({ cliForceFast: true, sessionValue: false, userValue: false, modelDefault: false })).toMatchObject({
+		expect(resolveCursorFastDefault({ cliForceFast: true, sessionValue: false, userValue: false })).toMatchObject({
 			value: true,
 			source: "cli",
 		});
-		expect(resolveCursorFastDefault({ cliForceFast: true, cliForceNoFast: true, sessionValue: true, modelDefault: true })).toMatchObject({
+		expect(resolveCursorFastDefault({ cliForceFast: true, cliForceNoFast: true, sessionValue: true })).toMatchObject({
 			value: false,
 			source: "cli",
 		});
-		expect(resolveCursorFastDefault({ sessionValue: false, userValue: true, modelDefault: true })).toMatchObject({
+		expect(resolveCursorFastDefault({ sessionValue: false, userValue: true })).toMatchObject({
 			value: false,
 			source: "session",
 		});
-		expect(resolveCursorFastDefault({ userValue: false, modelDefault: true })).toMatchObject({ value: false, source: "user" });
-		expect(resolveCursorFastDefault({ modelDefault: true })).toMatchObject({ value: true, source: "builtin" });
+		expect(resolveCursorFastDefault({ userValue: false })).toMatchObject({ value: false, source: "user" });
+		expect(resolveCursorFastDefault({})).toMatchObject({ value: false, source: "builtin" });
 	});
 
 	it("loads project config only from the caller's snapshotted trust decision", () => {

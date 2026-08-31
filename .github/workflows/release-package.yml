@@ -1,0 +1,38 @@
+name: release-package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version (for example, 0.4.2)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.19.0
+      - name: Validate release source
+        run: |
+          test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
+          test "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json")).version')" = "$VERSION"
+      - run: npm ci --ignore-scripts
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$VERSION"
+          tarball="$(npm pack --ignore-scripts)"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA"
+          gh release create "$tag" "$tarball" --verify-tag --title "$tag" --generate-notes
