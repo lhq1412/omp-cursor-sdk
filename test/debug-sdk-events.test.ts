@@ -208,7 +208,7 @@ describe("debug-sdk-events maintainer probe", () => {
 	});
 
 	it("shows help and validates script syntax without live Cursor auth", () => {
-		expect(spawnSync(process.execPath, ["--check", scriptPath], { cwd: process.cwd(), encoding: "utf8" }).status).toBe(0);
+		expect(spawnSync("node", ["--check", scriptPath], { cwd: process.cwd(), encoding: "utf8" }).status).toBe(0);
 
 		const help = run(["--help"]);
 		expect(help.status).toBe(0);

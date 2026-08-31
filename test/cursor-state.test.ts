@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getAgentDir, setAgentDir } from "@oh-my-pi/pi-utils";
 import {
 	registerCursorRuntimeControls,
 	getEffectiveFastForModelId,
@@ -72,6 +73,24 @@ const modelItems: ModelListItem[] = [
 		],
 	},
 	{
+		id: "future-three-tier",
+		displayName: "Future Three Tier",
+		parameters: [
+			{ id: "context", displayName: "Context", values: [{ value: "128k" }, { value: "256k" }, { value: "1m" }] },
+			{ id: "fast", displayName: "Fast", values: [{ value: "false" }, { value: "true" }] },
+		],
+		variants: [
+			{
+				params: [
+					{ id: "context", value: "1m" },
+					{ id: "fast", value: "false" },
+				],
+				displayName: "Future Three Tier",
+				isDefault: true,
+			},
+		],
+	},
+	{
 		id: "gemini-3.1-pro",
 		displayName: "Gemini 3.1 Pro",
 		variants: [{ params: [], displayName: "Gemini 3.1 Pro", isDefault: true }],
@@ -108,7 +127,7 @@ function createCursorRuntimeHarness(options: {
 		model: options.modelId
 			? {
 					...makeModel(options.modelId),
-					provider: options.provider ?? "cursor",
+					provider: options.provider ?? "cursor-sdk",
 					api: (options.api ?? "cursor-sdk") as "cursor-sdk",
 				}
 			: undefined,
@@ -130,10 +149,11 @@ describe("Cursor runtime state", () => {
 	let tmpAgentDir: string;
 	const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
 	const originalHttp1Env = process.env[CURSOR_HTTP1_ENV];
+	const originalResolvedAgentDir = getAgentDir();
 
 	beforeEach(() => {
-		tmpAgentDir = mkdtempSync(join(tmpdir(), "pi-cursor-state-"));
-		process.env.PI_CODING_AGENT_DIR = tmpAgentDir;
+		tmpAgentDir = mkdtempSync(join(tmpdir(), "omp-cursor-state-"));
+		setAgentDir(tmpAgentDir);
 		delete process.env[CURSOR_HTTP1_ENV];
 		__testUtils.sessionFastPreferences.clear();
 		__testUtils.resetCursorModeStateForTests();
@@ -141,6 +161,7 @@ describe("Cursor runtime state", () => {
 	});
 
 	afterEach(() => {
+		setAgentDir(originalResolvedAgentDir);
 		if (originalAgentDir === undefined) {
 			delete process.env.PI_CODING_AGENT_DIR;
 		} else {
@@ -153,18 +174,18 @@ describe("Cursor runtime state", () => {
 	});
 
 	it("defaults Cursor SDK mode to agent", async () => {
-		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5@1m" });
+		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5" });
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(resolveCursorAgentMode()).toEqual({ kind: "valid", mode: "agent" });
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
 	});
 
 	it("forces Cursor SDK plan mode with --cursor-mode without writing session state", async () => {
-		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5@1m", cursorModeFlag: "plan" });
+		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5", cursorModeFlag: "plan" });
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(resolveCursorAgentMode()).toEqual({ kind: "valid", mode: "plan" });
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off · plan");
@@ -173,7 +194,7 @@ describe("Cursor runtime state", () => {
 
 	it("forces Cursor SDK agent mode with --cursor-mode over a persisted plan preference", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness({
-			modelId: "gpt-5.5@1m",
+			modelId: "gpt-5.5",
 			cursorModeFlag: "agent",
 			branch: [
 				{
@@ -187,7 +208,7 @@ describe("Cursor runtime state", () => {
 			],
 		});
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(resolveCursorAgentMode()).toEqual({ kind: "valid", mode: "agent" });
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
@@ -195,9 +216,9 @@ describe("Cursor runtime state", () => {
 	});
 
 	it("reports invalid --cursor-mode values in UI sessions and rejects provider mode reads", async () => {
-		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5@1m", cursorModeFlag: "review" });
+		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5", cursorModeFlag: "review" });
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith('Invalid --cursor-mode "review". Use "agent" or "plan".', "error");
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off · mode invalid");
@@ -212,10 +233,10 @@ describe("Cursor runtime state", () => {
 
 	it("reports invalid --cursor-mode from /cursor-mode status instead of soft defaulting", async () => {
 		const { pi, ctx, commandCtx, commands } = createCursorRuntimeHarness({
-			modelId: "gpt-5.5@1m",
+			modelId: "gpt-5.5",
 			cursorModeFlag: "review",
 		});
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 		vi.mocked(ctx.ui.notify).mockClear();
 
 		await commands.get("cursor-mode")!.handler("", commandCtx);
@@ -229,10 +250,10 @@ describe("Cursor runtime state", () => {
 
 	it("allows /cursor-mode to recover an interactive session from invalid --cursor-mode", async () => {
 		const { pi, ctx, commandCtx, commands } = createCursorRuntimeHarness({
-			modelId: "gpt-5.5@1m",
+			modelId: "gpt-5.5",
 			cursorModeFlag: "review",
 		});
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 		expect(() => getCursorProviderAgentModeOrThrow()).toThrow('Invalid --cursor-mode "review"');
 
 		await commands.get("cursor-mode")!.handler("plan", commandCtx);
@@ -256,7 +277,7 @@ describe("Cursor runtime state", () => {
 			hasUI: true,
 		});
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.notify).not.toHaveBeenCalled();
 		expect(resolveCursorAgentMode()).toEqual({
@@ -277,7 +298,7 @@ describe("Cursor runtime state", () => {
 			hasUI: false,
 		});
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(resolveCursorAgentMode()).toEqual({
 			kind: "invalid",
@@ -295,18 +316,14 @@ describe("Cursor runtime state", () => {
 			cursorModeFlag: "review",
 		});
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 		expect(ctx.ui.notify).not.toHaveBeenCalled();
 
+		const selectedModel = { ...makeModel("composer-2"), provider: "cursor-sdk", api: "cursor-sdk" as const };
 		await pi.invokeEventWithContext(
-			"model_select",
-			{
-				type: "model_select",
-				model: { ...makeModel("composer-2"), provider: "cursor", api: "cursor-sdk" },
-				previousModel: ctx.model!,
-				source: "set",
-			},
-			ctx,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 1, timestamp: Date.now() },
+			{ ...ctx, model: selectedModel },
 		);
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith('Invalid --cursor-mode "review". Use "agent" or "plan".', "error");
@@ -321,14 +338,14 @@ describe("Cursor runtime state", () => {
 			hasUI: true,
 		});
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(() => getCursorProviderAgentModeOrThrow()).toThrow('Invalid --cursor-mode "review"');
 	});
 
 	it("persists /cursor-mode plan as session mode", async () => {
-		const { pi, ctx, commandCtx, commands } = createCursorRuntimeHarness({ modelId: "gpt-5.5@1m" });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		const { pi, ctx, commandCtx, commands } = createCursorRuntimeHarness({ modelId: "gpt-5.5" });
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-mode")!.handler("plan", commandCtx);
 
@@ -340,7 +357,7 @@ describe("Cursor runtime state", () => {
 
 	it("persists /cursor-mode agent as session mode", async () => {
 		const { pi, ctx, commandCtx, commands } = createCursorRuntimeHarness({
-			modelId: "gpt-5.5@1m",
+			modelId: "gpt-5.5",
 			branch: [
 				{
 					type: "custom",
@@ -352,7 +369,7 @@ describe("Cursor runtime state", () => {
 				},
 			],
 		});
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 		expect(resolveCursorAgentMode()).toEqual({ kind: "valid", mode: "plan" });
 
 		await commands.get("cursor-mode")!.handler("agent", commandCtx);
@@ -364,8 +381,8 @@ describe("Cursor runtime state", () => {
 	});
 
 	it("reports current mode and usage for /cursor-mode with no args", async () => {
-		const { pi, ctx, commandCtx, commands } = createCursorRuntimeHarness({ modelId: "gpt-5.5@1m", cursorModeFlag: "plan" });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		const { pi, ctx, commandCtx, commands } = createCursorRuntimeHarness({ modelId: "gpt-5.5", cursorModeFlag: "plan" });
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-mode")!.handler("", commandCtx);
 
@@ -375,25 +392,21 @@ describe("Cursor runtime state", () => {
 	it("combines Cursor fast and plan mode in one status value", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "composer-2", cursorModeFlag: "plan" });
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on · plan");
 	});
 
 	it("updates Cursor mode status when switching between Cursor models", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "composer-2", cursorModeFlag: "plan" });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on · plan");
 
+		const selectedModel = { ...makeModel("gpt-5.5"), provider: "cursor-sdk", api: "cursor-sdk" as const };
 		await pi.invokeEventWithContext(
-			"model_select",
-			{
-				type: "model_select",
-				model: { ...makeModel("gpt-5.5@1m"), provider: "cursor", api: "cursor-sdk" },
-				previousModel: ctx.model!,
-				source: "set",
-			},
-			ctx,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 1, timestamp: Date.now() },
+			{ ...ctx, model: selectedModel },
 		);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off · plan");
@@ -414,7 +427,7 @@ describe("Cursor runtime state", () => {
 			],
 		});
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
 		expect(getEffectiveFastForModelId("composer-2")).toBe(false);
@@ -438,7 +451,7 @@ describe("Cursor runtime state", () => {
 			branch: planBranch,
 		});
 		const getBranch = vi.mocked(ctx.sessionManager.getBranch);
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 		expect(getEffectiveFastForModelId("composer-2")).toBe(false);
 		expect(resolveCursorAgentMode()).toEqual({ kind: "valid", mode: "plan" });
 
@@ -465,62 +478,28 @@ describe("Cursor runtime state", () => {
 
 	it("uses global fast defaults for new sessions", async () => {
 		writeFileSync(__testUtils.getConfigPath(), JSON.stringify({ fastDefaults: { "gpt-5.5": true } }));
-		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5@1m" });
+		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5" });
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
-
-		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
-		expect(getEffectiveFastForModelId("gpt-5.5@1m")).toBe(true);
-	});
-
-	it("lets virtual fast models override stored slow preferences", async () => {
-		writeFileSync(__testUtils.getConfigPath(), JSON.stringify({ fastDefaults: { "composer-2": false } }));
-		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "composer-2:fast" });
-
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
-		expect(getEffectiveFastForModelId("composer-2:fast")).toBe(true);
-	});
-
-	it("lets virtual slow models override stored fast preferences", async () => {
-		writeFileSync(__testUtils.getConfigPath(), JSON.stringify({ fastDefaults: { "composer-2": true } }));
-		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "composer-2:slow" });
-
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
-
-		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
-		expect(getEffectiveFastForModelId("composer-2:slow")).toBe(false);
-	});
-
-	it("does not persist /cursor-fast while a virtual fast model is selected", async () => {
-		const { pi, ctx, commandCtx, commands } = createCursorRuntimeHarness({ modelId: "composer-2:slow" });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
-
-		await commands.get("cursor-fast")!.handler("", commandCtx);
-
-		expect(ctx.ui.notify).toHaveBeenCalledWith(
-			"Cursor fast is fixed disabled by selected model composer-2:slow; choose composer-2 to use /cursor-fast preferences",
-			"info",
-		);
-		expect(pi.appendEntry).not.toHaveBeenCalled();
-		expect(getEffectiveFastForModelId("composer-2:slow")).toBe(false);
+		expect(getEffectiveFastForModelId("gpt-5.5")).toBe(true);
 	});
 
 	it("forces fast with the CLI flag without writing session state", async () => {
-		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5@1m", cursorFastFlag: true });
+		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5", cursorFastFlag: true });
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
-		expect(getEffectiveFastForModelId("gpt-5.5@1m")).toBe(true);
+		expect(getEffectiveFastForModelId("gpt-5.5")).toBe(true);
 		expect(pi.appendEntry).not.toHaveBeenCalled();
 	});
 
 	it("forces fast off with --cursor-no-fast without writing session state", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "composer-2", cursorNoFastFlag: true });
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
 		expect(getEffectiveFastForModelId("composer-2")).toBe(false);
@@ -540,7 +519,7 @@ describe("Cursor runtime state", () => {
 	it("lets --cursor-no-fast win when both one-run force flags are set", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "composer-2", cursorFastFlag: true, cursorNoFastFlag: true });
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
 		expect(getEffectiveFastForModelId("composer-2")).toBe(false);
@@ -550,7 +529,7 @@ describe("Cursor runtime state", () => {
 	it("does not apply --cursor-no-fast to unsupported Cursor models", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gemini-3.1-pro", cursorNoFastFlag: true });
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:n/a");
 		expect(getEffectiveFastForModelId("gemini-3.1-pro")).toBeUndefined();
@@ -560,7 +539,7 @@ describe("Cursor runtime state", () => {
 	it("keeps not-applicable fast status when unsupported Cursor models run in plan mode", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gemini-3.1-pro", cursorModeFlag: "plan" });
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:n/a · plan");
 		expect(getEffectiveFastForModelId("gemini-3.1-pro")).toBeUndefined();
@@ -569,7 +548,7 @@ describe("Cursor runtime state", () => {
 
 	it("does not let /cursor-fast persist while --cursor-no-fast is active", async () => {
 		const { pi, ctx, commandCtx, commands } = createCursorRuntimeHarness({ modelId: "composer-2", cursorNoFastFlag: true });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 
@@ -580,7 +559,7 @@ describe("Cursor runtime state", () => {
 
 	it("mentions --cursor-no-fast when both force flags block /cursor-fast", async () => {
 		const { ctx, commandCtx, commands, pi } = createCursorRuntimeHarness({ modelId: "composer-2", cursorFastFlag: true, cursorNoFastFlag: true });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 
@@ -588,52 +567,50 @@ describe("Cursor runtime state", () => {
 	});
 
 	it("does not let /cursor-fast persist an opposite value when --cursor-fast is active", async () => {
-		const { pi, ctx, commandCtx, commands } = createCursorRuntimeHarness({ modelId: "gpt-5.5@1m", cursorFastFlag: true });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		const { pi, ctx, commandCtx, commands } = createCursorRuntimeHarness({ modelId: "gpt-5.5", cursorFastFlag: true });
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith("Cursor fast is forced by --cursor-fast", "info");
-		expect(getEffectiveFastForModelId("gpt-5.5@1m")).toBe(true);
+		expect(getEffectiveFastForModelId("gpt-5.5")).toBe(true);
 		expect(pi.appendEntry).not.toHaveBeenCalled();
 	});
 
 	it("notifies and no-ops when the selected model does not support fast", async () => {
 		const { ctx, commandCtx, commands, pi } = createCursorRuntimeHarness({ modelId: "gemini-3.1-pro" });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 
 		expect(ctx.ui.notify).toHaveBeenCalledWith("Fast mode not supported by gemini-3.1-pro", "info");
 	});
 
-	it("toggles fast by base model id so context sibling variants share the preference", async () => {
-		const { ctx, commandCtx, commands, pi } = createCursorRuntimeHarness({ modelId: "gpt-5.5@1m" });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+	it("shares fast preference across explicit variants of non-converged models", async () => {
+		const { ctx, commandCtx, commands, pi } = createCursorRuntimeHarness({
+			modelId: "future-three-tier@128k",
+		});
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		await commands.get("cursor-fast")!.handler("", commandCtx);
 
-		expect(getEffectiveFastForModelId("gpt-5.5@1m")).toBe(true);
-		expect(getEffectiveFastForModelId("gpt-5.5@272k")).toBe(true);
+		expect(getEffectiveFastForModelId("future-three-tier")).toBe(true);
+		expect(getEffectiveFastForModelId("future-three-tier@256k")).toBe(true);
 		expect(JSON.parse(readFileSync(__testUtils.getConfigPath(), "utf-8"))).toEqual({
-			fastDefaults: { "gpt-5.5": true },
+			fastDefaults: { "future-three-tier": true },
 		});
 	});
 
 	it("clears Cursor status when model_select moves from Cursor fast model to non-cursor model", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "composer-2" });
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
 
+		const selectedModel = makeHarnessModel("anthropic", "anthropic-messages", "claude-sonnet-4-5");
 		await pi.invokeEventWithContext(
-			"model_select",
-			{
-				type: "model_select",
-				model: makeHarnessModel("anthropic", "anthropic-messages", "claude-sonnet-4-5"),
-				previousModel: ctx.model!,
-				source: "set",
-			},
-			ctx,
+			"turn_start",
+			{ type: "turn_start", turnIndex: 1, timestamp: Date.now() },
+			{ ...ctx, model: selectedModel },
 		);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", undefined);
@@ -641,31 +618,31 @@ describe("Cursor runtime state", () => {
 
 	it("ignores malformed global config without throwing", async () => {
 		writeFileSync(__testUtils.getConfigPath(), "{not json");
-		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5@1m" });
+		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5" });
 
 		await expect(
-			pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx),
+			pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx),
 		).resolves.toBeUndefined();
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:off");
-		expect(getEffectiveFastForModelId("gpt-5.5@1m")).toBe(false);
+		expect(getEffectiveFastForModelId("gpt-5.5")).toBe(false);
 	});
 
 	it("filters global config entries with invalid fast default values", async () => {
 		writeFileSync(__testUtils.getConfigPath(), JSON.stringify({ fastDefaults: { "gpt-5.5": true, "composer-2": "true" } }));
 		expect(__testUtils.loadGlobalFastPreferences()).toEqual(new Map([["gpt-5.5", true]]));
-		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5@1m" });
+		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gpt-5.5" });
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
-		expect(getEffectiveFastForModelId("gpt-5.5@1m")).toBe(true);
+		expect(getEffectiveFastForModelId("gpt-5.5")).toBe(true);
 	});
 
 	it("does not apply or persist --cursor-fast for unsupported Cursor models", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness({ modelId: "gemini-3.1-pro", cursorFastFlag: true });
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:n/a");
 		expect(getEffectiveFastForModelId("gemini-3.1-pro")).toBeUndefined();
@@ -679,14 +656,14 @@ describe("Cursor runtime state", () => {
 			modelId: "claude-sonnet-4-5",
 		});
 
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", undefined);
 	});
 
 	it("refreshes Cursor fast status on turn_start after session_start without a model", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness();
-		await pi.invokeEventWithContext("session_start", { type: "session_start", reason: "startup" }, ctx);
+		await pi.invokeEventWithContext("session_start", { type: "session_start"}, ctx);
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", undefined);
 
 		ctx.model = makeModel("composer-2");
@@ -695,7 +672,7 @@ describe("Cursor runtime state", () => {
 		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
 	});
 
-	it("recognizes cursor-sdk api models when updating footer status", async () => {
+	it("ignores cursor-sdk API models outside the independent provider", async () => {
 		const { pi, ctx } = createCursorRuntimeHarness({
 			modelId: "composer-2",
 			provider: "other-provider",
@@ -704,7 +681,7 @@ describe("Cursor runtime state", () => {
 
 		await pi.invokeEventWithContext("turn_start", { type: "turn_start", turnIndex: 1, timestamp: Date.now() }, ctx);
 
-		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", "cursor:local · fast:on");
+		expect(ctx.ui.setStatus).toHaveBeenLastCalledWith("cursor", undefined);
 	});
 
 	it("registers /cursor-tools and reports bridge and setting sources", async () => {
@@ -726,7 +703,7 @@ describe("Cursor runtime state", () => {
 			expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Callable tool surfaces this run:"), "info");
 			expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("pi__custom_bridge_tool"), "info");
 			expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Cursor host/MCP"), "info");
-			expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Pi tool toggles affect pi tools/bridge exposure only"), "info");
+			expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("OMP tool toggles affect OMP tools/bridge exposure only"), "info");
 		} finally {
 			if (originalBridgeEnv === undefined) delete process.env.PI_CURSOR_PI_TOOL_BRIDGE;
 			else process.env.PI_CURSOR_PI_TOOL_BRIDGE = originalBridgeEnv;
@@ -742,7 +719,7 @@ describe("Cursor runtime state", () => {
 			PI_CURSOR_SETTING_SOURCES: "project",
 		});
 		expect(report).toContain("PI_CURSOR_PI_TOOL_BRIDGE: disabled");
-		expect(report).toContain("Pi bridge: disabled (PI_CURSOR_PI_TOOL_BRIDGE=0).");
+		expect(report).toContain("OMP bridge: disabled (PI_CURSOR_PI_TOOL_BRIDGE=0).");
 		expect(report).toContain("PI_CURSOR_SETTING_SOURCES: project (effective: project)");
 		expect(report).toContain("Callable tool surfaces this run:");
 	});

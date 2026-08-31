@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SDKAgent } from "@cursor/sdk";
+import type { ModelSelection, SDKAgent } from "@cursor/sdk";
 import type { CursorProviderTurnPrepareResult } from "../src/cursor-provider-turn-types.js";
 import type { CursorSdkEventDebugSink } from "../src/cursor-sdk-event-debug.js";
 import {
@@ -25,6 +25,10 @@ vi.mock("../src/cursor-sdk-runtime.js", () => ({
 vi.mock("../src/context-window-cache.js", () => ({
 	getCheckpointContextWindow: (checkpoint: unknown) =>
 		(checkpoint as { tokenDetails?: { maxTokens?: number } } | null)?.tokenDetails?.maxTokens,
+	getCursorContextWindowCacheKey: (modelId: string, selection: ModelSelection) => {
+		const context = selection.params?.find((param) => param.id === "context")?.value;
+		return context ? `${selection.id}@${context}` : modelId;
+	},
 	saveCachedContextWindow,
 }));
 

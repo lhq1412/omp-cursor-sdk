@@ -80,7 +80,7 @@ function findPiCommand() {
 	const cli = join(
 		root,
 		"node_modules",
-		"@earendil-works",
+		"@oh-my-pi",
 		"pi-coding-agent",
 		"dist",
 		"cli.js",
@@ -90,14 +90,14 @@ function findPiCommand() {
 		root,
 		"node_modules",
 		".bin",
-		process.platform === "win32" ? "pi.cmd" : "pi",
+		process.platform === "win32" ? "omp.cmd" : "omp",
 	);
 	return {
 		command: existsSync(local)
 			? local
 			: process.platform === "win32"
-				? "pi.cmd"
-				: "pi",
+				? "omp.cmd"
+				: "omp",
 		argsPrefix: [],
 	};
 }
@@ -141,6 +141,19 @@ export function buildLocalResumeSmokeEnv(
 	};
 }
 
+function hasPersistedSession(sessionDir) {
+	if (!existsSync(sessionDir)) return false;
+	const pending = [sessionDir];
+	while (pending.length > 0) {
+		const directory = pending.pop();
+		for (const entry of readdirSync(directory, { withFileTypes: true })) {
+			if (entry.isDirectory()) pending.push(join(directory, entry.name));
+			else if (entry.isFile() && entry.name.endsWith(".jsonl")) return true;
+		}
+	}
+	return false;
+}
+
 export function startRpc({
 	artifactDir,
 	sessionDir,
@@ -152,7 +165,7 @@ export function startRpc({
 	baseEnv = process.env,
 }) {
 	const model =
-		process.env.CURSOR_LOCAL_RESUME_SMOKE_MODEL || "cursor/composer-2-5@slow";
+		process.env.CURSOR_LOCAL_RESUME_SMOKE_MODEL || "cursor-sdk/grok-4.6";
 	const workspaceDir = join(artifactDir, "workspace");
 	mkdirSync(workspaceDir, { recursive: true });
 	const pi = findPiCommand();
@@ -176,13 +189,13 @@ export function startRpc({
 			...extraExtensions.flatMap((path) => ["-e", path]),
 			"--model",
 			model,
+			"--cursor-no-fast",
 			"--cursor-runtime",
 			"local",
-			"--approve",
+			"--auto-approve",
 			"--session-dir",
 			sessionDir,
-			"--session-id",
-			sessionId,
+			...(hasPersistedSession(sessionDir) ? ["--continue"] : []),
 		],
 		{
 			cwd: workspaceDir,

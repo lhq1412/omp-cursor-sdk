@@ -38,7 +38,7 @@ describe("Cursor provider HTTP/1.1 transport", () => {
 		process.env[CURSOR_HTTP1_ENV] = raw;
 		const send = mockSuccessfulAgent();
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedConfigureCursor).toHaveBeenCalledWith({ local: { useHttp1ForAgent: value } });
 		expect(mockedConfigureCursor.mock.invocationCallOrder[0]).toBeLessThan(
@@ -52,7 +52,7 @@ describe("Cursor provider HTTP/1.1 transport", () => {
 	it("leaves the default local SDK path unconfigured", async () => {
 		mockSuccessfulAgent();
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedConfigureCursor).not.toHaveBeenCalled();
 		expect(mockedCreate.mock.calls[0][0].local).toMatchObject({
@@ -69,7 +69,7 @@ describe("Cursor provider HTTP/1.1 transport", () => {
 		const cloudAgentId = "bc-00000000-0000-0000-0000-000000000001";
 		mockSuccessfulAgent(cloudAgentId);
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedConfigureCursor).not.toHaveBeenCalled();
 		expect(mockedCreate).toHaveBeenCalledWith(expect.objectContaining({ cloud: {} }));

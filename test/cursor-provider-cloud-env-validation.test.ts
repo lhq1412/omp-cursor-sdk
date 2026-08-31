@@ -2,7 +2,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { inspectCursorCloudLocalState } from "../src/cursor-cloud-local-state.js";
 import { registerCursorRuntimeControls } from "../src/cursor-state.js";
 import { streamCursor } from "../src/cursor-provider.js";
 import { __testUtils as cursorSessionScopeTestUtils } from "../src/cursor-session-scope.js";
@@ -19,17 +18,9 @@ import {
 } from "./helpers/cursor-provider-harness.js";
 import { initTrackedGitRepo } from "./helpers/git-repo.js";
 
-vi.mock("../src/cursor-cloud-local-state.js", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("../src/cursor-cloud-local-state.js")>();
-	return { ...actual, inspectCursorCloudLocalState: vi.fn(actual.inspectCursorCloudLocalState) };
-});
-
-const mockedInspectCursorCloudLocalState = vi.mocked(inspectCursorCloudLocalState);
-
 describe("streamCursor cloud request validation", () => {
 	beforeEach(async () => {
 		await resetCursorProviderTestState();
-		mockedInspectCursorCloudLocalState.mockClear();
 	});
 
 	it("rejects an all-invalid PI_CURSOR_CLOUD_ENV request before SDK calls", async () => {
@@ -37,7 +28,7 @@ describe("streamCursor cloud request validation", () => {
 		const send = vi.fn();
 		mockCreatedAgent({ send });
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(getErrorEvent(events).error.errorMessage).toContain(
 			"Invalid PI_CURSOR_CLOUD_ENV: no valid environment variable names were requested.",
@@ -53,7 +44,7 @@ describe("streamCursor cloud request validation", () => {
 		process.env.PI_CURSOR_CLOUD_ALLOW_LOCAL_STATE = "1";
 		process.env.PI_CURSOR_CLOUD_REPO = "https://repo-user:repo-secret@example.com/org/repo.git";
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 		const message = getErrorEvent(events).error.errorMessage;
 
 		expect(message).toContain("HTTPS repository URL without embedded credentials");
@@ -78,9 +69,8 @@ describe("streamCursor cloud request validation", () => {
 		process.env.PI_CURSOR_CLOUD_BRANCH = "main";
 
 		try {
-			const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+			const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
-			expect(mockedInspectCursorCloudLocalState).toHaveBeenCalledOnce();
 			expect(getErrorEvent(events).error.errorMessage).toContain("cloud target has no locally verified tracking ref");
 			expect(mockedCreate).not.toHaveBeenCalled();
 		} finally {
@@ -111,9 +101,8 @@ describe("streamCursor cloud request validation", () => {
 		});
 		mockCreatedAgent({ agentId: "bc-00000000-0000-0000-0000-000000000001", send });
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
-		expect(mockedInspectCursorCloudLocalState).not.toHaveBeenCalled();
 		expect(mockedCreate).toHaveBeenCalledOnce();
 		expect(send).toHaveBeenCalledOnce();
 	});
@@ -125,7 +114,7 @@ describe("streamCursor cloud request validation", () => {
 		process.env.PI_CURSOR_CLOUD_REPO = "https://github.com/example/repo.git";
 		process.env.PI_CURSOR_CLOUD_BRANCH = "foo..bar";
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(getErrorEvent(events).error.errorMessage).toContain("valid Git branch name");
 		expect(mockedCreate).not.toHaveBeenCalled();
@@ -137,7 +126,7 @@ describe("streamCursor cloud request validation", () => {
 		process.env.PI_CURSOR_CLOUD_ALLOW_LOCAL_STATE = "1";
 		process.env.PI_CURSOR_CLOUD_ENV = "bad-name,NODE_ENV,CURSOR_SECRET";
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		const message = getErrorEvent(events).error.errorMessage;
 		expect(message).toContain("Cursor cloud env forwarding is not implemented");
@@ -148,11 +137,11 @@ describe("streamCursor cloud request validation", () => {
 	it("rejects an all-invalid --cursor-cloud-env request before SDK calls", async () => {
 		const pi = createPiHarness({ flagValues: { "cursor-cloud-env": "bad-name,CURSOR_SECRET,9INVALID" } });
 		registerCursorRuntimeControls(pi);
-		await pi.runSessionStart({ model: makeModel("gpt-5.5@1m") });
+		await pi.runSessionStart({ model: makeModel("gpt-5.5") });
 		const send = vi.fn();
 		mockCreatedAgent({ send });
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(getErrorEvent(events).error.errorMessage).toContain(
 			"Invalid --cursor-cloud-env: no valid environment variable names were requested.",

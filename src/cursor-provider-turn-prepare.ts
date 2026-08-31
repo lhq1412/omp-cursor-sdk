@@ -29,7 +29,7 @@ import {
 } from "./cursor-state.js";
 import { resolveEffectiveCursorConfig } from "./cursor-runtime-state.js";
 import type { CursorResolvedSdkConfig } from "./cursor-config.js";
-import { buildCursorModelSelection } from "./model-discovery.js";
+import { buildCursorModelSelection, getCursorModelMetadata } from "./model-discovery.js";
 import { getEffectiveCursorSettingSources } from "./cursor-setting-sources.js";
 import {
 	formatCursorCloudPreflightError,
@@ -50,7 +50,12 @@ import {
 } from "./cursor-cloud-lifecycle.js";
 import { MISSING_CURSOR_API_KEY_MESSAGE } from "./cursor-provider-errors.js";
 import { CursorSdkTurnCoordinator } from "./cursor-provider-turn-coordinator.js";
-import { resolveCursorApiKey, resolveCursorStringApiKey } from "./cursor-api-key.js";
+import {
+	isRemovedCursorApiKeyPlaceholder,
+	resolveCursorApiKey,
+	resolveCursorRuntimeApiKey,
+	resolveCursorStringApiKey,
+} from "./cursor-api-key.js";
 import { loadCursorSdk } from "./cursor-sdk-runtime.js";
 import type {
 	CloudCursorProviderTurnPrepareResult,
@@ -88,6 +93,19 @@ function buildCursorCloudPromptContext(context: Context, handoff: "fresh" | "boo
 }
 
 const CLOUD_SEND_PLAN: CursorSessionSendPlan = { mode: "bootstrap", resetAgent: false, reason: "initial" };
+
+function isOmpExtendedContextEnabled(
+	modelId: string,
+	contextWindow: number | null,
+): boolean {
+	const standardContextWindow =
+		getCursorModelMetadata(modelId)?.extendedContext?.standardContextWindow;
+	// OMP clamps the effective model window to this threshold while its native
+	// extended-context control is off. Per-model overrides intentionally win.
+	return standardContextWindow === undefined ||
+		contextWindow === null ||
+		contextWindow > standardContextWindow;
+}
 
 export function resolveCursorProviderTurnConfig(cwd: string) {
 	return resolveEffectiveCursorConfig({ cwd, projectTrusted: getCursorSessionProjectTrusted() });
@@ -446,7 +464,10 @@ export async function prepareCursorProviderTurn(
 
 	const agentMode = getCursorProviderAgentModeOrThrow();
 	const fastEnabled = resolvedConfig.runtime.value === "cloud" ? undefined : getEffectiveFastForModelId(model.id);
-	const selection = buildCursorModelSelection(model.id, options?.reasoning ?? "off", fastEnabled);
+	const selection = buildCursorModelSelection(model.id, options?.reasoning ?? "off", {
+		fastEnabled,
+		extendedContextEnabled: isOmpExtendedContextEnabled(model.id, model.contextWindow),
+	});
 	const context: PrepareCursorProviderTurnContext = { ...prepareParams, agentMode, selection, fastEnabled };
 
 	return resolvedConfig.runtime.value === "cloud"
@@ -455,7 +476,8 @@ export async function prepareCursorProviderTurn(
 }
 
 export async function requireCursorApiKey(options: SimpleStreamOptions | undefined): Promise<string> {
-	const apiKey = await resolveCursorStringApiKey(options?.apiKey);
+	if (isRemovedCursorApiKeyPlaceholder(options?.apiKey)) throw new Error(MISSING_CURSOR_API_KEY_MESSAGE);
+	const apiKey = await resolveCursorStringApiKey(options?.apiKey) ?? await resolveCursorRuntimeApiKey();
 	if (!apiKey) throw new Error(MISSING_CURSOR_API_KEY_MESSAGE);
 	return apiKey;
 }

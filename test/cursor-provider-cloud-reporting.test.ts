@@ -78,7 +78,7 @@ describe("streamCursor cloud reporting", () => {
 		});
 
 		try {
-			const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+			const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 			const thinking = collectThinkingDeltas(events);
 			expect(thinking).toContain("Cursor cloud run:");
@@ -136,7 +136,7 @@ describe("streamCursor cloud reporting", () => {
 		const send = vi.fn().mockRejectedValue(new Error("send failed"));
 		mockCreatedAgent({ agentId: CLOUD_AGENT_ID, send });
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(getErrorEvent(events).error.errorMessage).toContain("send failed");
 		expect(pi.appendEntry).toHaveBeenCalledTimes(1);
@@ -170,7 +170,7 @@ describe("streamCursor cloud reporting", () => {
 		mockCreatedAgent({ agentId: CLOUD_AGENT_ID, send });
 
 		const events = await collectEvents(streamCursor(
-			makeModel("gpt-5.5@1m"),
+			makeModel("gpt-5.5"),
 			makeContext(),
 			{ apiKey: "test-key", signal: abortController.signal },
 		));
@@ -197,7 +197,7 @@ describe("streamCursor cloud reporting", () => {
 		const send = vi.fn();
 		mockCreatedAgent({ agentId: CLOUD_AGENT_ID, send });
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey }));
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey }));
 		const error = getErrorEvent(events).error.errorMessage;
 
 		expect(error).toContain(CLOUD_AGENT_ID);
@@ -229,7 +229,7 @@ describe("streamCursor cloud reporting", () => {
 			})),
 		});
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 		const error = getErrorEvent(events).error.errorMessage;
 
 		expect(error).toContain(CLOUD_AGENT_ID);
@@ -262,7 +262,7 @@ describe("streamCursor cloud reporting", () => {
 		});
 
 		try {
-			const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+			const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 			expect(getErrorEvent(events).reason).toBe(status === "cancelled" ? "aborted" : "error");
 			expect(listArtifacts).not.toHaveBeenCalled();
@@ -305,7 +305,7 @@ describe("streamCursor cloud reporting", () => {
 		});
 
 		try {
-			const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+			const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 			const display = collectThinkingDeltas(events);
 
 			expect(getDoneEvent(events).message.stopReason).toBe("stop");
@@ -342,7 +342,7 @@ describe("streamCursor cloud reporting", () => {
 		});
 
 		try {
-			const events = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+			const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 			expect(collectThinkingDeltas(events)).not.toContain("Cursor cloud run:");
 			expect(listArtifacts).not.toHaveBeenCalled();

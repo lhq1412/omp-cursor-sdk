@@ -1,79 +1,94 @@
+function normalizeParamValue(value) {
+	return value.trim().toLowerCase();
+}
+
 function getParameter(model, id) {
 	return (model.parameters ?? []).find((parameter) => parameter.id === id);
 }
 
 function getDefaultParam(model, id) {
 	const variant = (model.variants ?? []).find((candidate) => candidate.isDefault) ?? model.variants?.[0];
-	return variant?.params?.find((param) => param.id === id)?.value.toLowerCase();
+	return variant?.params?.find((param) => param.id === id)?.value;
 }
 
-function getAmbiguousAliases(models) {
-	const ownersByAlias = new Map();
-	for (const model of models) {
-		for (const rawAlias of model.aliases ?? []) {
-			const alias = rawAlias.trim();
-			if (!alias || alias === model.id) continue;
-			const owners = ownersByAlias.get(alias) ?? new Set();
-			owners.add(model.id);
-			ownersByAlias.set(alias, owners);
-		}
+function getContextValues(model) {
+	const values = [];
+	const usedValues = new Set();
+	for (const { value } of getParameter(model, "context")?.values ?? []) {
+		const normalized = normalizeParamValue(value);
+		if (!normalized || usedValues.has(normalized)) continue;
+		usedValues.add(normalized);
+		values.push(value);
 	}
-	return new Set([...ownersByAlias].filter(([, owners]) => owners.size > 1).map(([alias]) => alias));
+	return values;
 }
 
-function getSelectableIds(model, reservedIds, ambiguousAliases) {
-	const ids = [model.id];
-	for (const rawAlias of model.aliases ?? []) {
-		const alias = rawAlias.trim();
-		if (!alias || alias === model.id || ids.includes(alias) || reservedIds.has(alias) || ambiguousAliases.has(alias)) continue;
-		ids.push(alias);
-	}
-	return ids;
+export function parseCursorContextWindowValue(value) {
+	const match = /^(\d+(?:\.\d+)?)([km])$/i.exec(value.trim());
+	if (!match) return undefined;
+	const amount = Number(match[1]);
+	const unit = match[2]?.toLowerCase();
+	if (!Number.isFinite(amount) || amount <= 0) return undefined;
+	return Math.round(amount * (unit === "m" ? 1000000 : 1000));
 }
 
-function encodePiModelId(modelId, context, fastOverride) {
-	// OMP port: Pi used `:fast`/`:slow`, but OMP's model resolver parses
-	// `model:level` as thinking-level syntax, so colon-suffixed ids collapse
-	// at registration. `@` is treated literally (context variants prove it).
-	const contextQualified = context ? `${modelId}@${context}` : modelId;
-	if (fastOverride === true) return `${contextQualified}@fast`;
-	if (fastOverride === false) return `${contextQualified}@slow`;
-	return contextQualified;
+function encodePiModelId(modelId, context) {
+	return context ? `${modelId}@${context}` : modelId;
+}
+
+function getTwoTierContextPolicy(model, contextValues) {
+	if (contextValues.length !== 2) return undefined;
+	const parsed = contextValues.map((value) => ({
+		value,
+		contextWindow: parseCursorContextWindowValue(value),
+	}));
+	if (parsed.some(({ contextWindow }) => contextWindow === undefined)) return undefined;
+	parsed.sort((a, b) => a.contextWindow - b.contextWindow);
+	const standard = parsed[0];
+	const extended = parsed[1];
+	if (!standard || !extended || standard.contextWindow === extended.contextWindow) return undefined;
+	return {
+		standard: {
+			value: standard.value,
+			contextWindowKey: encodePiModelId(model.id, standard.value),
+		},
+		extended: {
+			value: extended.value,
+			contextWindowKey: encodePiModelId(model.id, extended.value),
+		},
+	};
 }
 
 export function getCursorModelSelectionIdentities(models) {
 	const sortedModels = [...models].sort((a, b) => a.id.localeCompare(b.id));
-	const reservedIds = new Set(models.map((model) => model.id));
-	const ambiguousAliases = getAmbiguousAliases(models);
 	const usedPiModelIds = new Set();
 	const identities = [];
 
 	for (const model of sortedModels) {
-		const contextValues = getParameter(model, "context")?.values?.map(({ value }) => value) ?? [];
-		const contexts = contextValues.length > 0 ? contextValues : [undefined];
-		const hasFast = getParameter(model, "fast") !== undefined;
-		const fastOverrides = hasFast ? [undefined, true, false] : [undefined];
-		const defaultFast = getDefaultParam(model, "fast");
+		const contextValues = getContextValues(model);
+		const defaultContext = getDefaultParam(model, "context");
+		const contextTiers = getTwoTierContextPolicy(model, contextValues);
+		const contexts = contextTiers
+			? [undefined]
+			: [
+					undefined,
+					...contextValues.filter(
+						(value) => normalizeParamValue(value) !== normalizeParamValue(defaultContext ?? ""),
+					),
+				];
 
-		for (const selectionModelId of getSelectableIds(model, reservedIds, ambiguousAliases)) {
-			for (const context of contexts) {
-				for (const fastOverride of fastOverrides) {
-					const piModelId = encodePiModelId(selectionModelId, context, fastOverride);
-					if (usedPiModelIds.has(piModelId)) continue;
-					usedPiModelIds.add(piModelId);
-					const defaultEquivalent =
-						(fastOverride === true && defaultFast === "true") || (fastOverride === false && defaultFast === "false");
-					identities.push({
-						model,
-						selectionModelId,
-						...(context ? { context } : {}),
-						...(fastOverride !== undefined ? { fastOverride } : {}),
-						piModelId,
-						contextWindowKey: defaultEquivalent ? encodePiModelId(selectionModelId, context) : piModelId,
-						baseContextWindowKey: encodePiModelId(model.id, context, defaultEquivalent ? undefined : fastOverride),
-					});
-				}
-			}
+		for (const context of contexts) {
+			const piModelId = encodePiModelId(model.id, context);
+			if (usedPiModelIds.has(piModelId)) continue;
+			usedPiModelIds.add(piModelId);
+			const effectiveContext = context ?? contextTiers?.extended.value ?? defaultContext;
+			identities.push({
+				model,
+				...(context ? { context } : {}),
+				...(contextTiers ? { contextTiers } : {}),
+				piModelId,
+				contextWindowKey: encodePiModelId(model.id, effectiveContext),
+			});
 		}
 	}
 
@@ -81,9 +96,21 @@ export function getCursorModelSelectionIdentities(models) {
 }
 
 export function normalizeCursorContextWindowEntries(models, entries, source = "context windows") {
-	const canonicalBySelectableId = new Map(
-		getCursorModelSelectionIdentities(models).map(({ piModelId, contextWindowKey }) => [piModelId, contextWindowKey]),
-	);
+	const canonicalBySelectableId = new Map();
+	for (const model of models) {
+		for (const { piModelId, contextWindowKey } of getCursorModelSelectionIdentities([model])) {
+			canonicalBySelectableId.set(piModelId, contextWindowKey);
+			if (!canonicalBySelectableId.has(contextWindowKey)) {
+				canonicalBySelectableId.set(contextWindowKey, contextWindowKey);
+			}
+		}
+		for (const context of getContextValues(model)) {
+			const contextWindowKey = encodePiModelId(model.id, context);
+			if (!canonicalBySelectableId.has(contextWindowKey)) {
+				canonicalBySelectableId.set(contextWindowKey, contextWindowKey);
+			}
+		}
+	}
 	const normalized = new Map();
 	for (const [modelId, contextWindow] of entries) {
 		const canonicalId = modelId === "default" ? modelId : canonicalBySelectableId.get(modelId);

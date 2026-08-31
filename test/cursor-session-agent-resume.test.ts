@@ -170,10 +170,10 @@ describe("cursor-session-agent-resume", () => {
 		expect(getMatchingCursorSessionAgentResumeHandle("pool-1")).toBeUndefined();
 	});
 
-	it("rejects a prompt that Pi persisted before a hard-killed provider process exited", async () => {
+	it("rejects a prompt that OMP persisted before a hard-killed provider process exited", async () => {
 		const tempDir = mkdtempSync(join(tmpdir(), "cursor-resume-hard-kill-"));
 		try {
-			const manager = SessionManager.create(tempDir, tempDir, { id: "hard-kill-session" });
+			const manager = SessionManager.create(tempDir, tempDir);
 			manager.appendMessage({ role: "user", content: "completed prompt", timestamp: 1 });
 			manager.appendMessage(makeAssistantMessage("completed answer"));
 			const branch = manager.getBranch();
@@ -195,11 +195,11 @@ describe("cursor-session-agent-resume", () => {
 			const child = spawnSync(process.execPath, [
 				"--input-type=module",
 				"-e",
-				`import { SessionManager } from "@oh-my-pi/pi-coding-agent"; const manager = SessionManager.open(${JSON.stringify(manager.getSessionFile()!)}); manager.appendMessage({ role: "user", content: "submitted before crash", timestamp: 2 }); process.kill(process.pid, "SIGKILL");`,
+				`import { SessionManager } from "@oh-my-pi/pi-coding-agent"; const manager = await SessionManager.open(${JSON.stringify(manager.getSessionFile()!)}); manager.appendMessage({ role: "user", content: "submitted before crash", timestamp: 2 }); process.kill(process.pid, "SIGKILL");`,
 			], { cwd: process.cwd(), encoding: "utf8" });
 			expect(child.status).not.toBe(0);
 
-			const reopened = SessionManager.open(manager.getSessionFile()!, tempDir, tempDir);
+			const reopened = await SessionManager.open(manager.getSessionFile()!, tempDir);
 			const pi = createPiHarness();
 			registerCursorSessionScope(pi);
 			registerCursorSessionAgentResume(pi);
@@ -539,5 +539,63 @@ describe("cursor-session-agent-resume", () => {
 		});
 		await pi.runSessionCompact();
 		expect(getMatchingCursorSessionAgentResumeHandle("pool-1")).toBeUndefined();
+	});
+
+	it("does not flush a compaction-summarizer pending handle on the first later turn_end", async () => {
+		const pi = createPiHarness();
+		registerCursorSessionScope(pi);
+		registerCursorSessionAgentResume(pi);
+		const first = messageEntry("u1", null);
+		const compact = {
+			type: "compaction" as const,
+			id: "c1",
+			parentId: "u1",
+			timestamp: "2026-07-07T00:00:00.000Z",
+			summary: "compacted",
+			firstKeptEntryId: "u2",
+			tokensBefore: 50_000,
+		};
+		const after = messageEntry("u2", "c1");
+
+		await pi.runSessionStart({
+			cwd: "/tmp/project",
+			sessionManager: {
+				getSessionFile: vi.fn(() => "/tmp/session.jsonl"),
+				getSessionId: vi.fn(() => "session-1"),
+				getBranch: vi.fn(() => [first]),
+				getEntries: vi.fn(() => [first]),
+			},
+		});
+		persistCursorSessionAgentResumeHandle({
+			runtime: "local",
+			agentId: "agent-summarizer",
+			poolKey: "pool-1",
+			sendState: { bootstrapped: true, contextFingerprint: "one-message", incrementalSendCount: 0 },
+			storeIdentity: { version: 1, stateRoot: "/tmp/store" },
+		});
+		expect(resumeTestUtils.state.pendingHandle?.agentId).toBe("agent-summarizer");
+
+		await pi.runSessionCompact({
+			compactionEntry: compact,
+		}, {
+			sessionManager: {
+				getSessionFile: vi.fn(() => "/tmp/session.jsonl"),
+				getSessionId: vi.fn(() => "session-1"),
+				getBranch: vi.fn(() => [first, compact, after]),
+				getEntries: vi.fn(() => [first, compact, after]),
+			},
+		});
+		expect(resumeTestUtils.state.pendingHandle).toBeUndefined();
+		expect(resumeTestUtils.isResumeHandlePersistSuppressed()).toBe(false);
+
+		pi.appendEntry.mockClear();
+		await pi.runTurnEnd({}, {
+			sessionManager: {
+				getSessionFile: vi.fn(() => "/tmp/session.jsonl"),
+				getSessionId: vi.fn(() => "session-1"),
+				getBranch: vi.fn(() => [first, compact, after]),
+			},
+		});
+		expect(pi.appendEntry).not.toHaveBeenCalled();
 	});
 });

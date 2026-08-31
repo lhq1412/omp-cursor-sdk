@@ -32,7 +32,7 @@ describe("Cursor local force consumption", () => {
 		const mockSend = vi.fn().mockResolvedValue(finishedRun());
 		mockCreatedAgent({ send: mockSend });
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockSend.mock.calls[0]?.[1]).not.toHaveProperty("local");
 	});
@@ -42,8 +42,8 @@ describe("Cursor local force consumption", () => {
 		const mockSend = vi.fn().mockResolvedValue(finishedRun());
 		mockCreatedAgent({ send: mockSend });
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockedCreate.mock.calls[0][0].local).not.toHaveProperty("force");
 		expect(mockSend.mock.calls[0]?.[1]).toMatchObject({ local: { force: true } });
@@ -56,10 +56,10 @@ describe("Cursor local force consumption", () => {
 		mockedCreate.mockRejectedValueOnce(new Error("pre-send create failed"));
 		const mockSend = vi.fn().mockResolvedValue(finishedRun());
 
-		const failed = await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		const failed = await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 		mockCreatedAgent({ send: mockSend });
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(getErrorEvent(failed).error.errorMessage).toContain("pre-send create failed");
 		expect(mockSend.mock.calls[0]?.[1]).toMatchObject({ local: { force: true } });
@@ -75,9 +75,9 @@ describe("Cursor local force consumption", () => {
 			return asMockSdkAgent({ send: mockSend });
 		});
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key", signal: abortController.signal }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key", signal: abortController.signal }));
 		mockCreatedAgent({ send: mockSend });
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockSend).toHaveBeenCalledTimes(1);
 		expect(mockSend.mock.calls[0]?.[1]).toMatchObject({ local: { force: true } });
@@ -86,13 +86,13 @@ describe("Cursor local force consumption", () => {
 	it("does not rearm consumed CLI force on session_start reload", async () => {
 		const pi = createPiHarness({ flagValues: { "cursor-local-force": true } });
 		registerCursorRuntimeControls(pi);
-		await pi.runSessionStart({ model: makeModel("gpt-5.5@1m") });
+		await pi.runSessionStart({ model: makeModel("gpt-5.5") });
 		const mockSend = vi.fn().mockResolvedValue(finishedRun());
 		mockCreatedAgent({ send: mockSend });
 
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
-		await pi.runSessionStart({ model: makeModel("gpt-5.5@1m") }, { reason: "reload" });
-		await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
+		await pi.runSessionStart({ model: makeModel("gpt-5.5") }, {});
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 		expect(mockSend.mock.calls[0]?.[1]).toMatchObject({ local: { force: true } });
 		expect(mockSend.mock.calls[1]?.[1]).not.toHaveProperty("local");

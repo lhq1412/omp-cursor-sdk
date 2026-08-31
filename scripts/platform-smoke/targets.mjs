@@ -50,7 +50,7 @@ export function createLeaseCleanupResult(config, targetName, leaseId, stopResult
 	writeFileSync(resolve(suiteDir, "target.json"), JSON.stringify({
 		targetName,
 		platform: platformFor(targetName),
-		slug: `${config.packageName ?? "pi-cursor-sdk"}-${targetName}`,
+		slug: `${config.packageName ?? "omp-cursor-sdk"}-${targetName}`,
 		runId,
 		writtenAt: new Date().toISOString(),
 	}, null, 2));
@@ -88,7 +88,7 @@ export async function runTargetSuite(config, targetName, suiteName, leaseSession
 	const runId = leaseSession?.runId ?? makeRunId();
 	const suiteDir = createSuiteDir(config.artifactRoot, runId, targetName, suiteName);
 	const platform = platformFor(targetName);
-	const slug = `${config.packageName ?? "pi-cursor-sdk"}-${targetName}`;
+	const slug = `${config.packageName ?? "omp-cursor-sdk"}-${targetName}`;
 
 	console.log(`\n── [${targetName}] ${suiteName} ──`);
 	console.log(`  runId: ${runId}`);
@@ -133,7 +133,7 @@ export async function runTargetSuite(config, targetName, suiteName, leaseSession
  * This is the release-gate path; per-suite runs remain available for diagnosis.
  */
 export async function runTargetSuites(config, targetName, suiteNames) {
-	const slug = `${config.packageName ?? "pi-cursor-sdk"}-${targetName}`;
+	const slug = `${config.packageName ?? "omp-cursor-sdk"}-${targetName}`;
 	const runId = makeRunId();
 	console.log(`  targetRunId: ${runId}`);
 	console.log(`  warmup ${targetName}...`);
@@ -190,7 +190,7 @@ export async function runTargetSuites(config, targetName, suiteNames) {
  */
 async function executePlatformBuild(config, targetName, suiteDir, slug, platform, leaseSession) {
 	const startedAt = Date.now();
-	const packageName = config.packageName ?? "pi-cursor-sdk";
+	const packageName = config.packageName ?? "omp-cursor-sdk";
 	const command = buildPlatformBuildCommand(targetName, packageName, config.nodeValidationMajor ?? 24);
 	writeCommand(suiteDir, command);
 	let warmup = leaseSession;
@@ -369,7 +369,7 @@ function posixSection(name, command) {
 /**
  * Build a shell command that runs the full platform-build pipeline and packed-install contract.
  */
-export function buildPlatformBuildCommand(targetName, packageName = "pi-cursor-sdk", nodeValidationMajor = 24) {
+export function buildPlatformBuildCommand(targetName, packageName = "omp-cursor-sdk", nodeValidationMajor = 24) {
 	const platform = platformFor(targetName);
 	const lines = [];
 	if (platform === "posix") {
@@ -413,7 +413,7 @@ export function buildPlatformBuildCommand(targetName, packageName = "pi-cursor-s
 		lines.push(...posixSection("CHECK_PLATFORM_SMOKE_STDERR", 'cat "$PACK_DIR/check-platform-smoke.stderr.txt" 2>/dev/null || true'));
 		lines.push("");
 		lines.push('echo "=== npm test ==="');
-		lines.push('npm test >"$PACK_DIR/npm-test.stdout.txt" 2>"$PACK_DIR/npm-test.stderr.txt"');
+		lines.push('npm test -- --testTimeout=15000 >"$PACK_DIR/npm-test.stdout.txt" 2>"$PACK_DIR/npm-test.stderr.txt"');
 		lines.push("TEST_EXIT=$?");
 		lines.push('echo "PLATFORM_NPM_TEST_EXIT=$TEST_EXIT"');
 		lines.push(...posixSection("NPM_TEST_STDOUT", 'cat "$PACK_DIR/npm-test.stdout.txt" 2>/dev/null || true'));
@@ -445,21 +445,21 @@ export function buildPlatformBuildCommand(targetName, packageName = "pi-cursor-s
 		lines.push('cat "$PACK_DIR/fixture.stderr.txt"');
 		lines.push('echo "PLATFORM_FIXTURE_EXIT=$FIXTURE_EXIT"');
 		lines.push("");
-		lines.push('echo "=== pi install packed tarball ==="');
-		lines.push('PI_CLI="$(pwd)/node_modules/.bin/pi"');
-		lines.push('if [ ! -x "$PI_CLI" ]; then PI_CLI="$(command -v pi || true)"; fi');
-		lines.push('echo "PLATFORM_PI_CLI=$PI_CLI"');
-		lines.push('if [ -n "$PACK_TARBALL" ] && [ -n "$PI_CLI" ] && [ -f "$PACK_DIR/$PACK_TARBALL" ]; then (cd "$PI_PROJECT" && npm init -y >"$PACK_DIR/packed-node-install.stdout.txt" 2>"$PACK_DIR/packed-node-install.stderr.txt" && npm install --no-save "$PACK_DIR/$PACK_TARBALL" >>"$PACK_DIR/packed-node-install.stdout.txt" 2>>"$PACK_DIR/packed-node-install.stderr.txt"); PACKED_NODE_INSTALL_EXIT=$?; else echo "missing pi cli or tarball" >"$PACK_DIR/packed-node-install.stderr.txt"; PACKED_NODE_INSTALL_EXIT=1; fi');
+		lines.push('echo "=== omp plugin install packed tarball ==="');
+		lines.push('OMP_CLI="$(pwd)/node_modules/.bin/omp"');
+		lines.push('if [ ! -x "$OMP_CLI" ]; then OMP_CLI="$(command -v omp || true)"; fi');
+		lines.push('echo "PLATFORM_OMP_CLI=$OMP_CLI"');
+		lines.push('if [ -n "$PACK_TARBALL" ] && [ -n "$OMP_CLI" ] && [ -f "$PACK_DIR/$PACK_TARBALL" ]; then (cd "$PI_PROJECT" && npm init -y >"$PACK_DIR/packed-node-install.stdout.txt" 2>"$PACK_DIR/packed-node-install.stderr.txt" && npm install --no-save "$PACK_DIR/$PACK_TARBALL" >>"$PACK_DIR/packed-node-install.stdout.txt" 2>>"$PACK_DIR/packed-node-install.stderr.txt"); PACKED_NODE_INSTALL_EXIT=$?; else echo "missing omp cli or tarball" >"$PACK_DIR/packed-node-install.stderr.txt"; PACKED_NODE_INSTALL_EXIT=1; fi');
 		lines.push('echo "PLATFORM_PACKED_NODE_INSTALL_EXIT=$PACKED_NODE_INSTALL_EXIT"');
 		lines.push(...posixSection("PACKED_NODE_INSTALL_STDOUT", 'cat "$PACK_DIR/packed-node-install.stdout.txt" 2>/dev/null || true'));
 		lines.push(...posixSection("PACKED_NODE_INSTALL_STDERR", 'cat "$PACK_DIR/packed-node-install.stderr.txt" 2>/dev/null || true'));
-		lines.push(`if [ "$PACKED_NODE_INSTALL_EXIT" -eq 0 ] && [ -n "$PI_CLI" ]; then (cd "$PI_PROJECT" && PI_OFFLINE=1 "$PI_CLI" install --approve -l ./node_modules/${packageName} >"$PACK_DIR/pi-install.stdout.txt" 2>"$PACK_DIR/pi-install.stderr.txt"); PI_INSTALL_EXIT=$?; else echo "packed npm install failed or missing pi cli" >"$PACK_DIR/pi-install.stderr.txt"; PI_INSTALL_EXIT=1; fi`);
+		lines.push(`if [ "$PACKED_NODE_INSTALL_EXIT" -eq 0 ] && [ -n "$OMP_CLI" ]; then (cd "$PI_PROJECT" && PI_OFFLINE=1 "$OMP_CLI" plugin install --scope project ./node_modules/${packageName} >"$PACK_DIR/pi-install.stdout.txt" 2>"$PACK_DIR/pi-install.stderr.txt"); PI_INSTALL_EXIT=$?; else echo "packed npm install failed or missing omp cli" >"$PACK_DIR/pi-install.stderr.txt"; PI_INSTALL_EXIT=1; fi`);
 		lines.push('echo "PLATFORM_PI_INSTALL_EXIT=$PI_INSTALL_EXIT"');
 		lines.push(...posixSection("PI_INSTALL_STDOUT", 'cat "$PACK_DIR/pi-install.stdout.txt" 2>/dev/null || true'));
 		lines.push(...posixSection("PI_INSTALL_STDERR", 'cat "$PACK_DIR/pi-install.stderr.txt" 2>/dev/null || true'));
 		lines.push("");
-		lines.push('echo "=== pi list ==="');
-		lines.push('if [ -n "$PI_CLI" ]; then (cd "$PI_PROJECT" && PI_OFFLINE=1 "$PI_CLI" list --approve >"$PACK_DIR/pi-list.stdout.txt" 2>"$PACK_DIR/pi-list.stderr.txt"); PI_LIST_EXIT=$?; else echo "missing pi cli" >"$PACK_DIR/pi-list.stderr.txt"; PI_LIST_EXIT=1; fi');
+		lines.push('echo "=== omp plugin list ==="');
+		lines.push('if [ -n "$OMP_CLI" ]; then (cd "$PI_PROJECT" && PI_OFFLINE=1 "$OMP_CLI" plugin list --scope project >"$PACK_DIR/pi-list.stdout.txt" 2>"$PACK_DIR/pi-list.stderr.txt"); PI_LIST_EXIT=$?; else echo "missing omp cli" >"$PACK_DIR/pi-list.stderr.txt"; PI_LIST_EXIT=1; fi');
 		lines.push('echo "PLATFORM_PI_LIST_EXIT=$PI_LIST_EXIT"');
 		lines.push(...posixSection("PI_LIST_STDOUT", 'cat "$PACK_DIR/pi-list.stdout.txt" 2>/dev/null || true'));
 		lines.push(...posixSection("PI_LIST_STDERR", 'cat "$PACK_DIR/pi-list.stderr.txt" 2>/dev/null || true'));
@@ -662,8 +662,8 @@ async function executeLiveSuite(config, targetName, suiteName, suiteDir, slug, l
 }
 
 function buildLiveSuiteCommand(config, targetName, suiteName, prepDir) {
-	const model = config.cursorModel ?? "cursor/composer-2-5";
-	const packageName = config.packageName ?? "pi-cursor-sdk";
+	const model = config.cursorModel ?? "cursor-sdk/grok-4.6";
+	const packageName = config.packageName ?? "omp-cursor-sdk";
 	const prepArgs = prepDir ? ` --prep-dir ${platformFor(targetName) === "powershell" ? prepDir : shellQuote(prepDir)}` : "";
 	if (platformFor(targetName) === "powershell") {
 		return `powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "node scripts/platform-smoke/live-suite-runner.mjs --suite ${suiteName} --target ${targetName} --model ${model} --package-name ${packageName}${prepArgs}"`;

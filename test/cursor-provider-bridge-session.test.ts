@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Context } from "@oh-my-pi/pi-ai";
-import { Type } from "typebox";
+import { Type } from "@oh-my-pi/omptype/typebox"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	resetCursorProviderTestState,
@@ -147,7 +147,7 @@ describe("streamCursor session agent", () => {
 		const followUpContext = makeContext();
 		followUpContext.messages = [
 			...firstContext.messages,
-			{ role: "assistant", content: [{ type: "text", text: "Hi there." }], api: "cursor-sdk", provider: "cursor", model: "test-model", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 2 },
+			{ role: "assistant", content: [{ type: "text", text: "Hi there." }], api: "cursor-sdk", provider: "cursor-sdk", model: "test-model", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 2 },
 			{ role: "user", content: "Follow up", timestamp: 3 },
 		];
 		await collectEvents(streamCursor(makeModel(), followUpContext, { apiKey: "test-key" }));
@@ -281,7 +281,7 @@ describe("streamCursor session agent", () => {
 				role: "assistant",
 				content: [{ type: "text", text: "Hi there." }],
 				api: "cursor-sdk",
-				provider: "cursor",
+				provider: "cursor-sdk",
 				model: "test-model",
 				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
 				stopReason: "stop",
@@ -377,7 +377,7 @@ describe("streamCursor session agent", () => {
 		const followUpContext = makeContext();
 		followUpContext.messages = [
 			...firstContext.messages,
-			{ role: "assistant", content: [{ type: "text", text: "Hello" }], api: "cursor-sdk", provider: "cursor", model: "test-model", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 2 },
+			{ role: "assistant", content: [{ type: "text", text: "Hello" }], api: "cursor-sdk", provider: "cursor-sdk", model: "test-model", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 2 },
 			{ role: "user", content: "Read README", timestamp: 3 },
 		];
 

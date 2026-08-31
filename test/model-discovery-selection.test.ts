@@ -1,3 +1,4 @@
+import { Effort } from "@oh-my-pi/pi-ai";
 import { describe, it, expect, beforeEach } from "vitest";
 import {
 	buildCursorModelSelection,
@@ -5,6 +6,7 @@ import {
 	getCursorModelMetadataEntries,
 	__testUtils,
 } from "../src/model-discovery.js";
+import { getCursorContextWindowCacheKey } from "../src/context-window-cache.js";
 import type { ModelListItem } from "@cursor/sdk";
 
 function register(items: ModelListItem[]) {
@@ -76,8 +78,12 @@ describe("buildCursorModelSelection", () => {
 		]);
 	});
 
-	it("uses selected context, pi thinking, and fast state", () => {
-		expect(buildCursorModelSelection("gpt-5.4@272k", "xhigh", true)).toEqual({
+	it("uses native standard context, pi thinking, and fast state", () => {
+		const selection = buildCursorModelSelection("gpt-5.4", Effort.XHigh, {
+			fastEnabled: true,
+			extendedContextEnabled: false,
+		});
+		expect(selection).toEqual({
 			id: "gpt-5.4",
 			params: [
 				{ id: "context", value: "272k" },
@@ -85,10 +91,13 @@ describe("buildCursorModelSelection", () => {
 				{ id: "fast", value: "true" },
 			],
 		});
+		expect(getCursorContextWindowCacheKey("gpt-5.4", selection)).toBe("gpt-5.4@272k");
 	});
 
-	it("turns Claude thinking off and omits effort when pi thinking is off", () => {
-		expect(buildCursorModelSelection("claude-opus-4-7@300k", "off")).toEqual({
+	it("turns Claude thinking off and selects its native standard context", () => {
+		expect(buildCursorModelSelection("claude-opus-4-7", "off", {
+			extendedContextEnabled: false,
+		})).toEqual({
 			id: "claude-opus-4-7",
 			params: [
 				{ id: "thinking", value: "false" },
@@ -98,7 +107,9 @@ describe("buildCursorModelSelection", () => {
 	});
 
 	it("turns Claude thinking on and maps effort when pi thinking is enabled", () => {
-		expect(buildCursorModelSelection("claude-opus-4-7@1m", "high")).toEqual({
+		expect(buildCursorModelSelection("claude-opus-4-7", Effort.High, {
+			extendedContextEnabled: true,
+		})).toEqual({
 			id: "claude-opus-4-7",
 			params: [
 				{ id: "thinking", value: "true" },
@@ -114,7 +125,7 @@ describe("buildCursorModelSelection", () => {
 
 	it("returns cloned metadata entries", () => {
 		const entries = getCursorModelMetadataEntries();
-		const metadata = entries.find((entry) => entry.piModelId === "gpt-5.4@1m");
+		const metadata = entries.find((entry) => entry.piModelId === "gpt-5.4");
 		expect(metadata?.defaultParams).toEqual([
 			{ id: "context", value: "1m" },
 			{ id: "reasoning", value: "medium" },
@@ -122,7 +133,9 @@ describe("buildCursorModelSelection", () => {
 		]);
 		metadata!.defaultParams[0].value = "mutated";
 		metadata!.thinkingLevelMap!.medium = "mutated";
-		expect(getCursorModelMetadata("gpt-5.4@1m")?.defaultParams[0].value).toBe("1m");
-		expect(getCursorModelMetadata("gpt-5.4@1m")?.thinkingLevelMap?.medium).toBe("medium");
+		metadata!.extendedContext!.standardValue = "mutated";
+		expect(getCursorModelMetadata("gpt-5.4")?.defaultParams[0].value).toBe("1m");
+		expect(getCursorModelMetadata("gpt-5.4")?.thinkingLevelMap?.medium).toBe("medium");
+		expect(getCursorModelMetadata("gpt-5.4")?.extendedContext?.standardValue).toBe("272k");
 	});
 });

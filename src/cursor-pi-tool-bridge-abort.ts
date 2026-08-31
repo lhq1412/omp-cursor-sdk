@@ -26,13 +26,13 @@ class CursorPiToolBridgeToolExecutionAbortTracker {
 			signal: options.signal,
 		};
 		if (options.signal?.aborted) {
-			this.cancelExecution(execution, "Cursor pi bridge tool execution was already aborted");
+			this.cancelExecution(execution, "Cursor OMP bridge tool execution was already aborted");
 			this.abortExecution(execution);
 			return false;
 		}
 
 		execution.onAbort = () => {
-			this.cancelExecution(execution, "Cursor pi bridge tool execution was aborted");
+			this.cancelExecution(execution, "Cursor OMP bridge tool execution was aborted");
 			this.abortExecution(execution);
 			this.finish(toolCallId);
 		};
@@ -106,7 +106,7 @@ class CursorPiToolBridgeToolExecutionAbortTracker {
 		if (this.activeExecutions.size === 0) return;
 		const shouldRestoreDefaultSignalBehavior =
 			options.preserveProcessSignalBehavior !== true && !this.hasExternalProcessSignalListeners(signal);
-		this.abortAll(`Cursor pi bridge tool execution interrupted by ${signal}`);
+		this.abortAll(`Cursor OMP bridge tool execution interrupted by ${signal}`);
 		if (shouldRestoreDefaultSignalBehavior) this.restoreDefaultProcessSignalBehavior(signal);
 	}
 

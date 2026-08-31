@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Maintainer probe: run one prompt through pi's Cursor provider and capture raw SDK callbacks.
+ * Maintainer probe: run one prompt through OMP's Cursor provider and capture raw SDK callbacks.
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
@@ -35,7 +35,7 @@ function isMainModule() {
 const require = createRequire(import.meta.url);
 const root = fileURLToPath(new URL("..", import.meta.url));
 const packageJson = require("../package.json");
-const DEFAULT_MODEL = "cursor/composer-2-5";
+const DEFAULT_MODEL = "cursor-sdk/grok-4.6";
 const DEFAULT_OUT_BASE = ".debug/cursor-sdk-events";
 const SDK_EVENT_DEBUG_LOG_PREFIX = "[pi-cursor-sdk:sdk-events]";
 const PI_SESSION_SNAPSHOT_ARTIFACT = "pi-session-snapshot.jsonl";
@@ -53,21 +53,21 @@ function readSdkVersion() {
 }
 
 function printHelp() {
-	console.log(`Capture raw Cursor SDK onDelta/onStep payloads through pi's provider path.
+	console.log(`Capture raw Cursor SDK onDelta/onStep payloads through OMP's provider path.
 
 Usage:
   CURSOR_API_KEY=... npm run debug:provider-events -- [options]
   node scripts/debug-provider-events.mjs [options]
 
 Options:
-  --cwd <path>                 Working directory for pi and artifacts. Default: repo root.
-  --model <id>                 pi model id. Default: ${DEFAULT_MODEL}.
+  --cwd <path>                 Working directory for OMP and artifacts. Default: repo root.
+  --model <id>                 OMP model id. Default: ${DEFAULT_MODEL}.
   --prompt <text>              Required user prompt for the run.
   --prompt-file <path>         Read prompt text from a file instead of --prompt.
   --out <dir>                  Artifact directory. Default: ${DEFAULT_OUT_BASE}/<timestamp> under --cwd.
   --setting-sources <value>    Cursor setting sources (comma-separated, all, or none).
                                Default: PI_CURSOR_SETTING_SOURCES env, otherwise all.
-  --session-dir <path>         pi session directory. Default: <out>/session.
+  --session-dir <path>         OMP session directory. Default: <out>/session.
   --api-key <key>              Cursor API key. Prefer CURSOR_API_KEY to avoid shell history.
   -h, --help                   Show this help.
 
@@ -83,7 +83,7 @@ Stdout:
 
 Exit codes:
   0  capture completed
-  1  invalid arguments, missing auth, pi failure, or missing capture summary
+  1  invalid arguments, missing auth, OMP failure, or missing capture summary
 
 Safety:
   - Never prints CURSOR_API_KEY or --api-key values.
@@ -199,7 +199,7 @@ export async function runDebugProviderEvents(args, envInput = process.env) {
 	mkdirSync(sessionDir, { recursive: true });
 
 	const piArgs = [
-		"--approve",
+		"--auto-approve",
 		"-e",
 		root,
 		"--cursor-no-fast",
@@ -220,7 +220,7 @@ export async function runDebugProviderEvents(args, envInput = process.env) {
 		PI_CURSOR_PI_TOOL_BRIDGE: envFlag(envInput.PI_CURSOR_PI_TOOL_BRIDGE, "1"),
 	};
 
-	const child = spawn("pi", piArgs, {
+	const child = spawn("omp", piArgs, {
 		cwd: args.cwd,
 		env,
 		stdio: ["pipe", "pipe", "pipe"],
@@ -237,7 +237,7 @@ export async function runDebugProviderEvents(args, envInput = process.env) {
 	});
 
 	const send = (obj) => {
-		if (!child.stdin.writable) fail("pi stdin closed before prompt could be sent");
+		if (!child.stdin.writable) fail("OMP stdin closed before prompt could be sent");
 		child.stdin.write(`${JSON.stringify(obj)}\n`);
 	};
 
@@ -264,7 +264,7 @@ export async function runDebugProviderEvents(args, envInput = process.env) {
 		const exitCode = await waitForChildClose(child);
 		closed = true;
 		if (exitCode !== 0) {
-			fail(`pi exited ${exitCode}\nstderr=${scrubSensitiveText(stderr.slice(-2000), args.apiKey)}`, [args.apiKey]);
+			fail(`OMP exited ${exitCode}\nstderr=${scrubSensitiveText(stderr.slice(-2000), args.apiKey)}`, [args.apiKey]);
 		}
 
 		const captureSummary = assertCompleteCaptureSummary(

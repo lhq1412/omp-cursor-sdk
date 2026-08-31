@@ -4,6 +4,7 @@ import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 	ExtensionContext,
+	ExtensionHandler,
 	ProviderConfig,
 	RegisteredCommand,
 	BeforeAgentStartEvent,
@@ -11,7 +12,6 @@ import type {
 	SessionBeforeTreeEvent,
 	SessionBeforeCompactEvent,
 	SessionCompactEvent,
-	SessionInfoChangedEvent,
 	SessionShutdownEvent,
 	SessionStartEvent,
 	SessionTreeEvent,
@@ -23,9 +23,8 @@ import type {
 	TurnEndEvent,
 	TurnStartEvent,
 } from "@oh-my-pi/pi-coding-agent";
-import type { TSchema } from "typebox";
 
-export type RegisteredTool = ToolDefinition<TSchema, unknown, unknown>;
+export type RegisteredTool = ToolDefinition;
 
 export type ExtensionContextOverrides = Omit<Partial<ExtensionContext>, "sessionManager" | "ui"> & {
 	sessionManager?: Partial<ExtensionContext["sessionManager"]>;
@@ -42,7 +41,6 @@ export type ExtensionCommandContextOverrides = Omit<
 
 export type RegisteredCommandOptions = Omit<RegisteredCommand, "name" | "sourceInfo">;
 
-export type HarnessOn = ExtensionAPI["on"];
 
 export type HarnessEventName =
 	| "session_start"
@@ -66,10 +64,14 @@ export type HarnessModelSelectEvent = {
 	previousModel: ExtensionContext["model"];
 	source: "set" | "cycle" | "restore";
 };
+type HarnessSessionInfoChangedEvent = {
+	type: "session_info_changed";
+	name?: string;
+};
 
 export type HarnessEventMap = {
 	session_start: SessionStartEvent;
-	session_info_changed: SessionInfoChangedEvent;
+	session_info_changed: HarnessSessionInfoChangedEvent;
 	model_select: HarnessModelSelectEvent;
 	before_agent_start: BeforeAgentStartEvent;
 	turn_start: TurnStartEvent;
@@ -86,7 +88,7 @@ export type HarnessEventMap = {
 /** Combined invoke result for before_agent_start (matches installed pi ExtensionRunner). */
 export type HarnessBeforeAgentStartCombinedResult = {
 	messages?: NonNullable<BeforeAgentStartEventResult["message"]>[];
-	systemPrompt?: string;
+	systemPrompt?: string[];
 };
 
 /** Combined invoke result for tool_result (matches installed pi ExtensionRunner.emitToolResult). */
@@ -115,6 +117,17 @@ export type HarnessEventResultMap = {
 	tool_result: HarnessToolResultCombinedResult;
 	session_before_tree: HarnessSessionBeforeTreeCombinedResult;
 };
+type HarnessEventHandlerResultMap = Omit<HarnessEventResultMap, "before_agent_start"> & {
+	before_agent_start: BeforeAgentStartEventResult;
+};
+
+export type HarnessOn = <E extends HarnessEventName>(
+	event: E,
+	handler: ExtensionHandler<
+		HarnessEventMap[E],
+		E extends keyof HarnessEventHandlerResultMap ? HarnessEventHandlerResultMap[E] : undefined
+	>,
+) => void;
 
 
 export type MockFn<T extends (...args: never[]) => unknown> = MockedFunction<T>;
@@ -135,7 +148,7 @@ export type HarnessEventInvokeResult<E extends HarnessEventName> = E extends key
 	: void;
 
 export interface EventHarness {
-	on: MockFn<HarnessOn>;
+	on: HarnessOn;
 	invokeEvent: <E extends HarnessEventName>(
 		event: E,
 		payload: HarnessEventMap[E],

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { Type } from "typebox";
+import { Type } from "@oh-my-pi/omptype/typebox"
 import type { CursorSdkEventDebugRecorder } from "../src/cursor-sdk-event-debug.js";
 import {
 	__testUtils,
@@ -42,17 +42,14 @@ describe("cursor pi tool bridge debug safety", () => {
 		try {
 			const callPromise = client.callTool({ name: "pi__read", arguments: { path: "README.md" } });
 			const request = await waitForQueuedRequest(run);
-			await run.resolveToolResultsFromContext({
-				systemPrompt: "",
-				messages: [{
+			await run.resolveToolResultsFromContext({ systemPrompt: [""], messages: [{
 					role: "toolResult",
 					toolCallId: request.piToolCallId,
 					toolName: "read",
 					content: [{ type: "text", text: "current result" }],
 					isError: false,
 					timestamp: 1,
-				}],
-			});
+				}] });
 
 			await expect(callPromise).resolves.toMatchObject({ content: [{ type: "text", text: "current result" }] });
 			expect(recordBridgeRaw).toHaveBeenCalledWith(expect.objectContaining({ kind: "queued" }));

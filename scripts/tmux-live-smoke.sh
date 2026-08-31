@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=scripts/lib/cursor-smoke-shell.sh
 . "$ROOT/scripts/lib/cursor-smoke-shell.sh"
 
-SMOKE_DIR="${SMOKE_DIR:-/tmp/pi-cursor-sdk-live-smoke-$(date +%Y%m%dT%H%M%S)}"
+SMOKE_DIR="${SMOKE_DIR:-/tmp/omp-cursor-sdk-live-smoke-$(date +%Y%m%dT%H%M%S)}"
 SHELL_BIN="${SHELL:-/bin/bash}"
 
 PI_BIN=""
@@ -33,21 +33,21 @@ cleanup() {
 trap cleanup EXIT
 
 print_help() {
-	printf '%s\n' 'Partial live smoke runner for pi-cursor-sdk (subset of docs/cursor-live-smoke-checklist.md).
+	printf '%s\n' 'Partial live smoke runner for omp-cursor-sdk (subset of docs/cursor-live-smoke-checklist.md).
 
 Usage:
   ./scripts/tmux-live-smoke.sh
-  SMOKE_DIR=/tmp/pi-cursor-smoke ./scripts/tmux-live-smoke.sh
+  SMOKE_DIR=/tmp/omp-cursor-smoke ./scripts/tmux-live-smoke.sh
 
 Environment:
-  SMOKE_DIR                     Artifact directory. Defaults to /tmp/pi-cursor-sdk-live-smoke-<timestamp>.
-  CURSOR_API_KEY                Optional fallback auth. Stored pi auth in ~/.pi/agent/auth.json is also supported.
+  SMOKE_DIR                     Artifact directory. Defaults to /tmp/omp-cursor-sdk-live-smoke-<timestamp>.
+  CURSOR_API_KEY                Optional fallback auth. A saved OMP cursor-sdk login is also supported.
 
 Prerequisites:
-  pi, node, npm, rg, tmux on PATH
-  Resolved pi/node/npm/rg/tmux paths from the parent shell are reused in tmux-launched checks; pi shims run with the resolved node directory first on PATH.
+  omp, node, npm, rg, tmux on PATH
+  Resolved omp/node/npm/rg/tmux paths from the parent shell are reused in tmux-launched checks; OMP shims run with the resolved node directory first on PATH.
   timeout or gtimeout optional; bash process-group kill fallback is used when absent
-  Child pi runs clear Cursor SDK event-debug env; isolated cases force PI_CURSOR_SETTING_SOURCES=none and default-settings unsets it.
+  Child OMP runs clear Cursor SDK event-debug env; isolated cases force PI_CURSOR_SETTING_SOURCES=none and default-settings unsets it.
 
 Coverage:
   - prereq model listing
@@ -243,7 +243,7 @@ exec %s
 		"$TMUX_BIN" capture-pane -pt "$session" >"$capture" 2>/dev/null || true
 		missing=""
 		"$RG_BIN" -q "SUM=42" "$capture" || missing="${missing} SUM=42"
-		"$RG_BIN" -q "\\(cursor\\) composer-2[-.]5" "$capture" || missing="${missing} footer (cursor) composer-2-5"
+		"$RG_BIN" -q "\\(cursor\\) grok-4\\.6" "$capture" || missing="${missing} footer (cursor) grok-4.6"
 		if [[ -z "$missing" ]]; then
 			"$TMUX_BIN" kill-session -t "$session" 2>/dev/null || true
 			log "$name PASS"
@@ -311,39 +311,39 @@ printf '\''%%s\n'\'' "$code" > %q
 model_listed() {
 	local file="$1"
 	if [[ -n "${RG_BIN:-}" ]]; then
-		"$RG_BIN" -q "composer-2\.5" "$file"
+		"$RG_BIN" -q "grok-4\.6" "$file"
 	else
-		grep -q "composer-2\.5" "$file"
+		grep -q "grok-4\.6" "$file"
 	fi
 }
 
 # Capture full catalog then search. Never pipe list-models into rg -q under pipefail.
-capture_and_require_composer_model() {
+capture_and_require_default_model() {
 	local list_cmd=("$@")
 	local models_out="$SMOKE_DIR/prereq.models.txt"
 	local models_err="$SMOKE_DIR/prereq.stderr.txt"
 	if ! "${list_cmd[@]}" >"$models_out" 2>"$models_err"; then
-		fail "pi --list-models cursor failed"
+		fail "omp models cursor-sdk failed"
 	fi
 	if ! model_listed "$models_out" && ! model_listed "$models_err"; then
-		fail "cursor/composer-2-5 not listed"
+		fail "cursor-sdk/grok-4.6 not listed"
 	fi
 }
 
 run_self_test() {
 	local temp_dir bin_dir fake_pi fake_node fake_node_marker fake_list_pi env_capture hostile_path captured_path node_dir name
 	RG_BIN="$(command -v rg || true)"
-	temp_dir="$(mktemp -d /tmp/pi-cursor-sdk-live-smoke-self-test.XXXXXX)"
+	temp_dir="$(mktemp -d /tmp/omp-cursor-sdk-live-smoke-self-test.XXXXXX)"
 	trap 'rm -rf "$temp_dir"' RETURN
 	bin_dir="$temp_dir/bin"
 	mkdir -p "$bin_dir"
-	fake_pi="$bin_dir/pi"
+	fake_pi="$bin_dir/omp"
 	fake_node="$bin_dir/node"
 	fake_node_marker="$temp_dir/fake-node-used"
 	env_capture="$temp_dir/fake-pi.env"
 	cat >"$fake_pi" <<EOF_SELFTEST_PI
 #!/usr/bin/env node
-const { writeFileSync } = require("node:fs");
+import { writeFileSync } from "node:fs";
 writeFileSync("$env_capture", Object.entries(process.env).map(([key, value]) => key + "=" + (value ?? "")).join("\\n") + "\\n", "utf8");
 EOF_SELFTEST_PI
 	cat >"$fake_node" <<EOF_SELFTEST_NODE
@@ -383,20 +383,20 @@ EOF_SELFTEST_NODE
 	if grep -q '^PI_CURSOR_SETTING_SOURCES=' "$env_capture"; then
 		fail "self-test failed: default-settings env did not unset PI_CURSOR_SETTING_SOURCES"
 	fi
-	# Large-catalog prereq: exercise the same capture_and_require_composer_model helper.
+	# Large-catalog prereq: exercise the same capture_and_require_default_model helper.
 	fake_list_pi="$bin_dir/pi-list-models"
 	cat >"$fake_list_pi" <<'EOF_FAKE_LIST'
 #!/usr/bin/env bash
 i=0
 while [[ $i -lt 20000 ]]; do
-	printf 'cursor/model-%s\n' "$i"
+	printf 'cursor-sdk/model-%s\n' "$i"
 	i=$((i + 1))
 done
-printf 'cursor/composer-2.5\n'
+printf 'cursor-sdk/grok-4.6\n'
 exit 0
 EOF_FAKE_LIST
 	chmod +x "$fake_list_pi"
-	SMOKE_DIR="$temp_dir" capture_and_require_composer_model "$fake_list_pi"
+	SMOKE_DIR="$temp_dir" capture_and_require_default_model "$fake_list_pi"
 	if [[ "$(wc -l <"$temp_dir/prereq.models.txt" | tr -d ' ')" -lt 20000 ]]; then
 		fail "self-test failed: large catalog was truncated before search"
 	fi
@@ -413,7 +413,7 @@ if [[ "${1:-}" == "--self-test" ]]; then
 	exit 0
 fi
 
-PI_BIN="$(smoke_resolve_cmd pi)"
+PI_BIN="$(smoke_resolve_cmd omp)"
 NODE_BIN="$(smoke_resolve_node_cmd)"
 NPM_BIN="$(smoke_resolve_cmd npm)"
 RG_BIN="$(smoke_resolve_cmd rg)"
@@ -426,20 +426,20 @@ if [[ "$SHELL_BIN" != /* ]]; then
 	SHELL_BIN="$(smoke_resolve_cmd "$SHELL_BIN")"
 fi
 PI_BASE=(
-	"$PI_BIN" --approve -e "$ROOT"
+	"$PI_BIN" --auto-approve -e "$ROOT"
 	--cursor-no-fast
-	--model cursor/composer-2-5
+	--model cursor-sdk/grok-4.6
 )
 
 if [[ -z "${CURSOR_API_KEY:-}" ]]; then
-	log "CURSOR_API_KEY is unset; relying on stored pi auth or other supported Cursor auth"
+	log "CURSOR_API_KEY is unset; relying on a saved OMP cursor-sdk login"
 fi
 
 mkdir -p "$SMOKE_DIR"
 printf '%s\n' "$SMOKE_DIR" >"$SMOKE_DIR/smoke-dir.txt"
 
 log "SMOKE_DIR=$SMOKE_DIR"
-log "pi=$PI_BIN"
+log "omp=$PI_BIN"
 log "node=$NODE_BIN"
 log "npm=$NPM_BIN"
 log "tmux=$TMUX_BIN"
@@ -448,7 +448,7 @@ log "partial live smoke: prereq, basic, default-settings, noninteractive-math, t
 "${BASE_ENV[@]}" "$PI_BIN" --version | tee "$SMOKE_DIR/prereq.pi-version.txt"
 "${BASE_ENV[@]}" "$NPM_BIN" --prefix "$ROOT" ls @cursor/sdk @oh-my-pi/pi-coding-agent @oh-my-pi/pi-ai @oh-my-pi/pi-tui | tee "$SMOKE_DIR/prereq.npm-ls.txt"
 
-capture_and_require_composer_model "${NONE_ENV[@]}" "${PI_BASE[@]}" --list-models cursor
+capture_and_require_default_model "${NONE_ENV[@]}" "$PI_BIN" models cursor-sdk -e "$ROOT"
 log "prereq PASS"
 
 run_direct basic 600 retry-empty-output "PI_CURSOR_SMOKE_OK" "PI_CURSOR_SMOKE_OK" \

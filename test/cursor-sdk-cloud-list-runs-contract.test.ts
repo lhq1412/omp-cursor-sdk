@@ -17,13 +17,13 @@ describe("installed Cursor SDK cloud listRuns contract", () => {
 		const declaration = readFileSync(join(sdkDist, "stubs.d.ts"), "utf8");
 		expect(declaration).toMatch(/static listRuns\(agentId: string, options\?: ListRunsOptions\): Promise<ListResult<Run>>/);
 
-		const cloudBundle = readdirSync(sdkDist, { withFileTypes: true })
+		const sdkBundles = readdirSync(sdkDist, { withFileTypes: true })
 			.filter((entry) => entry.isFile() && entry.name.endsWith(".js"))
-			.map((entry) => readFileSync(join(sdkDist, entry.name), "utf8"))
-			.find((source) => source.includes("listCloudRuns"));
-		expect(cloudBundle).toBeDefined();
-		expect(cloudBundle).toMatch(/\.listRuns\(t,\{limit:e\.limit,cursor:e\.cursor\}\)/);
-		expect(cloudBundle).toMatch(/items:\w+\.items\.map\(\(t=>new \w+\(\w+,t\)\)\)/);
+			.map((entry) => readFileSync(join(sdkDist, entry.name), "utf8"));
+		expect(sdkBundles.some((source) => source.includes("listCloudRuns"))).toBe(true);
+		const bundledSource = sdkBundles.join("\n");
+		expect(/\.listRuns\(t,\{limit:e\.limit,cursor:e\.cursor\}\)/.test(bundledSource)).toBe(true);
+		expect(/items:\w+\.items\.map\(\(t=>new \w+\(\w+,t\)\)\)/.test(bundledSource)).toBe(true);
 
 		expect(listedRunId({ id: "run-00000000-0000-0000-0000-000000000001" } as ListedCloudRun)).toBe(
 			"run-00000000-0000-0000-0000-000000000001",

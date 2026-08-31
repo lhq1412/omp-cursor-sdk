@@ -26,7 +26,7 @@ function makeAssistantMessage(text: string) {
 		role: "assistant" as const,
 		content: [{ type: "text" as const, text }],
 		api: "cursor-sdk",
-		provider: "cursor",
+		provider: "cursor-sdk",
 		model: "test-model",
 		usage: {
 			input: 0,
@@ -59,8 +59,8 @@ describe("cursor-sdk-agent-lineage SessionManager persistence contract", () => {
 		const previousResume = process.env.PI_CURSOR_LOCAL_RESUME;
 		process.env.PI_CURSOR_LOCAL_RESUME = "0";
 		try {
-			const sessionId = "lineage-persist-contract";
-			const manager = SessionManager.create(tempDir, tempDir, { id: sessionId });
+			const manager = SessionManager.create(tempDir, tempDir);
+			const sessionId = manager.getSessionId();
 			manager.appendMessage({ role: "user", content: "start", timestamp: 1 });
 
 			const pi = createPiHarness();
@@ -101,7 +101,7 @@ describe("cursor-sdk-agent-lineage SessionManager persistence contract", () => {
 			});
 
 			lineageTestUtils.reset();
-			const reopened = SessionManager.open(sessionFile!);
+			const reopened = await SessionManager.open(sessionFile!);
 			const reopenedEntry = reopened
 				.getEntries()
 				.find((entry) => entry.type === "custom" && entry.customType === CURSOR_SESSION_AGENT_LINEAGE_ENTRY_TYPE);

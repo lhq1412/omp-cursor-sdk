@@ -34,6 +34,13 @@ function makeCursorSdkAbortConnectError(): Error & { rawMessage: string; code: n
 const bunAvailable = spawnSync("bun", ["--version"], { stdio: "ignore" }).status === 0;
 const bunIt = bunAvailable ? it : it.skip;
 const posixIt = process.platform === "win32" ? it.skip : it;
+const processEventIt = "bun" in process.versions ? it.skip : it;
+const nodeExecutableProbe = spawnSync("node", ["-p", "process.execPath"], { encoding: "utf8" });
+if (nodeExecutableProbe.status !== 0 || !nodeExecutableProbe.stdout.trim()) {
+	throw new Error(`Node executable is required for process-error guard tests: ${nodeExecutableProbe.stderr}`);
+}
+const nodeExecutable = nodeExecutableProbe.stdout.trim();
+
 
 const guardUrl = pathToFileURL(resolve("src/cursor-sdk-process-error-guard.ts")).href;
 const nodeTypeScriptImportHook = `data:text/javascript,${encodeURIComponent(`
@@ -53,7 +60,7 @@ registerHooks({
 
 function runNodeProcessErrorProbe(body: string) {
 	return spawnSync(
-		process.execPath,
+		nodeExecutable,
 		[
 			"--import",
 			nodeTypeScriptImportHook,
@@ -205,7 +212,7 @@ function makeCursorExtensionNetworkConnectError(): Error & { rawMessage: string;
 	const error = makeCursorSdkNetworkConnectError();
 	error.stack =
 		"ConnectError: [aborted] read ECONNRESET\n" +
-		"    at file:///C:/Users/example/.pi/agent/git/github.com/fitchmultz/pi-cursor-sdk/node_modules/@connectrpc/connect-node/dist/esm/node-universal-client.js:293:63";
+		"    at file:///C:/Users/example/.omp/agent/git/github.com/lhq1412/omp-cursor-sdk/node_modules/@connectrpc/connect-node/dist/esm/node-universal-client.js:293:63";
 	return error;
 }
 
@@ -363,13 +370,12 @@ describe("Cursor SDK process error guard", () => {
 	});
 
 	it("tracks the installed Cursor SDK closed-writable error contract", () => {
-		const bundle = readFileSync("node_modules/@cursor/sdk/dist/esm/index.js", "utf8");
 		const controlledExecBundle = readFileSync("node_modules/@cursor/sdk/dist/esm/357.js", "utf8");
-		expect(bundle).toContain('this.name="WriteIterableClosedError"');
-		expect(bundle).toContain('"WritableIterable is closed"');
+		expect(controlledExecBundle).toContain('this.name="WriteIterableClosedError"');
+		expect(controlledExecBundle).toContain('"WritableIterable is closed"');
 		expect(controlledExecBundle).toContain('SimpleControlledExecManager');
 		expect(controlledExecBundle).toContain('catch(e){if(e instanceof i.W2)return;');
-		expect(controlledExecBundle).toContain('await c.write(new s.$Y({message:{case:"throw"');
+		expect(controlledExecBundle).toContain('yield l.write(new s.$Y({message:{case:"throw"');
 	});
 
 	it("contains delayed exact SDK failures after the provider-turn guard is disposed in real Node", () => {
@@ -478,7 +484,7 @@ setTimeout(() => console.log("survived"), 20);
 		}
 	});
 
-	it("does not suppress a closed-writable lookalike without a Cursor SDK stack", () => {
+	processEventIt("does not suppress a closed-writable lookalike without a Cursor SDK stack", () => {
 		const suppression = installCursorSdkSessionProcessErrorGuard();
 		const error = makeCursorSdkWriteIterableClosedError();
 		error.stack = "WriteIterableClosedError: WritableIterable is closed\n    at write (/repo/src/stream.ts:1:1)";
@@ -517,7 +523,7 @@ setTimeout(() => console.log("survived"), 20);
 		}
 	});
 
-	it("does not suppress the exact EPIPE when only session and uncontained turn guards are active", () => {
+	processEventIt("does not suppress the exact EPIPE when only session and uncontained turn guards are active", () => {
 		const sessionGuard = installCursorSdkSessionProcessErrorGuard();
 		const turnGuard = installCursorSdkProcessErrorGuard();
 		let listenerCalled = false;
@@ -536,7 +542,7 @@ setTimeout(() => console.log("survived"), 20);
 		}
 	});
 
-	it("does not suppress the exact EPIPE after the contained turn guard is disposed", () => {
+	processEventIt("does not suppress the exact EPIPE after the contained turn guard is disposed", () => {
 		const onClosedPipe = vi.fn();
 		const turnGuard = installCursorSdkProcessErrorGuard();
 		turnGuard.containLocalTransportClosedPipe(onClosedPipe);
@@ -556,7 +562,7 @@ setTimeout(() => console.log("survived"), 20);
 		}
 	});
 
-	it.each([
+	processEventIt.each([
 		[
 			"application stack frame",
 			(error: Error & NodeJS.ErrnoException) => {
@@ -651,7 +657,7 @@ setTimeout(() => {
 	});
 
 	it("keeps piped-stdout EPIPE fatal even during a contained local turn in real Node", () => {
-		// Reproduces `pi --print | early-exiting-consumer`: pi must still die per Unix
+		// Reproduces `omp --print | early-exiting-consumer`: OMP must still die per Unix
 		// convention while a local Cursor turn guard with containment is active.
 		const producerBody =
 			`import { installCursorSdkProcessErrorGuard } from ${JSON.stringify(guardUrl)};\n` +
@@ -671,7 +677,7 @@ setTimeout(() => {
 				timeout: 20_000,
 				env: {
 					...process.env,
-					NODE_BIN: process.execPath,
+					NODE_BIN: nodeExecutable,
 					TS_HOOK: nodeTypeScriptImportHook,
 					PRODUCER_BODY: producerBody,
 				},
@@ -685,18 +691,14 @@ setTimeout(() => {
 	});
 
 	it("tracks the installed Cursor SDK local-executor stdin write contract", () => {
-		// Premise behind the closed-pipe containment: the shell executor writes spawned
-		// child stdin without a stream 'error' listener, so a mid-write child exit
-		// surfaces as an uncaught raw `write EPIPE`. The MCP stdio transport, by
-		// contrast, attaches its own stdin error listener and needs no containment.
+		// 1.0.27 attaches a no-op error listener before local shell snapshot writes.
+		// Command-hook stdin still uses callback-style write; MCP stdio has its own listener.
 		const shellExecBundle = readFileSync("node_modules/@cursor/sdk/dist/esm/357.js", "utf8");
 		expect(shellExecBundle).toContain("writeCommandHookStdinPayload");
 		expect(shellExecBundle).toContain("stdin.write(e,(e=>{e?n(e):t(void 0)}))");
 		expect(shellExecBundle).toContain("o.stdin.write(`${t.join(\"\\n\")}\\n`),o.stdin.end()");
-		expect(shellExecBundle).not.toContain('stdin.on("error"');
-		expect(shellExecBundle).not.toContain('stdin?.on("error"');
-		expect(shellExecBundle).not.toContain('stdin.once("error"');
-		const mcpStdioBundle = readFileSync("node_modules/@cursor/sdk/dist/esm/745.js", "utf8");
+		expect(shellExecBundle).toContain('function Be(e){e?.on("error",(()=>{}))}function ze(e,t){e&&(Be(e),e.write(t),e.end())}');
+		const mcpStdioBundle = readFileSync("node_modules/@cursor/sdk/dist/esm/318.js", "utf8");
 		expect(mcpStdioBundle).toContain('stdin?.on("error"');
 	});
 
@@ -711,7 +713,7 @@ setTimeout(() => {
 		expect(isUnauthenticatedConnectError(new Error("boom"))).toBe(false);
 	});
 
-	it("suppresses matching uncaught exceptions only after abort suppression is enabled", () => {
+	processEventIt("suppresses matching uncaught exceptions only after abort suppression is enabled", () => {
 		const suppression = installCursorSdkProcessErrorGuard();
 		let listenerCalled = false;
 		const listener = () => {
@@ -759,7 +761,7 @@ setTimeout(() => {
 		}
 	});
 
-	it("does not suppress non-Cursor unauthenticated ConnectErrors", () => {
+	processEventIt("does not suppress non-Cursor unauthenticated ConnectErrors", () => {
 		const suppression = installCursorSdkProcessErrorGuard();
 		let listenerCalled = false;
 		const listener = () => {
@@ -870,7 +872,7 @@ setTimeout(() => {
 		}
 	});
 
-	it("does not suppress provenance-free network ConnectErrors during an active provider turn", () => {
+	processEventIt("does not suppress provenance-free network ConnectErrors during an active provider turn", () => {
 		const suppression = installCursorSdkProcessErrorGuard();
 		let listenerCalled = false;
 		const listener = () => {
@@ -887,7 +889,7 @@ setTimeout(() => {
 		}
 	});
 
-	it.each([
+	processEventIt.each([
 		["Cursor SDK closed writable", makeCursorSdkWriteIterableClosedError],
 		["Cursor SDK stack", makeCursorSdkNetworkConnectError],
 		["Cursor SDK HTTP/2 stream reset", makeCursorSdkHttp2EnhanceYourCalmConnectError],

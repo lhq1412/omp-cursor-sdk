@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Type } from "typebox";
+import { Type } from "@oh-my-pi/omptype/typebox"
 import {
 	resetCursorProviderTestState,
 	mockedCreate,
@@ -89,7 +89,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
-		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const replayContext = makeContext();
@@ -120,7 +120,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 			}
 		})();
 
-		await Promise.resolve();
+		await vi.waitFor(() => expect(runWait).toHaveBeenCalledTimes(1));
 		onDelta?.({ update: { type: "thinking-delta", text: "Streaming thought." } });
 		onDelta?.({ update: { type: "thinking-completed" } });
 		onDelta?.({ update: { type: "text-delta", text: "Final " } });
@@ -189,7 +189,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
-		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const replayContext = makeContext();
@@ -219,7 +219,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 			}
 		})();
 
-		await Promise.resolve();
+		await vi.waitFor(() => expect(runWait).toHaveBeenCalledTimes(1));
 		onDelta?.({ update: { type: "text-delta", text: "Disconnect" } });
 		await Promise.race([
 			liveTextSeen,
@@ -283,7 +283,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
-		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		expect(firstDone.message.content.map((block) => block.type)).toEqual(["toolCall"]);
@@ -379,7 +379,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const firstDone = getDoneEvent(firstEvents);
 		const firstToolCall = firstDone.message.content.find(isToolCallBlock);
-		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readTool = registeredTools.find((tool) => tool.name === "cursor");
 		const firstToolResult = await readTool!.execute(firstToolCall!.id, firstToolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const secondContext = makeContext();
@@ -435,7 +435,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		const secondToolCall = (getDoneEvent(secondEvents)).message.content.find(
 			isToolCallBlock,
 		);
-		const grepTool = registeredTools.find((tool) => tool.name === "grep");
+		const grepTool = registeredTools.find((tool) => tool.name === "cursor");
 		const secondToolResult = await grepTool!.execute(secondToolCall!.id, secondToolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const finalContext = makeContext();
@@ -516,7 +516,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 			send: mockSend,
 			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 		});
-		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readTool = registeredTools.find((tool) => tool.name === "cursor");
 
 		const context = makeContext();
 		const firstEvents = await collectEvents(streamCursor(makeModel(), context, { apiKey: "test-key" }));
@@ -606,7 +606,9 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 					resolveRun = resolve;
 				}),
 		);
+		const sendStarted = Promise.withResolvers<void>();
 		const mockSend = vi.fn().mockImplementation(async (_msg: unknown, opts: { onDelta: CursorDeltaHandler }) => {
+			sendStarted.resolve();
 			onDelta = opts.onDelta;
 			return asMockCursorRun({
 				id: "run-1",
@@ -625,7 +627,7 @@ it("streams post-tool Cursor thinking and text while a native replay run is stil
 		});
 
 		const firstEventsPromise = collectEvents(streamCursor(makeModel("composer-2"), makeContext(), { apiKey: "test-key" }));
-		await vi.waitFor(() => expect(mockSend).toHaveBeenCalled());
+		await sendStarted.promise;
 		const createOptions = getCreatedAgentOptions();
 		const { client, transport } = await connectMcpClient(getPiToolsMcpUrlFromAgentCreateOptions(createOptions));
 		try {

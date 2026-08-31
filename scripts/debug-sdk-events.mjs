@@ -39,7 +39,7 @@ const ARTIFACTS = {
 	summary: "summary.json",
 };
 
-const DEFAULT_MODEL = "composer-2.5";
+const DEFAULT_MODEL = "grok-4.6";
 const RAW_ARTIFACT_WARNING =
 	"Raw artifact files may contain local paths, project text, tool args/results, or secrets from the workspace. Do not commit or share them.";
 
@@ -68,7 +68,7 @@ Options:
   --cwd <path>                 Agent working directory. Default: process.cwd().
   --model <id>                 Cursor model id. Default: ${DEFAULT_MODEL}.
   --prompt <text>              Required user prompt for the run.
-  --out <dir>                  Artifact directory. Default: /tmp/pi-cursor-sdk-sdk-events-<timestamp>.
+  --out <dir>                  Artifact directory. Default: /tmp/omp-cursor-sdk-sdk-events-<timestamp>.
   --setting-sources <value>    Comma-separated Cursor setting sources, or all/none.
                                Default: PI_CURSOR_SETTING_SOURCES env, otherwise all.
   --include-conversation       Also capture run.conversation() when supported.
@@ -120,7 +120,7 @@ export function parseDebugSdkEventsArgs(argv, env = process.env) {
 }
 
 function defaultOutDir() {
-	return defaultTimestampedDir("pi-cursor-sdk-sdk-events");
+	return defaultTimestampedDir("omp-cursor-sdk-sdk-events");
 }
 
 function eventType(value) {

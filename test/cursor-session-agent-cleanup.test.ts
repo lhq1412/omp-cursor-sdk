@@ -368,7 +368,7 @@ describe("cursor-session-agent-cleanup", () => {
 		cleanupTestUtils.setAppendDurability(undefined);
 		const tempDir = mkdtempSync(join(tmpdir(), "cursor-local-cleanup-durable-"));
 		try {
-			const manager = SessionManager.create(tempDir, tempDir, { id: "cleanup-durable" });
+			const manager = SessionManager.create(tempDir, tempDir);
 			manager.appendMessage({ role: "user", content: "root", timestamp: 1 });
 			manager.appendMessage(makeAssistantMessage("root"));
 			const sessionFile = manager.getSessionFile()!;
@@ -407,7 +407,7 @@ describe("cursor-session-agent-cleanup", () => {
 		cleanupTestUtils.setAppendDurability(undefined);
 		const tempDir = mkdtempSync(join(tmpdir(), "cursor-local-cleanup-fsync-fail-"));
 		try {
-			const manager = SessionManager.create(tempDir, tempDir, { id: "cleanup-fsync-fail" });
+			const manager = SessionManager.create(tempDir, tempDir);
 			manager.appendMessage({ role: "user", content: "root", timestamp: 1 });
 			manager.appendMessage(makeAssistantMessage("root"));
 			const sessionFile = manager.getSessionFile()!;

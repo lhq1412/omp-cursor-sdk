@@ -317,7 +317,7 @@ export async function runCursorSessionAgentCleanupCommand(pi: LocalResumeCleanup
 				if (
 					!cursorSessionStoreIdentitiesEqual(identity, identities.defaultStore) &&
 					!cursorSessionStoreIdentitiesEqual(identity, identities.sessionStore)
-				) throw new InvalidCursorSessionStoreIdentityError("Recorded Cursor local store identity is not valid for this pi session");
+				) throw new InvalidCursorSessionStoreIdentityError("Recorded Cursor local store identity is not valid for this OMP session");
 				let openedStore = openedStores.get(identity.stateRoot);
 				if (!openedStore) {
 					openedStore = await openCursorSessionStore(ctx.cwd, identity);

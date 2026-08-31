@@ -3,6 +3,7 @@ import { cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
 import { truncateCursorDisplayLine } from "./cursor-display-text.js";
 import { formatInactiveCursorReplayTrace } from "./cursor-native-replay-trace.js";
 import { resolveNativeReplayDisposition, type NativeReplayDisposition } from "./cursor-native-replay-routing.js";
+import { resolveRegisteredCursorNativeToolName } from "./cursor-native-tool-display-state.js";
 import type { CursorSdkEventDebugRecorder } from "./cursor-sdk-event-debug.js";
 import {
 	buildIncompleteCursorToolDisplay,
@@ -15,12 +16,60 @@ import {
 	formatCursorToolTranscript,
 	getCursorCreatePlanText,
 } from "./cursor-tool-transcript.js";
+import { asRecord, getString } from "./cursor-record-utils.js";
 import { getToolName } from "./cursor-transcript-utils.js";
 import type { CursorPartialContentEmitter } from "./cursor-partial-content-emitter.js";
 import type { CursorToolDisplaySource } from "./cursor-provider-turn-tool-ledger.js";
 
 function formatCursorToolName(toolCall: unknown): string {
 	return truncateCursorDisplayLine(getToolName(toolCall), 80) || "unknown";
+}
+
+function getReplayDisplayText(display: ReturnType<typeof buildCursorPiToolDisplay>): string {
+	return display.result.content
+		.filter((entry) => entry.type === "text")
+		.map((entry) => entry.text)
+		.join("\n")
+		.trimEnd();
+}
+
+function getReplayDisplaySummary(display: ReturnType<typeof buildCursorPiToolDisplay>): string | undefined {
+	const path = getString(display.args, "path");
+	const pattern = getString(display.args, "pattern") ?? getString(display.args, "glob");
+	if ((display.toolName === "grep" || display.toolName === "find") && pattern) {
+		return `${display.toolName === "grep" ? `/${pattern}/` : pattern}${path ? ` in ${path}` : ""}`;
+	}
+	if (path) return path;
+	return getReplayDisplayText(display).split("\n").find((line) => line.trim())?.trim();
+}
+
+function buildRegisteredReplayDisplay(
+	display: ReturnType<typeof buildCursorPiToolDisplay>,
+	replayToolName: string,
+): ReturnType<typeof buildCursorPiToolDisplay> {
+	if (display.toolName === replayToolName) return display;
+	const details = asRecord(display.result.details);
+	const sourceToolName = getString(details, "sourceToolName") ?? display.toolName;
+	const variant = getString(details, "variant");
+	const replayDetails =
+		variant === "nativeEdit" || variant === "nativeWrite"
+			? { ...details, sourceToolName }
+			: {
+					variant: "activity",
+					...details,
+					sourceToolName,
+					title: getString(details, "title") ?? display.toolName,
+					summary: getString(details, "summary") ?? getReplayDisplaySummary(display),
+					expandedText: getString(details, "expandedText") ?? getReplayDisplayText(display),
+				};
+	return {
+		...display,
+		toolName: replayToolName,
+		result: {
+			...display.result,
+			details: replayDetails,
+		},
+	};
 }
 
 export interface CursorTurnDisplayRouterOptions {
@@ -35,7 +84,7 @@ export interface CursorTurnDisplayRouterOptions {
 }
 
 export type CursorTurnDisplayAction =
-	| { kind: "queue_replay"; tool: ReturnType<typeof scrubPiToolDisplay>; replayToolId: string; disposition: NativeReplayDisposition }
+	| { kind: "queue_replay"; tool: ReturnType<typeof scrubPiToolDisplay> & { sourceToolName?: string }; replayToolId: string; disposition: NativeReplayDisposition }
 	| { kind: "emit_trace"; traceText: string; disposition: NativeReplayDisposition };
 
 export class CursorTurnDisplayRouter {
@@ -71,8 +120,9 @@ export class CursorTurnDisplayRouter {
 
 		const transcript = scrubSensitiveText(formatCursorToolTranscript(toolCall, { cwd: this.cwd }), this.resolvedApiKey);
 		const display = buildCursorPiToolDisplay(toolCall, { cwd: this.cwd });
+		const replayToolName = resolveRegisteredCursorNativeToolName(display.toolName) ?? display.toolName;
 		const disposition = resolveNativeReplayDisposition({
-			toolName: display.toolName,
+			toolName: replayToolName,
 			useNativeToolReplay: this.useNativeToolReplay,
 			activeToolNames: this.activeToolNames,
 			hasLiveRun: this.liveRun !== undefined,
@@ -81,17 +131,26 @@ export class CursorTurnDisplayRouter {
 		if (disposition === "queue_replay" && this.liveRun) {
 			this.nativeToolReplayStarted = true;
 			const id = `${this.nativeReplayId}-tool-${++this.nativeToolDisplayCounter}`;
-			const scrubbedDisplay = scrubPiToolDisplay(display, this.resolvedApiKey);
+			const replayDisplay = buildRegisteredReplayDisplay(display, replayToolName);
+			const scrubbedDisplay = scrubPiToolDisplay(replayDisplay, this.resolvedApiKey);
 			this.recordDisplayDecision({
 				action: "queue_replay",
 				disposition,
-				toolName: display.toolName,
+				toolName: replayToolName,
 				identity: options.identity,
 				source: options.source,
 				transcript,
 				replayToolId: id,
 			});
-			return { kind: "queue_replay", tool: scrubbedDisplay, replayToolId: id, disposition };
+			return {
+				kind: "queue_replay",
+				tool: {
+					...scrubbedDisplay,
+					...(replayToolName !== display.toolName ? { sourceToolName: display.toolName } : {}),
+				},
+				replayToolId: id,
+				disposition,
+			};
 		}
 
 		const traceText =
@@ -118,8 +177,9 @@ export class CursorTurnDisplayRouter {
 			buildIncompleteCursorToolDisplay(toolCall, reason, { apiKey: this.resolvedApiKey }),
 			this.resolvedApiKey,
 		);
+		const replayToolName = resolveRegisteredCursorNativeToolName(display.toolName) ?? display.toolName;
 		const disposition = resolveNativeReplayDisposition({
-			toolName: display.toolName,
+			toolName: replayToolName,
 			useNativeToolReplay: this.useNativeToolReplay,
 			activeToolNames: this.activeToolNames,
 			hasLiveRun: this.liveRun !== undefined,
@@ -131,12 +191,20 @@ export class CursorTurnDisplayRouter {
 			this.recordDisplayDecision({
 				action: "queue_replay",
 				disposition,
-				toolName: display.toolName,
+				toolName: replayToolName,
 				source: "started",
 				reason: "incomplete-started-tool-call",
 				replayToolId: id,
 			});
-			return { kind: "queue_replay", tool: display, replayToolId: id, disposition };
+			return {
+				kind: "queue_replay",
+				tool: {
+					...buildRegisteredReplayDisplay(display, replayToolName),
+					...(replayToolName !== display.toolName ? { sourceToolName: display.toolName } : {}),
+				},
+				replayToolId: id,
+				disposition,
+			};
 		}
 
 		const traceText =

@@ -411,17 +411,26 @@ describe("cursor-session-agent", () => {
 		expect(mockDispose).toHaveBeenCalledTimes(1);
 	});
 
-	it("disposes in-flight Agent.create results after session disposal without recreating", async () => {
+	it("disposes an in-flight create and isolates a late OMP background acquire", async () => {
 		const mockDisposeLate = vi.fn().mockResolvedValue(undefined);
-		let resolveLateCreate: (agent: unknown) => void = () => {};
-		const createAgent = vi.fn().mockImplementation(
-			() =>
-				new Promise((resolve) => {
-					resolveLateCreate = resolve;
-				}),
-		);
+		const mockDisposeBackground = vi.fn().mockResolvedValue(undefined);
+		const lateCreate = Promise.withResolvers<unknown>();
+		const createStarted = Promise.withResolvers<void>();
+		let createCount = 0;
+		const createAgent = vi.fn().mockImplementation(() => {
+			createCount += 1;
+			if (createCount === 1) {
+				createStarted.resolve();
+				return lateCreate.promise;
+			}
+			return {
+				agentId: "agent-background",
+				[Symbol.asyncDispose]: mockDisposeBackground,
+			};
+		});
 
-		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
+		const scopeKey = "/tmp/sessions/test.jsonl";
+		cursorSessionScopeTestUtils.set("/tmp/project", scopeKey);
 		const params = {
 			apiKey: "test-key",
 			agentMode: "agent" as const,
@@ -431,18 +440,22 @@ describe("cursor-session-agent", () => {
 		};
 
 		const acquirePromise = acquireSessionCursorAgent(params);
-		await vi.waitFor(() => expect(createAgent).toHaveBeenCalledTimes(1));
-		await sessionAgentTestUtils.disposeSessionCursorAgent("/tmp/sessions/test.jsonl");
-		resolveLateCreate({
+		await createStarted.promise;
+		await sessionAgentTestUtils.disposeSessionCursorAgent(scopeKey);
+		lateCreate.resolve({
 			agentId: "agent-late",
 			[Symbol.asyncDispose]: mockDisposeLate,
 		});
 
 		await expect(acquirePromise).rejects.toBeInstanceOf(sessionAgentTestUtils.SessionCursorAgentScopeClosedError);
 		expect(mockDisposeLate).toHaveBeenCalledTimes(1);
-		expect(createAgent).toHaveBeenCalledTimes(1);
-		expect(sessionAgentTestUtils.sessionAgentsByScope.has("/tmp/sessions/test.jsonl")).toBe(false);
-		await expect(acquireSessionCursorAgent(params)).rejects.toBeInstanceOf(sessionAgentTestUtils.SessionCursorAgentScopeClosedError);
+		expect(sessionAgentTestUtils.sessionAgentsByScope.has(scopeKey)).toBe(false);
+
+		const background = await acquireSessionCursorAgent(params);
+		expect(background.agent.agentId).toBe("agent-background");
+		expect(background.scopeKey).toBe(`${scopeKey}::background`);
+		expect(createAgent).toHaveBeenCalledTimes(2);
+		expect(mockDisposeBackground).not.toHaveBeenCalled();
 	});
 
 	it("does not retry a superseded fileless acquire or remove its replacement store", async () => {
@@ -590,16 +603,16 @@ describe("cursor-session-agent", () => {
 			contextFingerprint: computeCursorContextFingerprint({
 				messages: [
 					{ role: "user", content: "Hello", timestamp: 1 },
-					{ role: "assistant", content: [{ type: "text", text: "Hi" }], api: "cursor-sdk", provider: "cursor", model: "test", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 2 },
+					{ role: "assistant", content: [{ type: "text", text: "Hi" }], api: "cursor-sdk", provider: "cursor-sdk", model: "test", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 2 },
 					{ role: "user", content: "More", timestamp: 3 },
-					{ role: "assistant", content: [{ type: "text", text: "Ok" }], api: "cursor-sdk", provider: "cursor", model: "test", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 4 },
+					{ role: "assistant", content: [{ type: "text", text: "Ok" }], api: "cursor-sdk", provider: "cursor-sdk", model: "test", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 4 },
 				],
 			}),
 			incrementalSendCount: 0,
 		};
 		const context = makeContext([
 			{ role: "user", content: "Hello", timestamp: 1 },
-			{ role: "assistant", content: [{ type: "text", text: "Hi" }], api: "cursor-sdk", provider: "cursor", model: "test", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 2 },
+			{ role: "assistant", content: [{ type: "text", text: "Hi" }], api: "cursor-sdk", provider: "cursor-sdk", model: "test", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 2 },
 		]);
 
 		expect(shouldBootstrapCursorContext(sendState, context)).toBe(true);
@@ -646,7 +659,7 @@ describe("cursor-session-agent", () => {
 		});
 
 		expect(sessionAgentTestUtils.sessionAgentsByScope.has("/tmp/sessions/test.jsonl")).toBe(true);
-		await pi.runSessionShutdown({ reason: "quit" });
+		await pi.runSessionShutdown({});
 		expect(sessionAgentTestUtils.sessionAgentsByScope.has("/tmp/sessions/test.jsonl")).toBe(false);
 		expect(mockDispose).toHaveBeenCalledTimes(1);
 	});
@@ -670,7 +683,7 @@ describe("cursor-session-agent", () => {
 		};
 		const first = await acquireSessionCursorAgent(params);
 
-		await pi.runSessionShutdown({ reason: "reload" });
+		await pi.runSessionShutdown({});
 		const second = await acquireSessionCursorAgent(params);
 
 		expect(first.agent).not.toBe(second.agent);
@@ -706,7 +719,7 @@ describe("cursor-session-agent", () => {
 		const first = await acquireSessionCursorAgent(params);
 		expect(first.scopeKey).toBe(`${cursorSessionScopeTestUtils.EPHEMERAL_SESSION_SCOPE_PREFIX}ephemeral-a`);
 
-		await pi.runSessionShutdown({ reason: "new" });
+		await pi.runSessionShutdown({});
 		await pi.runSessionStart({
 			cwd: "/tmp/project",
 			sessionManager: {
@@ -748,7 +761,7 @@ describe("cursor-session-agent", () => {
 		});
 		const first = await acquireSessionCursorAgent(params);
 
-		await pi.runSessionShutdown({ reason: "resume" });
+		await pi.runSessionShutdown({});
 		await pi.runSessionStart({
 			cwd: "/tmp/project",
 			sessionManager: {
@@ -757,7 +770,7 @@ describe("cursor-session-agent", () => {
 		});
 		const second = await acquireSessionCursorAgent(params);
 
-		await pi.runSessionShutdown({ reason: "resume" });
+		await pi.runSessionShutdown({});
 		await pi.runSessionStart({
 			cwd: "/tmp/project",
 			sessionManager: {
@@ -795,7 +808,7 @@ describe("cursor-session-agent", () => {
 
 		await pi.invokeEventWithContext(
 			"session_start",
-			{ type: "session_start", reason: "startup" },
+			{ type: "session_start"},
 			createExtensionTestContext({
 				cwd: "/tmp/project",
 				sessionManager: {

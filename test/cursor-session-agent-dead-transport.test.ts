@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { installCursorSdkProcessErrorGuard } from "../src/cursor-sdk-process-error-guard.js";
+import {
+	installCursorSdkProcessErrorGuard,
+	__testUtils as processErrorGuardTestUtils,
+} from "../src/cursor-sdk-process-error-guard.js";
 import { __testUtils as resumeTestUtils } from "../src/cursor-session-agent-resume.js";
 import {
 	acquireSessionCursorAgent,
@@ -47,17 +50,9 @@ describe("cursor-session-agent dead transport", () => {
 
 		// Idle pooled agents alone must not broaden suppression: with no active
 		// contained local turn, the observed EPIPE stays fatal.
-		let idleListenerCalled = false;
-		const idleListener = () => {
-			idleListenerCalled = true;
-		};
-		process.once("uncaughtException", idleListener);
-		try {
-			process.emit("uncaughtException", epipe, "uncaughtException");
-			expect(idleListenerCalled).toBe(true);
-		} finally {
-			process.removeListener("uncaughtException", idleListener);
-		}
+		expect(
+			processErrorGuardTestUtils.shouldSuppressProcessError("uncaughtException", [epipe, "uncaughtException"]),
+		).toBe(false);
 		expect(sessionAgentTestUtils.getSessionCursorAgentPoolState(first.scopeKey).status).toBe("ready");
 
 		// During an active local turn (as wired by the provider turn runner), the exact
@@ -66,17 +61,11 @@ describe("cursor-session-agent dead transport", () => {
 		turnGuard.containLocalTransportClosedPipe(() =>
 			sessionAgentTestUtils.invalidateSessionAgent(first.scopeKey, { deadTransport: true }),
 		);
-		let containedListenerCalled = false;
-		const containedListener = () => {
-			containedListenerCalled = true;
-		};
-		process.once("uncaughtException", containedListener);
 		try {
-			const emitted = process.emit("uncaughtException", epipe, "uncaughtException");
-			expect(emitted).toBe(true);
-			expect(containedListenerCalled).toBe(false);
+			expect(
+				processErrorGuardTestUtils.shouldSuppressProcessError("uncaughtException", [epipe, "uncaughtException"]),
+			).toBe(true);
 		} finally {
-			process.removeListener("uncaughtException", containedListener);
 			turnGuard.dispose();
 		}
 

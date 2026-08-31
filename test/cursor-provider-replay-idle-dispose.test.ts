@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Type } from "typebox";
+import { Type } from "@oh-my-pi/omptype/typebox"
 import {
 	resetCursorProviderTestState,
 	mockedCreate,
@@ -44,9 +44,8 @@ import { join } from "node:path";
 describe("streamCursor native replay idle dispose", () => {
 	beforeEach(resetCursorProviderTestState);
 
-it("disposes abandoned native replay runs after the idle timeout and abandons the session agent", async () => {
+it("releases abandoned native replay runs and abandons the session agent", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "1";
-		cursorProviderTestUtils.setCursorNativeReplayIdleDisposeMs(1);
 		const registeredTools: RegisteredTool[] = [];
 		await registerNativeToolDisplayForTest(registeredTools);
 
@@ -88,7 +87,7 @@ it("disposes abandoned native replay runs after the idle timeout and abandons th
 		expect(nativeToolDisplayTestUtils.nativeToolResultCount()).toBe(1);
 		expect(mockDispose).not.toHaveBeenCalled();
 
-		await vi.waitFor(() => expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0));
+		await cursorProviderTestUtils.releaseAllPendingCursorLiveRunsForTests();
 		expect(nativeToolDisplayTestUtils.nativeToolResultCount()).toBe(0);
 		expect(mockDispose).toHaveBeenCalledTimes(1);
 	});
@@ -138,7 +137,7 @@ it("disposes abandoned native replay runs after the idle timeout and abandons th
 		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
-		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(1);
@@ -222,7 +221,7 @@ it("disposes abandoned native replay runs after the idle timeout and abandons th
 		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
-		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(1);
 

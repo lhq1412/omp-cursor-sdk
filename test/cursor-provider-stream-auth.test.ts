@@ -1,6 +1,6 @@
 import { AuthenticationError } from "@cursor/sdk";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Type } from "typebox";
+import { Type } from "@oh-my-pi/omptype/typebox"
 import {
 	resetCursorProviderTestState,
 	mockedCreate,
@@ -20,6 +20,7 @@ import {
 import { CursorPiToolBridgeRunImpl } from "../src/cursor-pi-tool-bridge-run.js";
 import { __testUtils as cursorSdkProcessGuardTestUtils } from "../src/cursor-sdk-process-error-guard.js";
 import { streamCursor } from "../src/cursor-provider.js";
+import { MISSING_CURSOR_API_KEY_MESSAGE } from "../src/cursor-provider-errors.js";
 import { writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -78,13 +79,20 @@ describe("streamCursor auth and abort", () => {
 	});
 
 	it("emits actionable error when no API key", async () => {
-		const stream = streamCursor(makeModel(), makeContext(), { apiKey: undefined });
-		const events = await collectEvents(stream);
+		const originalKey = process.env.CURSOR_API_KEY;
+		delete process.env.CURSOR_API_KEY;
+		try {
+			const stream = streamCursor(makeModel(), makeContext(), { apiKey: undefined });
+			const events = await collectEvents(stream);
 
-		const error = getErrorEvent(events);
-		expect(error.error.errorMessage).toContain("/login");
-		expect(error.error.errorMessage).toContain("CURSOR_API_KEY");
-		expect(error.error.errorMessage).toContain("--api-key");
+			const error = getErrorEvent(events);
+			expect(error.error.errorMessage).toContain("/login");
+			expect(error.error.errorMessage).toContain("CURSOR_API_KEY");
+			expect(error.error.errorMessage).toContain("--api-key");
+		} finally {
+			if (originalKey === undefined) delete process.env.CURSOR_API_KEY;
+			else process.env.CURSOR_API_KEY = originalKey;
+		}
 	});
 
 	it.each(["CURSOR_API_KEY", "$CURSOR_API_KEY", "${CURSOR_API_KEY}", "pi-cursor-sdk-cursor-api-key-placeholder"])(
@@ -98,9 +106,7 @@ describe("streamCursor auth and abort", () => {
 
 				const error = getErrorEvent(events);
 				expect(error).toBeDefined();
-				expect(error.error.errorMessage).toBe(
-					"Cursor SDK runs require a Cursor SDK API key. Cursor Agent CLI/Desktop login is not reused. Run /login -> Use an API key -> Cursor, set CURSOR_API_KEY before starting pi, or restart pi with --api-key.",
-				);
+				expect(error.error.errorMessage).toBe(MISSING_CURSOR_API_KEY_MESSAGE);
 				expect(mockedCreate).not.toHaveBeenCalled();
 			} finally {
 				if (originalKey === undefined) {
@@ -112,7 +118,7 @@ describe("streamCursor auth and abort", () => {
 		},
 	);
 
-	it.each(["CURSOR_API_KEY", "$CURSOR_API_KEY", "${CURSOR_API_KEY}", "pi-cursor-sdk-cursor-api-key-placeholder"])(
+	it.each(["CURSOR_API_KEY", "$CURSOR_API_KEY", "${CURSOR_API_KEY}"])(
 		"resolves %s provider placeholders through the env var when present",
 		async (placeholder) => {
 			const originalKey = process.env.CURSOR_API_KEY;
@@ -145,6 +151,22 @@ describe("streamCursor auth and abort", () => {
 			}
 		},
 	);
+
+	it("never reinterprets the removed internal placeholder as an environment credential", async () => {
+		const originalKey = process.env.CURSOR_API_KEY;
+		process.env.CURSOR_API_KEY = "env-key-123";
+		try {
+			const events = await collectEvents(streamCursor(makeModel(), makeContext(), {
+				apiKey: "pi-cursor-sdk-cursor-api-key-placeholder",
+			}));
+
+			expect(getErrorEvent(events).error.errorMessage).toBe(MISSING_CURSOR_API_KEY_MESSAGE);
+			expect(mockedCreate).not.toHaveBeenCalled();
+		} finally {
+			if (originalKey === undefined) delete process.env.CURSOR_API_KEY;
+			else process.env.CURSOR_API_KEY = originalKey;
+		}
+	});
 
 	it("turns generic Cursor SDK failures into actionable setup errors", async () => {
 		mockedCreate.mockRejectedValueOnce(new Error("Error"));
@@ -253,14 +275,21 @@ describe("streamCursor auth and abort", () => {
 			active: ["sem_reindex"],
 			tools: [createTestToolInfo("sem_reindex", Type.Object({ target: Type.String() }), "Reindex semantic cache")],
 		});
-		const bridgeCancelSpy = vi.spyOn(CursorPiToolBridgeRunImpl.prototype, "cancel");
-
-		let releaseMessagesList: () => void = () => {};
-		const messagesListGate = new Promise<void>((resolve) => {
-			releaseMessagesList = resolve;
+		const bridgeCancelled = Promise.withResolvers<void>();
+		const originalBridgeCancel = CursorPiToolBridgeRunImpl.prototype.cancel;
+		const bridgeCancelSpy = vi.spyOn(CursorPiToolBridgeRunImpl.prototype, "cancel").mockImplementation(function (
+			this: CursorPiToolBridgeRunImpl,
+			reason: string,
+		) {
+			originalBridgeCancel.call(this, reason);
+			bridgeCancelled.resolve();
 		});
+
+		const messagesListGate = Promise.withResolvers<void>();
+		const messagesListStarted = Promise.withResolvers<void>();
 		mockedMessagesList.mockImplementation(async () => {
-			await messagesListGate;
+			messagesListStarted.resolve();
+			await messagesListGate.promise;
 			return [];
 		});
 
@@ -279,11 +308,12 @@ describe("streamCursor auth and abort", () => {
 		});
 		const eventsPromise = collectEvents(stream);
 
-		await vi.waitFor(() => expect(mockedMessagesList).toHaveBeenCalled());
+		await messagesListStarted.promise;
 		controller.abort();
-		await vi.waitFor(() => expect(bridgeCancelSpy).toHaveBeenCalledWith("Cursor SDK run aborted"));
+		await bridgeCancelled.promise;
+		expect(bridgeCancelSpy).toHaveBeenCalledWith("Cursor SDK run aborted");
 
-		releaseMessagesList();
+		messagesListGate.resolve();
 		const events = await eventsPromise;
 
 		expect(getErrorEvent(events).reason).toBe("aborted");

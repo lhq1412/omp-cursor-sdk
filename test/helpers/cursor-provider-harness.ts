@@ -1,4 +1,5 @@
 import { expect, vi } from "vitest";
+import type { MockedFunction } from "@vitest/spy";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
@@ -11,6 +12,7 @@ vi.mock("@cursor/sdk", () => {
 	const mockAgent = {
 		agentId: "agent-1",
 		send: vi.fn(),
+		getUsage: vi.fn().mockResolvedValue(undefined),
 		[Symbol.asyncDispose]: mockDispose,
 	};
 	const mockPlatform = {
@@ -92,11 +94,14 @@ export {
 } from "./pi-harness.js";
 
 // Access the mocks via the module
-export const mockedCreate = vi.mocked(Agent.create);
-export const mockedResume = vi.mocked(Agent.resume);
-export const mockedMessagesList = vi.mocked(Agent.messages.list);
-export const mockedConfigureCursor = vi.mocked(Cursor.configure);
-export const mockedCreateAgentPlatform = vi.mocked(createAgentPlatform, { partial: true });
+// Bun's Vitest compatibility layer does not implement the runtime-only
+// `vi.mocked()` identity helper. The values were replaced by `vi.mock()` above,
+// so a type-only cast preserves the same contract in both Bun and Vitest.
+export const mockedCreate = Agent.create as MockedFunction<typeof Agent.create>;
+export const mockedResume = Agent.resume as MockedFunction<typeof Agent.resume>;
+export const mockedMessagesList = Agent.messages.list as MockedFunction<typeof Agent.messages.list>;
+export const mockedConfigureCursor = Cursor.configure as MockedFunction<typeof Cursor.configure>;
+export const mockedCreateAgentPlatform = createAgentPlatform as MockedFunction<typeof createAgentPlatform>;
 
 export type MockSdkAgent = Awaited<ReturnType<typeof Agent.create>>;
 
@@ -106,6 +111,7 @@ export function asMockSdkAgent(
 	return {
 		agentId: "agent-1",
 		[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		getUsage: vi.fn().mockResolvedValue(undefined),
 		...agent,
 	} as MockSdkAgent;
 }
@@ -224,9 +230,7 @@ export function isToolCallBlock(block: AssistantMessage["content"][number]): blo
 }
 
 export type CursorAgentCreateOptions = NonNullable<Parameters<typeof Agent.create>[0]>;
-export type CursorAgentPlatformForTest = Partial<Awaited<ReturnType<typeof createAgentPlatform>>> & {
-	checkpointStore: Awaited<ReturnType<typeof createAgentPlatform>>["checkpointStore"];
-};
+export type CursorAgentPlatformForTest = Awaited<ReturnType<typeof createAgentPlatform>>;
 
 export function getCreatedAgentOptions(callIndex = 0): CursorAgentCreateOptions {
 	const options = mockedCreate.mock.calls[callIndex]?.[0];
@@ -244,7 +248,7 @@ export function createMockAgentPlatform(
 			getBlobStore: vi.fn().mockResolvedValue({}),
 			getFullConversation: vi.fn().mockResolvedValue({}),
 		},
-	};
+	} as unknown as CursorAgentPlatformForTest;
 }
 
 export interface NativeToolDisplayTestPi {
@@ -255,7 +259,7 @@ export interface NativeToolDisplayTestPi {
 
 export async function createNativeToolDisplayPiForTest(registeredTools: RegisteredTool[] = []): Promise<NativeToolDisplayTestPi> {
 	const pi = createPiHarness({
-		initialTools: ["read", "bash", "grep", "find", "ls", "edit", "write", "cursor"].map((name) =>
+		initialTools: ["read", "bash", "grep", "find", "ls", "edit", "write"].map((name) =>
 			createBuiltinToolInfo(name),
 		),
 	});
@@ -273,9 +277,7 @@ export async function createNativeToolDisplayPiForTest(registeredTools: Register
 	await pi.runSessionStart({ hasUI: false });
 	return {
 		getActiveTools: () => pi.getActiveTools(),
-		setActiveTools: (toolNames) => {
-			pi.setActiveTools(toolNames);
-		},
+		setActiveTools: (toolNames) => pi.setActiveTools(toolNames),
 		runTurnStart: (ctxOverrides = {}) => pi.runTurnStart({ hasUI: false, ...ctxOverrides }),
 	};
 }

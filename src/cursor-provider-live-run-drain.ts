@@ -212,7 +212,10 @@ function emitInactiveCursorReplayTrace(
 ): void {
 	if (tools.length === 0) return;
 	for (const tool of tools) {
-		const traceText = formatInactiveCursorReplayTrace(tool);
+		const traceText = formatInactiveCursorReplayTrace({
+			...tool,
+			toolName: tool.sourceToolName ?? tool.toolName,
+		});
 		debugRecorder?.recordDrainEvent("inactive_replay_trace", {
 			toolId: tool.id,
 			toolName: tool.toolName,
@@ -383,6 +386,7 @@ export async function drainCursorLiveRunTurn(
 				applyCursorUsage(partial, model, context, cursorLiveRuns.takeTurnInputTokens(run, toolResultInputTokens), {
 					runtime: "local",
 					turn: cursorLiveRuns.takeSdkTurnUsage(run),
+					billed: run.billedTurnUsage,
 				});
 				if (run.resumeNotice) {
 					emitDisplayOnlyTraceBlock(stream, partial, run.resumeNotice);

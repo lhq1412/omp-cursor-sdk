@@ -1,3 +1,5 @@
+import type { ModelSelection } from "@cursor/sdk";
+
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getAgentDir } from "@oh-my-pi/pi-coding-agent";
@@ -70,6 +72,14 @@ export function getCheckpointContextWindow(checkpoint: unknown): number | undefi
 	const tokenDetails = asRecord(checkpoint)?.tokenDetails;
 	const maxTokens = asRecord(tokenDetails)?.maxTokens;
 	return isPositiveInteger(maxTokens) ? maxTokens : undefined;
+}
+
+export function getCursorContextWindowCacheKey(
+	modelId: string,
+	selection: ModelSelection,
+): string {
+	const context = selection.params?.find((param) => param.id === "context")?.value;
+	return context ? `${selection.id}@${context}` : modelId;
 }
 
 export function saveCachedContextWindow(modelId: string, contextWindow: number): void {

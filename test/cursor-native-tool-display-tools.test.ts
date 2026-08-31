@@ -1,16 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { Text } from "@oh-my-pi/pi-tui";
 import type { ToolDefinition } from "@oh-my-pi/pi-coding-agent";
-import { Type } from "typebox";
-import * as replay from "../src/cursor-native-tool-display-replay.js";
+import { Type } from "@oh-my-pi/omptype/typebox";
 import { wrapNativeCursorTool } from "../src/cursor-native-tool-display-tools.js";
-import { createRenderContext, createRenderOptions, createRenderTheme } from "./helpers/render-fixtures.js";
+import { createRenderArgs, createRenderOptions, createRenderTheme } from "./helpers/render-fixtures.js";
 
 describe("wrapNativeCursorTool", () => {
-	it("does not use Cursor replay rendering for ordinary pi edit toolCallIds", () => {
-		const replaySpy = vi.spyOn(replay, "renderCursorReplayResult").mockReturnValue(new Text("", 0, 0));
+	it("preserves an existing definition's result renderer", () => {
 		const parameters = Type.Object({});
-		type EditToolDefinition = ToolDefinition<typeof parameters, unknown, unknown>;
+		type EditToolDefinition = ToolDefinition<typeof parameters, unknown>;
 		const delegateRenderResult = vi.fn<NonNullable<EditToolDefinition["renderResult"]>>(() => new Text("pi edit", 0, 0));
 		const definition: EditToolDefinition = {
 			name: "edit",
@@ -35,11 +33,9 @@ describe("wrapNativeCursorTool", () => {
 			},
 			createRenderOptions(),
 			theme,
-			createRenderContext({ isError: false, toolCallId: "ordinary-edit-1" }),
+			createRenderArgs({}),
 		);
 
-		expect(replaySpy).not.toHaveBeenCalled();
 		expect(delegateRenderResult).toHaveBeenCalledOnce();
-		replaySpy.mockRestore();
 	});
 });

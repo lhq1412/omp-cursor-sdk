@@ -12,17 +12,25 @@ const CRABBOX_BIN = process.env.PLATFORM_SMOKE_CRABBOX || "crabbox";
 
 function env(name) { return process.env[name] ?? ""; }
 
+export function buildUbuntuContainerDockerfile(config = {}) {
+	const baseImage = config.ubuntuContainerBaseImage;
+	const bunImage = config.ubuntuContainerBunImage;
+	if (!baseImage || !bunImage) {
+		throw new Error("platform smoke config requires ubuntuContainerBaseImage and ubuntuContainerBunImage");
+	}
+	return `FROM ${bunImage} AS bun-runtime\nFROM ${baseImage}\nUSER root\nCOPY --from=bun-runtime /usr/local/bin/bun /usr/local/bin/bun\nRUN bun --version\n`;
+}
+
 export function ensureUbuntuContainerImage(config = {}) {
 	const override = env("PLATFORM_SMOKE_UBUNTU_IMAGE");
 	if (override) return override;
 	const image = config.ubuntuContainerImage;
-	const baseImage = config.ubuntuContainerBaseImage;
-	if (!image || !baseImage) throw new Error("platform smoke config requires ubuntuContainerImage and ubuntuContainerBaseImage");
+	if (!image) throw new Error("platform smoke config requires ubuntuContainerImage");
 	const childEnv = { ...process.env };
 	delete childEnv.CURSOR_API_KEY;
 	execFileSync("docker", ["build", "--quiet", "--tag", image, "-"], {
 		env: childEnv,
-		input: `FROM ${baseImage}\nUSER root\n`,
+		input: buildUbuntuContainerDockerfile(config),
 		stdio: ["pipe", "pipe", "pipe"],
 		timeout: 300_000,
 	});
@@ -97,7 +105,7 @@ export function buildTargetBaseArgs(targetName, config = {}) {
 		case "macos": {
 			const host = env("PLATFORM_SMOKE_MAC_HOST") || "localhost";
 			const user = env("PLATFORM_SMOKE_MAC_USER") || env("USER");
-			const workRoot = env("PLATFORM_SMOKE_MAC_WORK_ROOT") || `/Users/${env("USER")}/crabbox/pi-cursor-sdk`;
+			const workRoot = env("PLATFORM_SMOKE_MAC_WORK_ROOT") || `/Users/${env("USER")}/crabbox/omp-cursor-sdk`;
 			return [
 				"--provider", "ssh",
 				"--target", "macos",
@@ -121,7 +129,7 @@ export function buildTargetBaseArgs(targetName, config = {}) {
 			const vm = env("PLATFORM_SMOKE_WINDOWS_VM") || windows.sourceVm || "pi-extension-windows-template";
 			const snap = env("PLATFORM_SMOKE_WINDOWS_SNAPSHOT") || windows.snapshot || "crabbox-ready";
 			const user = env("PLATFORM_SMOKE_WINDOWS_USER") || windows.user || env("USER");
-			const workRoot = env("PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT") || windows.workRoot || "C:\\crabbox\\pi-cursor-sdk";
+			const workRoot = env("PLATFORM_SMOKE_WINDOWS_NATIVE_WORK_ROOT") || windows.workRoot || "C:\\crabbox\\omp-cursor-sdk";
 			return [
 				"--provider", "parallels",
 				"--target", "windows",
@@ -140,14 +148,14 @@ export function buildTargetBaseArgs(targetName, config = {}) {
 /**
  * Get the internal lease ID for a target.
  * For static SSH, this is "static_localhost".
- * For local-container, it's the slug (pi-cursor-sdk-ubuntu).
+ * For local-container, it's the slug (omp-cursor-sdk-ubuntu).
  * For parallels, it's the slug used during warmup.
  */
 export function leaseIdFor(targetName) {
 	switch (targetName) {
 		case "macos": return "static_localhost";
-		case "ubuntu": return "pi-cursor-sdk-ubuntu";
-		default: return `pi-cursor-sdk-${targetName}`;
+		case "ubuntu": return "omp-cursor-sdk-ubuntu";
+		default: return `omp-cursor-sdk-${targetName}`;
 	}
 }
 

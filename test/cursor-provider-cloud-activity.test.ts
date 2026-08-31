@@ -67,7 +67,8 @@ describe("cloud provider captured activity callbacks", () => {
 	});
 
 	it("routes normalized captured onDelta/onStep activity through the cloud coordinator without local replay or bridge leakage", async () => {
-		expect(fixture.sdkVersion).toBe(installedSdkVersion);
+		expect(fixture.sdkVersion).toBe("1.0.23");
+		expect(installedSdkVersion).toBe("1.0.27");
 		expect(fixture.sourceCapture.agentId).toMatch(CLOUD_AGENT_ID_PATTERN);
 		expect(fixture.sourceCapture.runId).toMatch(CLOUD_RUN_ID_PATTERN);
 		expect(fixture.sourceCapture.terminalStatus).toBe("finished");
@@ -116,7 +117,7 @@ describe("cloud provider captured activity callbacks", () => {
 			listArtifacts: vi.fn().mockResolvedValue([]),
 		});
 
-		const events = await collectEvents(streamCursor(makeModel("composer-2-5"), makeContext(), { apiKey: "test-key" }));
+		const events = await collectEvents(streamCursor(makeModel("composer-2.5"), makeContext(), { apiKey: "test-key" }));
 		const trace = collectThinkingDeltas(events);
 		const done = getDoneEvent(events);
 		const createOptions = getCreatedAgentOptions();
@@ -146,7 +147,7 @@ describe("cloud provider captured activity callbacks", () => {
 		expect(done.message.content.some(isToolCallBlock)).toBe(false);
 		expect(done.message.content.map((block) => block.type)).not.toContain("toolCall");
 
-		initTheme("dark", false);
+		await initTheme(false);
 		const renderedLines = new AssistantMessageComponent(done.message).render(RENDER_WIDTH);
 		expect(renderedLines.length).toBeGreaterThan(0);
 		expect(renderedLines.length).toBeLessThan(40);

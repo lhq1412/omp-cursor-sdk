@@ -24,7 +24,7 @@ import { join } from "node:path";
 async function setCursorModeForProviderDebugTest(mode: "agent" | "plan"): Promise<void> {
 	const pi = createPiHarness({ flagValues: { "cursor-mode": mode } });
 	registerCursorRuntimeControls(pi);
-	await pi.runSessionStart({ model: makeModel("gpt-5.5@1m") });
+	await pi.runSessionStart({ model: makeModel("gpt-5.5") });
 }
 
 describe("streamCursor debug artifacts", () => {
@@ -96,7 +96,7 @@ describe("streamCursor debug artifacts", () => {
 				[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 			});
 			await setCursorModeForProviderDebugTest("agent");
-			await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+			await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 			const artifactDir = mkdtempSync(join(tmpdir(), "pi-cursor-provider-mode-debug-"));
 			const previousDebug = process.env.PI_CURSOR_SDK_EVENT_DEBUG;
@@ -105,7 +105,7 @@ describe("streamCursor debug artifacts", () => {
 			process.env.PI_CURSOR_SDK_EVENT_DEBUG_RUN_DIR = artifactDir;
 			try {
 				await setCursorModeForProviderDebugTest("plan");
-				await collectEvents(streamCursor(makeModel("gpt-5.5@1m"), makeContext(), { apiKey: "test-key" }));
+				await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
 				const metadata = JSON.parse(readFileSync(join(artifactDir, "metadata.json"), "utf8"));
 				expect(metadata.providerMeta).toMatchObject({ agentMode: "plan" });

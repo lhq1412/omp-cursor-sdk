@@ -1,15 +1,9 @@
+import type { Mock } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/model-discovery.js", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("../src/model-discovery.js")>();
-	return {
-		...actual,
-		discoverModels: vi.fn(),
-	};
-});
 
 function createMockAgentRun() {
 	return {
@@ -33,6 +27,7 @@ function createMockAgent(): SDKAgent {
 		reload: vi.fn().mockResolvedValue(undefined),
 		listArtifacts: vi.fn().mockResolvedValue([]),
 		downloadArtifact: vi.fn().mockResolvedValue(Buffer.from("")),
+		getUsage: vi.fn().mockResolvedValue({ usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0 }, runs: [] }),
 		[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
 	};
 }
@@ -51,7 +46,6 @@ vi.mock("@cursor/sdk", () => ({
 
 import { Agent, Cursor, type SDKAgent } from "@cursor/sdk";
 import extensionFactory from "../src/index.js";
-import { discoverModels } from "../src/model-discovery.js";
 import { __testUtils as cursorProviderTestUtils } from "../src/cursor-provider.js";
 import { streamCursorLazy } from "../src/cursor-provider-lazy.js";
 import { __testUtils as cursorSessionScopeTestUtils } from "../src/cursor-session-scope.js";
@@ -63,12 +57,10 @@ import {
 	createExtensionRegistrationPi,
 	makeContext,
 	makeModel,
-	makeProviderModelConfig,
 } from "./helpers/pi-harness.js";
 
-const mockedDiscover = vi.mocked(discoverModels);
-const mockedAgentCreate = vi.mocked(Agent.create);
-const mockedCursorConfigure = vi.mocked(Cursor.configure);
+const mockedAgentCreate = Agent.create as Mock<typeof Agent.create>;
+const mockedCursorConfigure = Cursor.configure as Mock<typeof Cursor.configure>;
 
 describe("extension session cwd integration", () => {
 	beforeEach(async () => {
@@ -83,9 +75,6 @@ describe("extension session cwd integration", () => {
 		expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0);
 		cursorSessionScopeTestUtils.reset();
 		mockedAgentCreate.mockResolvedValue(createMockAgent());
-		mockedDiscover.mockResolvedValue([
-			makeProviderModelConfig("composer-2.5", { name: "Cursor Composer 2.5", input: ["text"] }),
-		]);
 	});
 
 	afterEach(async () => {
@@ -93,8 +82,8 @@ describe("extension session cwd integration", () => {
 		await cursorPiToolBridgeTestUtils.resetRegisteredBridgeForTests();
 	});
 
-	it("passes pi session cwd from extension registration through streamSimple to Agent.create", async () => {
-		const sessionDir = mkdtempSync(join(tmpdir(), "pi-cursor-index-agent-cwd-"));
+	it("passes OMP session cwd from extension registration through streamSimple to Agent.create", async () => {
+		const sessionDir = mkdtempSync(join(tmpdir(), "omp-cursor-index-agent-cwd-"));
 		try {
 			const pi = createExtensionRegistrationPi();
 			await extensionFactory(pi);

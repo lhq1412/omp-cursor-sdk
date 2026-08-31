@@ -125,7 +125,7 @@ export class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 
 	async handleHttpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
 		if (this.disposed || !this.mcpTransport) {
-			res.writeHead(410, { "content-type": "application/json" }).end(JSON.stringify({ error: "Cursor pi tool bridge run is disposed" }));
+			res.writeHead(410, { "content-type": "application/json" }).end(JSON.stringify({ error: "Cursor OMP tool bridge run is disposed" }));
 			return;
 		}
 		await this.mcpTransport.handleRequest(req, res);
@@ -138,7 +138,7 @@ export class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 	setOnToolRequest(handler?: (request: CursorPiBridgeToolRequest) => void): void {
 		if (!handler) {
 			this.liveRunHandlerDetached = true;
-			this.rejectQueuedToolRequestsWithoutHandler("Cursor pi tool bridge has no active live run");
+			this.rejectQueuedToolRequestsWithoutHandler("Cursor OMP tool bridge has no active live run");
 		} else {
 			this.liveRunHandlerDetached = false;
 		}
@@ -230,7 +230,7 @@ export class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 	async dispose(): Promise<void> {
 		if (this.disposed) return;
 		this.disposed = true;
-		this.cancel("Cursor pi tool bridge run disposed");
+		this.cancel("Cursor OMP tool bridge run disposed");
 		await waitForProtocolFlush();
 		await Promise.allSettled([
 			this.mcpTransport?.close(),
@@ -268,11 +268,11 @@ export class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 		const piToolName = this.snapshot.mcpToolNameToPiToolName.get(mcpToolName);
 		if (!piToolName) {
 			return Promise.resolve({
-				content: [{ type: "text", text: `Unknown pi bridge tool: ${mcpToolName}` }],
+				content: [{ type: "text", text: `Unknown OMP bridge tool: ${mcpToolName}` }],
 				isError: true,
 			});
 		}
-		if (this.disposed) return Promise.reject(new Error("Cursor pi tool bridge run is disposed"));
+		if (this.disposed) return Promise.reject(new Error("Cursor OMP tool bridge run is disposed"));
 
 		this.toolCallCounter += 1;
 		const bridgeCallId = `${this.id}-bridge-${this.toolCallCounter}`;
@@ -307,13 +307,13 @@ export class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 			this.pendingByCursorMcpCallId.set(cursorMcpCallId, pending);
 			this.knownCursorMcpCallIds.add(cursorMcpCallId);
 			pending.timeout = setTimeout(() => {
-				const reason = `Cursor pi bridge CallTool timed out after ${this.callTimeoutMs} ms`;
+				const reason = `Cursor OMP bridge CallTool timed out after ${this.callTimeoutMs} ms`;
 				this.rejectAndAbortPending(pending, new Error(reason));
 			}, this.callTimeoutMs);
 			pending.timeout.unref?.();
 			if (!this.onToolRequest) {
 				if (this.liveRunHandlerDetached) {
-					this.rejectPending(pending, new Error("Cursor pi tool bridge has no active live run"), "cancelled");
+					this.rejectPending(pending, new Error("Cursor OMP tool bridge has no active live run"), "cancelled");
 					return;
 				}
 				this.queuedRequests.push(request);

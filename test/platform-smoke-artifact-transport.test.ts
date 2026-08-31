@@ -588,7 +588,7 @@ while (Date.now() < end) {
 				writePlatformArtifactBundle(root);
 				preservedExitCode = process.exitCode;
 			} finally {
-				process.exitCode = originalExitCode;
+				process.exitCode = originalExitCode ?? 0;
 				stdout.mockRestore();
 			}
 			expect(preservedExitCode).toBe(7);
@@ -710,7 +710,7 @@ if (result.redacted.includes("cursor-secret-token-12345") || result.redacted.inc
 if (result.stripped !== "missing" || result.allowed !== "cursor-secret-token-12345") process.exit(1);
 if (result.ubuntuImage !== "example/node:24") process.exit(1);
 if (result.crabboxMinVersion !== "0.26.0") process.exit(1);
-if (result.windowsVm !== "pi-extension-windows-template" || result.windowsSnapshot !== "crabbox-ready" || result.windowsWorkRoot !== "C:\\crabbox\\pi-cursor-sdk") process.exit(1);
+if (result.windowsVm !== "pi-extension-windows-template" || result.windowsSnapshot !== "crabbox-ready" || result.windowsWorkRoot !== "C:\\crabbox\\omp-cursor-sdk") process.exit(1);
 `;
 		const result = run(process.execPath, ["--input-type=module", "-e", code]);
 		expect(result.status).toBe(0);

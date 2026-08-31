@@ -1,4 +1,4 @@
-import { EventEmitter } from "node:events";
+import { EventBus } from "@oh-my-pi/pi-coding-agent/utils/event-bus";
 import { vi } from "vitest";
 import type { Provider } from "@oh-my-pi/pi-ai";
 import type { ExtensionAPI, ProviderConfig, ToolInfo } from "@oh-my-pi/pi-coding-agent";
@@ -73,14 +73,13 @@ export function createPiHarness(options: PiHarnessOptions = {}): PiHarness {
 	}) as PiHarness["registerTool"];
 
 	const eventsEmitted: Array<{ channel: string; data: unknown }> = [];
-	const eventBus = new EventEmitter();
-	const events: ExtensionAPI["events"] = {
-		emit: (channel: string, data: unknown) => {
+	class HarnessEventBus extends EventBus {
+		override emit(channel: string, data: unknown): void {
 			eventsEmitted.push({ channel, data });
-			eventBus.emit(channel, data);
-		},
-		on: (channel, handler) => eventBus.on(channel, handler),
-	};
+			super.emit(channel, data);
+		}
+	}
+	const events = new HarnessEventBus();
 
 	return {
 		...eventApi,
@@ -104,7 +103,7 @@ export function createPiHarness(options: PiHarnessOptions = {}): PiHarness {
 			return [...toolsByName.values()];
 		}),
 		getActiveTools: vi.fn<ExtensionAPI["getActiveTools"]>(() => [...activeToolNames]),
-		setActiveTools: vi.fn<ExtensionAPI["setActiveTools"]>((toolNames: string[]) => {
+		setActiveTools: vi.fn<ExtensionAPI["setActiveTools"]>(async (toolNames: string[]) => {
 			activeToolNames = [...toolNames];
 		}),
 		sendMessage: vi.fn<ExtensionAPI["sendMessage"]>(),

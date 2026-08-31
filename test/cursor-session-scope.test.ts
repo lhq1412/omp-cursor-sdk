@@ -34,31 +34,20 @@ describe("cursor-session-scope cwd", () => {
 		}
 	});
 
-	it("trusts only via the --auto-approve argv scan (OMP has no project_trust event)", async () => {
+	it("syncs project trust from OMP's extension-context predicate", async () => {
 		const cwd = mkdtempSync(join(tmpdir(), "pi-cursor-session-trust-"));
 		try {
 			const pi = createEventHarness();
 			registerCursorSessionScope(pi);
 
-			await pi.runSessionStart({ cwd });
+			await pi.runSessionStart({ cwd, isProjectTrusted: () => false });
 			expect(getCursorSessionProjectTrusted()).toBe(false);
 
-			// The Pi-era project_trust resolution machinery is dead in the
-			// OMP port: recording a resolution does not flip trust, and OMP's
-			// ExtensionContext exposes no isProjectTrusted predicate.
-			cursorSessionScopeTestUtils.recordProjectTrustResolution(cwd);
-			await pi.runSessionStart({ cwd });
-			expect(getCursorSessionProjectTrusted()).toBe(false);
+			await pi.runSessionStart({ cwd, isProjectTrusted: () => true });
+			expect(getCursorSessionProjectTrusted()).toBe(true);
 		} finally {
 			rmSync(cwd, { recursive: true, force: true });
 		}
-	});
-
-	it("detects --auto-approve anywhere on the CLI (OMP analog for Pi's --approve)", () => {
-		expect(cursorSessionScopeTestUtils.isCliProjectTrustApproved(["--auto-approve"])).toBe(true);
-		expect(cursorSessionScopeTestUtils.isCliProjectTrustApproved(["prompt", "--auto-approve"])).toBe(true);
-		expect(cursorSessionScopeTestUtils.isCliProjectTrustApproved(["--model", "x"])).toBe(false);
-		expect(cursorSessionScopeTestUtils.isCliProjectTrustApproved([])).toBe(false);
 	});
 
 	it("syncs the normalized session name from session_start", async () => {

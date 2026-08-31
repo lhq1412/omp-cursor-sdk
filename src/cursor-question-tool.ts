@@ -14,7 +14,7 @@ export function resolveCursorAskQuestionEnabled(env: Record<string, string | und
 	return parseEnvBoolean(env[CURSOR_ASK_QUESTION_ENV], true);
 }
 
-/** Package-namespaced event while `cursor_ask_question` awaits pi UI input. */
+/** Package-namespaced event while `cursor_ask_question` awaits OMP UI input. */
 export const CURSOR_ASK_QUESTION_BLOCKED_EVENT = "pi-cursor-sdk:ask-question:blocked";
 
 // OMP's ToolDefinition has no executionMode field (upstream used
@@ -34,7 +34,7 @@ async function executeAskQuestion(
 	}
 	if (!ctx.hasUI) {
 		throw new Error(
-			"Cannot ask the user because pi UI is unavailable. Make a reasonable default choice and state the assumption before proceeding.",
+			"Cannot ask the user because OMP UI is unavailable. Make a reasonable default choice and state the assumption before proceeding.",
 		);
 	}
 
@@ -115,7 +115,7 @@ const QuestionOptionSchema = Type.Union([
 	Type.Object({
 		label: Type.String({ description: "User-facing option label" }),
 		value: Type.Optional(Type.String({ description: "Optional value returned to Cursor; defaults to label" })),
-		description: Type.Optional(Type.String({ description: "Optional helper text shown by compatible pi UIs" })),
+		description: Type.Optional(Type.String({ description: "Optional helper text shown by compatible OMP UIs" })),
 	}),
 ]);
 

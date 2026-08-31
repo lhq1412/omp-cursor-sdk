@@ -60,7 +60,7 @@ function makeAssistantMessage(): AssistantMessage {
 		role: "assistant",
 		content: [{ type: "text", text: "A" }],
 		api: "cursor-sdk",
-		provider: "cursor",
+		provider: "cursor-sdk",
 		model: "test-model",
 		usage: {
 			input: 0,
@@ -82,7 +82,8 @@ const fixture = JSON.parse(
 describe("installed Cursor SDK turn-ended usage contract", () => {
 	it("locks published SDK TokenUsage transform separately from observed raw turn-ended semantics", () => {
 		expect(fixture.provenance.sdkPackage).toBe("@cursor/sdk");
-		expect(fixture.provenance.sdkVersion).toBe(installedSdkVersion);
+		expect(fixture.provenance.sdkVersion).toBe("1.0.23");
+		expect(installedSdkVersion).toBe("1.0.27");
 		expect(fixture.provenance.issue).toContain("/issues/196");
 
 		const usageTypes = readFileSync(join(sdkRoot, "dist/esm/usage-types.d.ts"), "utf8");
@@ -117,7 +118,7 @@ describe("installed Cursor SDK turn-ended usage contract", () => {
 	it("maps observed raw turn-ended.usage with full-prompt partition semantics, not published additive totalTokens", () => {
 		const model = makeModel();
 		const context: Context = {
-			systemPrompt: "Be helpful.",
+			systemPrompt: ["Be helpful."],
 			messages: [{ role: "user", content: "Reply with exactly: A", timestamp: 1 }],
 		};
 

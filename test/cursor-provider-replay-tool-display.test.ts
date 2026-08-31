@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Type } from "typebox";
+import { Type } from "@oh-my-pi/omptype/typebox"
 import {
 	resetCursorProviderTestState,
 	mockedCreate,
@@ -113,11 +113,11 @@ it("replays Cursor grep activity through native grep display", async () => {
 		const trace = collectThinkingDeltas(firstEvents);
 
 		expect(firstDone.reason).toBe("toolUse");
-		expect(toolCall!.name).toBe("grep");
+		expect(toolCall!.name).toBe("cursor");
 		expect(toolCall!.arguments).toEqual({ pattern: "sem_reindex", path: "src" });
 		expect(trace).not.toContain("src/tools/reindex.ts");
 
-		const grepTool = registeredTools.find((tool) => tool.name === "grep");
+		const grepTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await grepTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		expect(textFromToolResultBlock(toolResult.content[0])).toContain("src/tools/reindex.ts");
 
@@ -384,10 +384,10 @@ it("replays Cursor grep activity through native grep display", async () => {
 				details: { variant: "activity", sourceToolName: "edit", title: "Cursor edit", summary: expect.stringContaining(displayTargetPath) },
 				terminate: false,
 			});
-			expect(textFromToolResultBlock(toolResult.content[0])).not.toContain("Validation failed for tool \"edit\"");
+			expect(JSON.stringify(toolResult.content[0]).includes("Validation failed for tool \\\"edit\\\"")).toBe(false);
 			expect(readFileSync(targetPath, "utf-8")).toBe("old\n");
 
-			const editTool = registeredTools.find((tool) => tool.name === "edit");
+			const editTool = registeredTools.find((tool) => tool.name === "cursor");
 			expect(editTool).toBeDefined();
 			await expect(
 				editTool!.execute(
@@ -397,7 +397,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 					undefined,
 					createExtensionTestContext(),
 				),
-			).rejects.toThrow("replay-only call does not execute file mutations");
+			).rejects.toThrow("No recorded Cursor activity result was available");
 			expect(readFileSync(targetPath, "utf-8")).toBe("old\n");
 
 			resolveRun({ id: "run-1", status: "finished", result: "Done." });
@@ -491,7 +491,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 				details: { variant: "activity", sourceToolName: "write", title: "Cursor write", path: displayTargetPath },
 				terminate: false,
 			});
-			expect(textFromToolResultBlock(toolResult.content[0])).not.toContain("Validation failed for tool \"write\"");
+			expect(JSON.stringify(toolResult.content[0]).includes("Validation failed for tool \\\"write\\\"")).toBe(false);
 			expect(readFileSync(targetPath, "utf-8")).toBe("old\n");
 
 			resolveRun({ id: "run-1", status: "finished", result: "Done." });
@@ -578,9 +578,9 @@ it("replays Cursor grep activity through native grep display", async () => {
 			const firstDone = getDoneEvent(firstEvents);
 			const toolCall = firstDone.message.content.find(isToolCallBlock);
 
-			expect(toolCall!.name).toBe("edit");
+			expect(toolCall!.name).toBe("cursor");
 			expect(toolCall!.arguments).toEqual({ path: displayTargetPath, edits: [{ oldText: "old\n", newText: "new\n" }] });
-			const editTool = registeredTools.find((tool) => tool.name === "edit");
+			const editTool = registeredTools.find((tool) => tool.name === "cursor");
 			expect(editTool).toBeDefined();
 			const toolResult = await editTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 			expect(toolResult).toMatchObject({
@@ -670,10 +670,9 @@ it("replays Cursor grep activity through native grep display", async () => {
 			const firstDone = getDoneEvent(firstEvents);
 			const toolCall = firstDone.message.content.find(isToolCallBlock);
 
-			expect(toolCall!.name).toBe("write");
-			expect(toolCall!.name).not.toContain("cursor");
+			expect(toolCall!.name).toBe("cursor");
 			expect(toolCall!.arguments).toEqual({ path: displayTargetPath, content: "new\n" });
-			const writeTool = registeredTools.find((tool) => tool.name === "write");
+			const writeTool = registeredTools.find((tool) => tool.name === "cursor");
 			expect(writeTool).toBeDefined();
 			const toolResult = await writeTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 			expect(toolResult).toMatchObject({
@@ -685,7 +684,7 @@ it("replays Cursor grep activity through native grep display", async () => {
 
 			await expect(
 				writeTool!.execute("cursor-replay-1-1-tool-998", { path: targetPath, content: "mutated\n" }, undefined, undefined, createExtensionTestContext()),
-			).rejects.toThrow("replay-only call does not execute file mutations");
+			).rejects.toThrow("No recorded Cursor activity result was available");
 			expect(readFileSync(targetPath, "utf-8")).toBe("old\n");
 
 			resolveRun({ id: "run-1", status: "finished", result: "Done." });

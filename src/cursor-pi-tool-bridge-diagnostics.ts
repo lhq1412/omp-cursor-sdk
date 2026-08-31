@@ -84,7 +84,7 @@ export type CursorPiToolBridgeDiagnosticEvent =
 	| CursorPiToolBridgeRequestRejectedDiagnostic;
 
 function assertNeverDiagnosticEvent(_event: never): never {
-	throw new Error("Unhandled Cursor pi tool bridge diagnostic event");
+	throw new Error("Unhandled Cursor OMP tool bridge diagnostic event");
 }
 
 export function serializeCursorPiToolBridgeDiagnostic(event: CursorPiToolBridgeDiagnosticEvent): Record<string, unknown> {

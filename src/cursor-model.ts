@@ -1,6 +1,6 @@
 import type { ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 
-export const CURSOR_PROVIDER = "cursor";
+export const CURSOR_SDK_PROVIDER_ID = "cursor-sdk";
 export const CURSOR_SDK_API = "cursor-sdk";
 
 export type CursorModelRef =
@@ -8,5 +8,5 @@ export type CursorModelRef =
 	| undefined;
 
 export function isCursorModel(model: CursorModelRef): boolean {
-	return model?.provider === CURSOR_PROVIDER || model?.api === CURSOR_SDK_API;
+	return model?.provider === CURSOR_SDK_PROVIDER_ID;
 }

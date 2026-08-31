@@ -12,7 +12,7 @@ import type {
 	ToolResultEvent,
 	TurnEndEvent,
 } from "@oh-my-pi/pi-coding-agent";
-import { createDefaultSystemPromptOptions, createExtensionTestContext, makeAssistantMessage } from "./context-fixtures.js";
+import { createExtensionTestContext, makeAssistantMessage } from "./context-fixtures.js";
 import type {
 	EventHarness,
 	ExtensionContextOverrides,
@@ -35,7 +35,7 @@ type HarnessStoredHandler =
 
 function createBeforeAgentStartContext(
 	baseCtx: ExtensionContext,
-	getSystemPrompt: () => string,
+	getSystemPrompt: () => string[],
 ): ExtensionContext {
 	return {
 		...baseCtx,
@@ -207,7 +207,7 @@ function createHarnessEventApi(): EventHarness {
 	): Promise<void> => {
 		await invokeEvent(
 			"session_start",
-			{ type: "session_start", reason: "startup", ...eventOverrides },
+			{ type: "session_start", ...eventOverrides },
 			ctxOverrides,
 		);
 	};
@@ -233,7 +233,6 @@ function createHarnessEventApi(): EventHarness {
 				type: "before_agent_start",
 				prompt: "start",
 				systemPrompt: [],
-				systemPromptOptions: createDefaultSystemPromptOptions(ctx.cwd),
 			} satisfies BeforeAgentStartEvent,
 			ctx,
 		);
@@ -266,7 +265,7 @@ function createHarnessEventApi(): EventHarness {
 	): Promise<void> => {
 		await invokeEvent(
 			"session_shutdown",
-			{ type: "session_shutdown", reason: "quit", ...eventOverrides },
+			{ type: "session_shutdown", ...eventOverrides },
 			ctxOverrides,
 		);
 	};
@@ -279,16 +278,15 @@ function createHarnessEventApi(): EventHarness {
 			"session_before_compact",
 			{
 				type: "session_before_compact",
-				reason: "manual",
-				willRetry: false,
 				preparation: {
 					firstKeptEntryId: "entry-1",
 					messagesToSummarize: [],
+					recentMessages: [],
 					turnPrefixMessages: [],
 					isSplitTurn: false,
 					tokensBefore: 0,
 					previousSummary: undefined,
-					fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+					fileOps: { read: new Set<string>(), written: new Set<string>(), edited: new Set<string>() },
 					settings: { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000 },
 				},
 				branchEntries: [],
@@ -307,8 +305,6 @@ function createHarnessEventApi(): EventHarness {
 			"session_compact",
 			{
 				type: "session_compact",
-				reason: "manual",
-				willRetry: false,
 				compactionEntry: {
 					type: "compaction",
 					id: "compaction-1",

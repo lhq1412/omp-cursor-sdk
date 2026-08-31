@@ -18,6 +18,7 @@ import {
 	skippedNativeToolNames,
 } from "./cursor-native-tool-display-state.js";
 import { isCursorReplayToolName } from "./cursor-tool-presentation-registry.js";
+import { registerNativeCursorTool } from "./cursor-native-tool-display-tools.js";
 
 export const CURSOR_CORE_PI_REPLAY_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
 const CORE_PI_TOOL_NAMES = new Set<string>(CURSOR_CORE_PI_REPLAY_TOOL_NAMES);
@@ -36,9 +37,8 @@ function hasNonBuiltinTool(pi: Pick<ExtensionAPI, "getAllTools">, toolName: Nati
 	return existingTool !== undefined && existingTool.sourceInfo.source !== "builtin";
 }
 
-type NativeRegistrationContext = Pick<ExtensionContext, "model"> & {
+type NativeRegistrationContext = Pick<ExtensionContext, "mode" | "model"> & {
 	ui: Pick<ExtensionContext["ui"], "notify">;
-	hasUI: boolean;
 };
 
 async function registerNativeCursorToolsFromSet(
@@ -46,7 +46,6 @@ async function registerNativeCursorToolsFromSet(
 	toolNames: readonly NativeCursorToolName[],
 ): Promise<NativeCursorToolName[]> {
 	const newlySkippedToolNames: NativeCursorToolName[] = [];
-	let registerNativeCursorTool: ((pi: CursorNativeToolRegistryApi, toolName: NativeCursorToolName) => void) | undefined;
 	for (const toolName of toolNames) {
 		if (registeredNativeToolNames.has(toolName) || skippedNativeToolNames.has(toolName)) continue;
 		if (hasNonBuiltinTool(pi, toolName)) {
@@ -54,7 +53,6 @@ async function registerNativeCursorToolsFromSet(
 			newlySkippedToolNames.push(toolName);
 			continue;
 		}
-		registerNativeCursorTool ??= (await import("./cursor-native-tool-display-tools.js")).registerNativeCursorTool;
 		registerNativeCursorTool(pi, toolName);
 		registeredNativeToolNames.add(toolName);
 	}
@@ -106,27 +104,37 @@ export function syncRegisteredNativeCursorToolsForModel(
 	if (changed) pi.setActiveTools([...activeToolNames]);
 }
 
-let nativeCursorToolRegistrationStarted = false;
+let nativeCursorToolRegistrationPromise: Promise<NativeCursorToolName[]> | undefined;
 
 async function ensureNativeCursorToolsRegisteredForModel(pi: CursorNativeToolRegistryApi, ctx: NativeRegistrationContext): Promise<void> {
-	if (!isCursorModel(ctx.model) || nativeCursorToolRegistrationStarted || hasAttemptedNativeCursorToolRegistration()) return;
-	// Latch before the first await: the guard sets are only mutated after
-	// the dynamic import resolves, so without this an overlapping lifecycle
-	// sync could double-register cursor_replay_activity.
-	nativeCursorToolRegistrationStarted = true;
+	if (!isCursorModel(ctx.model) || hasAttemptedNativeCursorToolRegistration()) return;
 
 	// OMP port: builtin shadowing (read/bash/edit/write/grep/find/ls) is not
 	// portable (no builtin definition surface); register only the
-	// self-contained replay tool. Registering a builtin name would hit
-	// createNativeCursorToolDefinition's unsupported-tool throw.
-	const replayOnlyToolNames = NATIVE_CURSOR_TOOL_NAMES.filter(isCursorReplayToolName);
-	const skippedToolNames = await registerNativeCursorToolsFromSet(pi, replayOnlyToolNames);
-	notifySkippedNativeCursorToolsIfNeeded(ctx, skippedToolNames);
+	// self-contained replay tool. Share an in-flight registration so overlapping
+	// lifecycle hooks cannot double-register it.
+	const inFlightRegistration = nativeCursorToolRegistrationPromise;
+	if (inFlightRegistration) {
+		await inFlightRegistration;
+		return;
+	}
+	const registration = registerNativeCursorToolsFromSet(
+		pi,
+		NATIVE_CURSOR_TOOL_NAMES.filter(isCursorReplayToolName),
+	);
+	nativeCursorToolRegistrationPromise = registration;
+	try {
+		const skippedToolNames = await registration;
+		notifySkippedNativeCursorToolsIfNeeded(ctx, skippedToolNames);
+	} finally {
+		if (nativeCursorToolRegistrationPromise === registration) {
+			nativeCursorToolRegistrationPromise = undefined;
+		}
+	}
 }
 
 async function ensureThenSyncNativeCursorToolsForModel(pi: CursorNativeToolRegistryApi, ctx: NativeRegistrationContext): Promise<void> {
-	// OMP's ExtensionContext has no mode field; hasUI distinguishes print mode.
-	const requested = isCursorNativeToolRegistrationRequested(ctx.hasUI ? "tui" : "print");
+	const requested = isCursorNativeToolRegistrationRequested(ctx.mode);
 	setCursorNativeToolDisplayRuntimeRequested(requested);
 	if (!requested) {
 		removeRegisteredNonCoreNativeCursorTools(pi);

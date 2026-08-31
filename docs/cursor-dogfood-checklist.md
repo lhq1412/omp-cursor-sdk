@@ -1,65 +1,87 @@
 # Cursor dogfood checklist
 
-Short maintainer checklist for **minimal-surface** validation after prompt, bridge, replay, or manifest changes. This is the fast path from pi-cursor-composer dogfood sessions—not a substitute for the required [platform smoke gate](./platform-smoke.md).
+Fast one-session validation for `omp-cursor-sdk`. This is inner-loop evidence, not a substitute for [the platform smoke gate](./platform-smoke.md).
 
-## Minimal environment
+## Setup
 
-- Build first after any `src/` edit: `npm run build` (the pi manifest loads compiled `dist/`)
-- Extension only: `pi --approve -e . --cursor-no-fast --model cursor/composer-2-5`
-- Fresh session dir: `--session-dir /tmp/pi-cursor-dogfood-<id>`
-- Baseline surface (no ambient Cursor MCP/rules):
-  - `PI_CURSOR_SETTING_SOURCES=none`, **or**
-  - empty / minimal `~/.cursor/mcp.json` when you need to verify user MCP config separately
-- Optional: `PI_CURSOR_TOOL_MANIFEST=0` to confirm bootstrap behavior without the manifest block
+```bash
+npm install
+export CURSOR_API_KEY="..."
+export PI_CURSOR_SETTING_SOURCES=none
+export PI_CURSOR_PI_TOOL_BRIDGE=1
+export PI_CURSOR_EXPOSE_BUILTIN_TOOLS=1
 
-## One-turn exercise
+SESSION_DIR="$(mktemp -d /tmp/omp-cursor-dogfood.XXXXXX)"
+omp --auto-approve -e . \
+  --model cursor-sdk/grok-4.6 \
+  --session-dir "$SESSION_DIR"
+```
 
-1. **Native Cursor host tool** — one `read` or `shell` call (Cursor SDK host tools; not listed in MCP `listTools`).
-2. **Pi bridge** (if enabled) — one bridged call via exposed `pi__*` MCP name, e.g. `pi__cursor_ask_question` when active.
-3. **Configured MCP** (optional) — only when you intentionally load Cursor MCP via settings; skip for minimal baseline.
+OMP loads `src/index.ts` directly under Bun. No build step is required.
 
-`pi --no-tools` is a pi-registry toggle, not a Cursor SDK host-tool kill switch. In dogfood, expect it to remove pi bridge exposure while Cursor host tools can still run.
+## Checks
 
-In-session debug: `/cursor-tools` prints bridge enablement, bootstrap manifest enablement, effective `PI_CURSOR_SETTING_SOURCES`, and the callable-surface manifest snapshot for the current session.
+1. Run `/cursor-tools`.
+   - Provider is `cursor-sdk`.
+   - The callable manifest matches the active OMP tools.
+   - No credential or loopback token is printed.
 
-## CLI spot-check
+2. Ask Cursor to read `package.json` with its host file tool.
+   - The card executes through the neutral OMP `cursor` replay tool.
+   - Session JSONL retains `details.sourceToolName: "read"`.
+   - The result contains `omp-cursor-sdk`.
 
-`pi --approve -e . --list-models cursor` should exit 0 and show a Cursor model table. On pi 0.79.x that table can land on stderr in automation, so capture both streams or redirect `2>&1` before treating empty stdout as a discovery failure.
+3. Ask Cursor to call `pi__read` on `package.json`.
+   - The bridge records the real OMP `read` tool call/result.
+   - It is not confused with the display-only `cursor` replay call.
+
+4. Ask Cursor to write and then edit a temporary file under `.debug/`.
+   - Replay uses recorded results only.
+   - The edit card shows a diff.
+   - The persisted result carries `sourceToolName`.
+
+5. Start a second turn in the same session.
+   - The session-scoped agent is reused only when lineage and tool-surface checks allow it.
+   - No prior replay result is duplicated.
+
+6. Abort a long shell or bridge call.
+   - OMP settles the turn.
+   - The bridge endpoint and live run are released.
+   - No orphan child remains.
 
 ## JSONL spot-check
 
-Inspect the session JSONL under the temp `--session-dir`:
+Inspect the session file under `SESSION_DIR`.
 
-| Pattern | Meaning |
-| --- | --- |
-| `cursor-replay-*` | Display-only replay of Cursor SDK activity—not callable |
-| `cursor-pi-bridge-run-*` | Live pi execution via bridge |
-| Callable tools | Cursor SDK host + MCP `listTools` + exposed `pi__*` only |
+Expected SDK replay shape:
 
-Common mistake: treating `cursor-replay-*` IDs or pi transcript tool labels as tools to invoke.
+```json
+{
+  "role": "toolResult",
+  "toolName": "cursor",
+  "details": {
+    "sourceToolName": "read"
+  }
+}
+```
 
-## Bootstrap prompt
+Expected OMP bridge shape:
 
-First send (bootstrap) should include:
+```json
+{
+  "role": "toolResult",
+  "toolName": "read"
+}
+```
 
-- Short **Cursor SDK tool boundary** block
-- **Callable tool surfaces this run** manifest (unless `PI_CURSOR_TOOL_MANIFEST=0`)
-- Tail guard with shell `cd` hint
+Tool-call IDs and result IDs must match exactly. Assistant prose that describes a tool call is not evidence of execution.
 
-Incremental sends omit the full boundary; tail guard remains.
+## Finish
 
-## Activity replay — Cursor edit card
+```bash
+npm test
+npm run typecheck
+npm pack --dry-run
+```
 
-After a Cursor **edit** tool call, confirm the activity card:
-
-- `details.diffString` present on the replay record
-- Collapsed diff preview with colored add/remove lines in the TUI
-
-Canonical visual evidence: `npm run smoke:visual` (see [Cursor native tool visual audit](./cursor-native-tool-visual-audit.md)).
-
-## Related docs
-
-- [Cursor tool surfaces in pi](./cursor-tool-surfaces.md) — three namespaces and discoverability
-- [Platform smoke gate](./platform-smoke.md) — required cross-platform release gate
-- [Cursor live smoke checklist](./cursor-live-smoke-checklist.md) — inner-loop/manual debug checks
-- [Cursor testing lessons](./cursor-testing-lessons.md) — auth, JSONL scans, plan-mode traps
+Delete the temporary session/debug directory after inspection. Do not retain or commit raw prompts, tool payloads, local paths, or secrets.

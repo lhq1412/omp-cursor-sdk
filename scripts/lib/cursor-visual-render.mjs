@@ -28,7 +28,7 @@ export function buildTerminalHtml({ ansi, plain, options }) {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>pi-cursor-sdk visual smoke: ${escapeHtml(options.label)}</title>
+<title>omp-cursor-sdk visual smoke: ${escapeHtml(options.label)}</title>
 <style>
 ${assets.css}
 :root { color-scheme: dark; }
@@ -64,9 +64,9 @@ header code { color: #d8dee9; }
 </head>
 <body>
 <header>
-	<div><strong>pi-cursor-sdk visual smoke</strong> <code>${escapeHtml(options.label)}</code></div>
+	<div><strong>omp-cursor-sdk visual smoke</strong> <code>${escapeHtml(options.label)}</code></div>
 	<div>model <code>${escapeHtml(options.model)}</code> · mode <code>${escapeHtml(options.mode)}</code> · cwd <code>${escapeHtml(options.cwd)}</code></div>
-	<div>session <code>${escapeHtml(options.sessionId)}</code> · captured ${new Date().toISOString()}</div>
+	<div>session <code>${escapeHtml(options.sessionId ?? "omp-assigned")}</code> · captured ${new Date().toISOString()}</div>
 </header>
 <div id="terminal"></div>
 <noscript><pre class="fallback">${escapeHtml(plain)}</pre></noscript>

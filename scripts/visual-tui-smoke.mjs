@@ -13,9 +13,9 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_WIDTH = 150;
 const DEFAULT_HEIGHT = 45;
 const DEFAULT_WAIT_MS = 60_000;
-const DEFAULT_STARTUP_MS = 5_000;
+const DEFAULT_STARTUP_MS = 30_000;
 const DEFAULT_HISTORY_LINES = 3_000;
-const DEFAULT_MODEL = "cursor/composer-2-5";
+const DEFAULT_MODEL = "cursor-sdk/grok-4.6";
 const DEFAULT_MODE = "plan";
 const DEFAULT_SETTING_SOURCES = "none";
 const DEBUG_ENV_NAMES = CURSOR_SDK_EVENT_DEBUG_ENV_NAMES;
@@ -24,7 +24,7 @@ const EXIT_FAILURE = 1;
 const EXIT_USAGE = 2;
 
 function printHelp() {
-	console.log(`Canonical offscreen TUI visual smoke runner for pi-cursor-sdk.
+	console.log(`Canonical offscreen TUI visual smoke runner for omp-cursor-sdk.
 
 Usage:
   node scripts/visual-tui-smoke.mjs --label LABEL --prompt PROMPT [options]
@@ -32,29 +32,28 @@ Usage:
 
 Required:
   --label LABEL                 Artifact filename prefix. Sanitized for paths.
-  --prompt PROMPT               Prompt to paste into the interactive pi TUI.
+  --prompt PROMPT               Prompt to paste into the interactive OMP TUI.
                                 Use --prompt-file PATH for multi-line prompts.
 
 Common options:
-  --ext PATH                    Extension repo to load with pi -e. Default: repo root.
-  --cwd PATH                    Working directory for the pi session. Default: current directory.
-  --out-dir PATH                Artifact directory. Default: /tmp/pi-cursor-sdk-visual-smoke-<timestamp>.
+  --ext PATH                    Extension repo to load with omp -e. Default: repo root.
+  --cwd PATH                    Working directory for the OMP session. Default: current directory.
+  --out-dir PATH                Artifact directory. Default: /tmp/omp-cursor-sdk-visual-smoke-<timestamp>.
   --wait-ms N                   Milliseconds to wait after sending the prompt. Default: ${DEFAULT_WAIT_MS}.
-  --startup-ms N                Milliseconds to wait before pasting the prompt. Default: ${DEFAULT_STARTUP_MS}.
+  --startup-ms N                Maximum milliseconds to wait for the OMP composer. Default: ${DEFAULT_STARTUP_MS}.
   --model MODEL                 Cursor model. Default: ${DEFAULT_MODEL}.
   --mode agent|plan             Cursor SDK mode. Default: ${DEFAULT_MODE}.
-  --session-dir PATH            pi session directory. Default: <out-dir>/<label>.session.
-  --session-id ID               pi session id. Default: visual-<label>-<timestamp>.
+  --session-dir PATH            OMP session directory. Default: <out-dir>/<label>.session.
   --width N                     PTY columns. Default: ${DEFAULT_WIDTH}.
   --height N                    PTY rows. Default: ${DEFAULT_HEIGHT}.
   --history-lines N             tmux capture history lines. Default: ${DEFAULT_HISTORY_LINES}.
   --setting-sources VALUE       Cursor setting sources. Default: ${DEFAULT_SETTING_SOURCES}.
-  --bridge                      Opt in to the pi tool bridge for bridge-specific visual audits.
-  --expose-builtin-tools        Opt in to exposing overlapping built-in pi tools to Cursor. Requires --bridge.
+  --bridge                      Opt in to the OMP tool bridge for bridge-specific visual audits.
+  --expose-builtin-tools        Opt in to exposing overlapping built-in OMP tools to Cursor. Requires --bridge.
   --event-debug                 Set PI_CURSOR_SDK_EVENT_DEBUG=1 and write debug artifacts under <out-dir>.
   --leftover-pattern REGEX      After capture, fail if a process command still matches REGEX. Repeatable.
   --no-screenshot               Write .ansi/.txt/.html/.jsonl.path only; use agent_browser manually.
-  --self-test                   Run the fake-PATH/env isolation probe without launching pi.
+  --self-test                   Run the fake-PATH/env isolation probe without launching OMP.
   -h, --help                    Show this help.
 
 Native replay isolation defaults:
@@ -63,7 +62,12 @@ Native replay isolation defaults:
   PI_CURSOR_SETTING_SOURCES=none
   PI_CURSOR_PI_TOOL_BRIDGE=0
   PI_CURSOR_EXPOSE_BUILTIN_TOOLS=0
+  PI_CODING_AGENT_DIR=<out-dir>/omp-agent  (isolated from host plugins and credentials)
+  PI_OFFLINE=1
+  PI_SKIP_VERSION_CHECK=1
+  OMP_SKIP_SETUP=1
   TERM=xterm-256color
+  tmux starts in --cwd with a non-login shell so a stale tmux-server cwd cannot print getcwd errors
   Debug artifact env is cleared before each run; --event-debug sets a deterministic debug dir.
 
 Artifacts written:
@@ -71,29 +75,29 @@ Artifacts written:
   <label>.txt                   Plain tmux text capture.
   <label>.html                  Self-contained browser/xterm render.
   <label>.png                   Browser-rendered screenshot, unless --no-screenshot.
-  <label>.jsonl.path            Latest persisted pi session JSONL path.
+  <label>.jsonl.path            Latest persisted OMP session JSONL path.
   <label>.manifest.json         Agent-readable artifact index for this run.
 
 Prerequisites:
-  - pi, node, tmux, and npm-installed dev dependencies on PATH / in node_modules.
-  - The runner resolves pi/tmux from the parent PATH, uses process.execPath for node, and seals pi-shim PATH for prereq checks and tmux.
+  - omp, node, tmux, and npm-installed dev dependencies on PATH / in node_modules.
+  - The runner resolves omp/tmux from the parent PATH, uses process.execPath for node, and seals the OMP-shim PATH for prereq checks and tmux.
   - For automatic PNG capture, install a Playwright browser once when needed:
       npx playwright install chromium
-  - In the pi agent harness, --no-screenshot plus agent_browser on the generated HTML is also acceptable.
+  - In the OMP agent harness, --no-screenshot plus agent_browser on the generated HTML is also acceptable.
 
 Examples:
   npm run smoke:visual -- \\
     --label read-package \\
     --prompt 'Read ./package.json using the read/file tool, then answer with the package name.' \\
-    --out-dir /tmp/pi-cursor-sdk-visual-review
+    --out-dir /tmp/omp-cursor-sdk-visual-review
 
   npm run smoke:visual -- \\
     --label after-shell-success \\
-    --ext /path/to/pi-cursor-sdk \\
+    --ext /path/to/omp-cursor-sdk \\
     --cwd /path/to/test-workspace \\
     --prompt 'Run a safe shell command that prints "cursor visual smoke" and report the output.' \\
     --wait-ms 60000 \\
-    --out-dir /tmp/pi-cursor-sdk-visual-review
+    --out-dir /tmp/omp-cursor-sdk-visual-review
 
 Exit codes:
   0  capture and required artifacts were written
@@ -167,7 +171,6 @@ function parseArgs(argv) {
 			model: { names: ["--model"] },
 			mode: { names: ["--mode"], assign: parseMode },
 			sessionDir: { names: ["--session-dir"], assign: (value) => resolve(value) },
-			sessionId: { names: ["--session-id"] },
 			width: { names: ["--width"], assign: (value) => parseInteger(value, "--width") },
 			height: { names: ["--height"], assign: (value) => parseInteger(value, "--height") },
 			historyLines: { names: ["--history-lines"], assign: (value) => parseInteger(value, "--history-lines") },
@@ -192,10 +195,17 @@ function parseArgs(argv) {
 	if (options.exposeBuiltinTools && !options.bridge) fail("--expose-builtin-tools requires --bridge", EXIT_USAGE);
 
 	options.safeLabel = sanitizeLabel(options.label);
-	options.outDir ??= resolve(`/tmp/pi-cursor-sdk-visual-smoke-${timestamp()}`);
+	options.outDir ??= resolve(`/tmp/omp-cursor-sdk-visual-smoke-${timestamp()}`);
 	options.sessionDir ??= resolve(options.outDir, `${options.safeLabel}.session`);
-	options.sessionId ??= `visual-${options.safeLabel}-${Date.now()}`;
+	options.agentDir ??= resolve(options.outDir, "omp-agent");
 	return options;
+}
+
+function seedVisualAgentDir(agentDir) {
+	if (!process.env.CURSOR_API_KEY) {
+		fail("CURSOR_API_KEY is required because visual smoke uses an isolated OMP agent directory", EXIT_USAGE);
+	}
+	mkdirSync(agentDir, { recursive: true });
 }
 
 function sanitizeLabel(label) {
@@ -283,6 +293,19 @@ function capturePane(tmuxBin, sessionName, args) {
 	return result.stdout.toString();
 }
 
+function waitForVisualTuiReady(tmuxBin, sessionName, timeoutMs) {
+	const deadline = Date.now() + timeoutMs;
+	let pane = "";
+	do {
+		pane = capturePane(tmuxBin, sessionName, ["-p"]);
+		if (/^╰─(?:\s|$)/m.test(pane)) return;
+		sleep(250);
+	} while (Date.now() < deadline);
+
+	const tail = pane.trim().split("\n").slice(-8).join("\n");
+	throw new Error(`OMP TUI composer did not become ready within ${timeoutMs}ms${tail ? `:\n${tail}` : ""}`);
+}
+
 function collectJsonlMtimes(root) {
 	const files = [];
 	function visit(dir) {
@@ -359,18 +382,24 @@ function buildLaunchPlan(options, commands, shell) {
 		eventDebugDir: options.eventDebug ? resolve(options.outDir, `${options.safeLabel ?? "visual-smoke"}.cursor-sdk-events`) : undefined,
 	});
 	const sealedPath = commands.sealedPath ?? smokeEnvPlan.sealedPath;
-	const envAssignments = smokeEnvPlan.envEntries;
+	const agentDir = options.agentDir ?? resolve(options.outDir, "omp-agent");
+	const envAssignments = [
+		...smokeEnvPlan.envEntries,
+		["PI_CODING_AGENT_DIR", agentDir],
+		["PI_OFFLINE", "1"],
+		["PI_SKIP_VERSION_CHECK", "1"],
+		["OMP_SKIP_SETUP", "1"],
+	];
 	const clearEnvNames = smokeEnvPlan.clearEnvNames;
 	const command = [
 		...envAssignments.map(([name, value]) => `${name}=${shellQuote(value)}`),
 		"exec",
-		shellQuote(commands.pi),
-		"--approve",
+		shellQuote(commands.omp),
+		"--auto-approve",
 		"-e", shellQuote(options.ext),
 		"--cursor-no-fast",
 		"--cursor-mode", shellQuote(options.mode),
 		"--session-dir", shellQuote(options.sessionDir),
-		"--session-id", shellQuote(options.sessionId),
 		"--model", shellQuote(options.model),
 	].join(" ");
 	const clearLines = clearEnvNames.map((name) => `unset ${name}`).join("\n");
@@ -389,7 +418,7 @@ function runVisualSmoke(options) {
 	const node = requireNode();
 	const sealedPath = sealedNodePath(node);
 	const commands = {
-		pi: requireCommand("pi", { env: { ...process.env, PATH: sealedPath } }),
+		omp: requireCommand("omp", { env: { ...process.env, PATH: sealedPath } }),
 		node,
 		sealedPath,
 		tmux: requireCommand("tmux"),
@@ -397,16 +426,18 @@ function runVisualSmoke(options) {
 
 	mkdirSync(options.outDir, { recursive: true });
 	mkdirSync(options.sessionDir, { recursive: true });
+	options.agentDir ??= resolve(options.outDir, "omp-agent");
+	seedVisualAgentDir(options.agentDir);
 
-	const sessionName = `pi-visual-${options.safeLabel}-${process.pid}`;
-	const bufferName = `pi-visual-prompt-${process.pid}`;
+	const sessionName = `omp-visual-${options.safeLabel}-${process.pid}`;
+	const bufferName = `omp-visual-prompt-${process.pid}`;
 	const shell = resolveShell(process.env.SHELL || "/bin/bash");
 	const { script } = buildLaunchPlan(options, commands, shell);
 
 	console.log(`[visual-smoke] out-dir=${options.outDir}`);
 	console.log(`[visual-smoke] session-dir=${options.sessionDir}`);
 	console.log(`[visual-smoke] tmux-session=${sessionName}`);
-	console.log(`[visual-smoke] pi=${commands.pi}`);
+	console.log(`[visual-smoke] omp=${commands.omp}`);
 	console.log(`[visual-smoke] node=${commands.node}`);
 	console.log(`[visual-smoke] tmux=${commands.tmux}`);
 	console.log(
@@ -418,18 +449,34 @@ function runVisualSmoke(options) {
 	const jsonlMtimesBeforeRun = snapshotJsonlMtimes(options.sessionDir);
 	const runStartedAtMs = Date.now();
 	try {
-		const start = run(commands.tmux, ["new-session", "-d", "-s", sessionName, "-x", String(options.width), "-y", String(options.height), "--", shell, "-lc", script]);
+		const start = run(commands.tmux, [
+			"new-session",
+			"-d",
+			"-s",
+			sessionName,
+			"-c",
+			options.cwd,
+			"-x",
+			String(options.width),
+			"-y",
+			String(options.height),
+			"--",
+			shell,
+			"-c",
+			script,
+		]);
 		if (start.status !== 0) throw new Error(`tmux new-session failed: ${start.stderr?.toString().trim() || start.status}`);
 		sessionStarted = true;
 
-		sleep(options.startupMs);
+		waitForVisualTuiReady(commands.tmux, sessionName, options.startupMs);
 		const load = run(commands.tmux, ["load-buffer", "-b", bufferName, "-"], { input: Buffer.from(options.prompt, "utf8") });
 		if (load.status !== 0) throw new Error(`tmux load-buffer failed: ${load.stderr?.toString().trim() || load.status}`);
 		bufferLoaded = true;
 		try {
 			const paste = run(commands.tmux, ["paste-buffer", "-b", bufferName, "-t", sessionName]);
 			if (paste.status !== 0) throw new Error(`tmux paste-buffer failed: ${paste.stderr?.toString().trim() || paste.status}`);
-			// Give bracketed paste handling a moment to finish before submitting.
+			// Composer readiness is observed before paste; pause only for bracketed
+			// paste handling, then submit through OMP's normal Enter path.
 			sleep(250);
 			const enter = run(commands.tmux, ["send-keys", "-t", sessionName, "Enter"]);
 			if (enter.status !== 0) throw new Error(`tmux send-keys failed: ${enter.stderr?.toString().trim() || enter.status}`);

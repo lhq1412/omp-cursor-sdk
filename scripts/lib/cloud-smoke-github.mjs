@@ -17,7 +17,7 @@ function fail(message, details = "") {
 export function cloudSmokeRepositoryDescription(ownershipToken) {
 	const token = String(ownershipToken ?? "").toLowerCase();
 	if (!CLOUD_SMOKE_OWNERSHIP_TOKEN_PATTERN.test(token)) fail("cloud smoke ownership token must be a lowercase UUID");
-	return `pi-cursor-sdk throwaway cloud smoke; ownership=${token}; safe to delete`;
+	return `omp-cursor-sdk throwaway cloud smoke; ownership=${token}; safe to delete`;
 }
 
 export function assertOwnedThrowawayRepositoryHandle(repo) {
@@ -230,10 +230,10 @@ export function createThrowawayRepository(artifactRoot, onOwned, options = {}) {
 	verifyOwnedRepository(repo, options);
 
 	command("gh", ["repo", "clone", fullName, seedDir], { cwd, label: "clone throwaway repository" });
-	command("git", ["config", "user.name", "pi-cursor-sdk cloud smoke"], { cwd: seedDir });
-	command("git", ["config", "user.email", "pi-cursor-sdk-cloud-smoke@invalid.example"], { cwd: seedDir });
+	command("git", ["config", "user.name", "omp-cursor-sdk cloud smoke"], { cwd: seedDir });
+	command("git", ["config", "user.email", "omp-cursor-sdk-cloud-smoke@invalid.example"], { cwd: seedDir });
 	command("git", ["switch", "-c", "main"], { cwd: seedDir });
-	writeFile(join(seedDir, "README.md"), "# pi-cursor-sdk cloud smoke\n");
+	writeFile(join(seedDir, "README.md"), "# omp-cursor-sdk cloud smoke\n");
 	command("git", ["add", "README.md"], { cwd: seedDir });
 	command("git", ["commit", "-m", "seed main"], { cwd: seedDir });
 	command("git", authenticatedGitArgs(["push", "-u", "origin", "main"]), { cwd: seedDir });

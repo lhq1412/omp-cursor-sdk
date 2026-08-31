@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Type } from "typebox";
+import { Type } from "@oh-my-pi/omptype/typebox"
 import {
 	resetCursorProviderTestState,
 	mockedCreate,
@@ -102,7 +102,7 @@ describe("streamCursor native replay live run", () => {
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
 		expect(firstDone.reason).toBe("toolUse");
 
-		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		resolveRun({
@@ -217,14 +217,20 @@ describe("streamCursor native replay live run", () => {
 			cacheWrite: 123,
 			totalTokens: 25_432 + 612,
 		});
-		expect(toolCall!.name).toBe("read");
+		expect(toolCall!.name).toBe("cursor");
 		expect(hasEventType(firstEvents, "toolcall_delta")).toBe(true);
 
-		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 		expect(toolResult).toEqual({
 			content: [{ type: "text", text: "# pi-cursor-sdk" }],
-			details: undefined,
+			details: {
+				variant: "activity",
+				title: "read",
+				summary: "README.md",
+				expandedText: "# pi-cursor-sdk",
+				sourceToolName: "read",
+			},
 			terminate: false,
 		});
 
@@ -303,7 +309,7 @@ describe("streamCursor native replay live run", () => {
 		const firstDone = getDoneEvent(await firstEventsPromise);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
 
-		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await readTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const replayContext = makeContext();
@@ -477,7 +483,7 @@ describe("streamCursor native replay live run", () => {
 		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const firstDone = getDoneEvent(firstEvents);
 		const readCall = firstDone.message.content.find(isToolCallBlock);
-		const readTool = registeredTools.find((tool) => tool.name === "read");
+		const readTool = registeredTools.find((tool) => tool.name === "cursor");
 		const readResult = await readTool!.execute(readCall!.id, readCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		firstOnDelta?.({ update: { type: "tool-call-started", toolCall: { name: "grep", args: { pattern: "metric-link", path: "src/app/globals.css" } }, callId: "grep-1" } });
@@ -571,10 +577,10 @@ describe("streamCursor native replay live run", () => {
 		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const firstDone = getDoneEvent(firstEvents);
 		const toolCall = firstDone.message.content.find(isToolCallBlock);
-		expect(toolCall?.name).toBe("bash");
+		expect(toolCall?.name).toBe("cursor");
 		expect(firstDone.reason).toBe("toolUse");
 
-		const bashTool = registeredTools.find((tool) => tool.name === "bash");
+		const bashTool = registeredTools.find((tool) => tool.name === "cursor");
 		const toolResult = await bashTool!.execute(toolCall!.id, toolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const steerContext = makeContext();
@@ -789,7 +795,7 @@ describe("streamCursor native replay live run", () => {
 		const firstEvents = await collectEvents(streamCursor(makeModel(), makeContext(), { apiKey: "test-key" }));
 		const firstDone = getDoneEvent(firstEvents);
 		const firstToolCall = firstDone.message.content.find(isToolCallBlock);
-		const bashTool = registeredTools.find((tool) => tool.name === "bash");
+		const bashTool = registeredTools.find((tool) => tool.name === "cursor");
 		const firstToolResult = await bashTool!.execute(firstToolCall!.id, firstToolCall!.arguments, undefined, undefined, createExtensionTestContext());
 
 		const steerContext = makeContext();

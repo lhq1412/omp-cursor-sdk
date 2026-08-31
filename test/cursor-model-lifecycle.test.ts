@@ -42,7 +42,7 @@ describe("registerCursorModelLifecycle", () => {
 			},
 			beforeAgentStart: (event, ctx) => {
 				calls.push(`before:${ctx.model?.id}:${event.systemPrompt}`);
-				return { systemPrompt: `${event.systemPrompt} updated` };
+				return { systemPrompt: [...event.systemPrompt, "updated"] };
 			},
 		});
 
@@ -56,7 +56,7 @@ describe("registerCursorModelLifecycle", () => {
 			"sync:cursor-model",
 			"before:cursor-model:",
 		]);
-		expect(result).toEqual({ systemPrompt: " updated" });
+		expect(result).toEqual({ systemPrompt: ["updated"] });
 	});
 
 	it("does not invoke modelSelect (OMP has no model-change event) but runs turn-start", async () => {

@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ProviderConfig, ProviderModelConfig } from "@oh-my-pi/pi-coding-agent";
-import { discoverModels, type CursorModelFallbackIssue } from "./model-discovery.js";
+import { fetchCursorDynamicModels, getCursorFallbackModels } from "./model-discovery.js";
 import { registerCursorRuntimeControls } from "./cursor-state.js";
 import { registerCursorNativeToolDisplay } from "./cursor-native-tool-display-registration.js";
 import { registerCursorPiToolBridge } from "./cursor-pi-tool-bridge.js";
@@ -10,8 +10,14 @@ import { registerCursorSessionAgentLifecycle } from "./cursor-session-agent-life
 import { registerCursorSessionAgentLineage } from "./cursor-session-agent-lineage.js";
 import { registerCursorSessionAgentResume } from "./cursor-session-agent-resume.js";
 import { streamCursorLazy } from "./cursor-provider-lazy.js";
-import { CURSOR_API_KEY_CONFIG_VALUE, resolveCursorApiKey } from "./cursor-api-key.js";
-import { registerCursorFallbackIssueWarning } from "./cursor-fallback-warning.js";
+import {
+	createCursorSdkApiKeyLogin,
+	getCursorSdkProviderApiKeyConfig,
+	resolveCursorApiKey,
+	resolveCursorRuntimeApiKey,
+} from "./cursor-api-key.js";
+import { sanitizeCursorProviderError } from "./cursor-provider-errors.js";
+import { CURSOR_SDK_API, CURSOR_SDK_PROVIDER_ID } from "./cursor-model.js";
 import { registerCursorAgentsContextDedup } from "./cursor-agents-context-registration.js";
 import { registerCursorSdkSessionProcessErrorGuard } from "./cursor-sdk-process-error-guard.js";
 import { prepareCursorSessionForCompaction } from "./cursor-session-compaction-prep.js";
@@ -27,22 +33,26 @@ type CursorExtensionApi =
 	& Parameters<typeof registerCursorQuestionTool>[0]
 	& Parameters<typeof registerCursorSkillTool>[0]
 	& Parameters<typeof registerCursorPiToolBridge>[0]
-	& Parameters<typeof registerCursorFallbackIssueWarning>[0]
 	& Parameters<typeof registerCursorAgentsContextDedup>[0]
 	& Parameters<typeof registerCursorSdkSessionProcessErrorGuard>[0];
 
-function createCursorProviderConfig(models: ProviderModelConfig[]): ProviderConfig {
+function createCursorProviderConfig(fallbackModels: ProviderModelConfig[]): ProviderConfig {
+	const apiKey = getCursorSdkProviderApiKeyConfig();
 	return {
 		baseUrl: "https://cursor.com",
-		apiKey: CURSOR_API_KEY_CONFIG_VALUE,
-		api: "cursor-sdk",
-		models,
+		...(apiKey ? { apiKey } : {}),
+		api: CURSOR_SDK_API,
+		oauth: createCursorSdkApiKeyLogin(),
 		streamSimple: streamCursorLazy,
+		fetchDynamicModels: async (resolvedApiKey) => {
+			const models = await fetchCursorDynamicModels(resolvedApiKey);
+			return models.length > 0 ? models : fallbackModels;
+		},
 	};
 }
 
 function registerCursorProvider(pi: Pick<ExtensionAPI, "registerProvider">, models: ProviderModelConfig[]): void {
-	pi.registerProvider("cursor", createCursorProviderConfig(models));
+	pi.registerProvider(CURSOR_SDK_PROVIDER_ID, createCursorProviderConfig(models));
 }
 
 export default async function (pi: CursorExtensionApi) {
@@ -60,35 +70,26 @@ export default async function (pi: CursorExtensionApi) {
 	registerCursorSkillTool(pi);
 	registerCursorPiToolBridge(pi);
 	registerCursorAgentsContextDedup(pi);
-	let fallbackIssue: CursorModelFallbackIssue | undefined;
-	const models = await discoverModels({
-		onFallback: (issue) => {
-			fallbackIssue = issue;
-		},
-	});
-
-	if (fallbackIssue) {
-		registerCursorFallbackIssueWarning(pi, fallbackIssue);
-	}
+	const models = await getCursorFallbackModels();
 
 	pi.registerCommand("cursor-refresh-models", {
-		description: "Refresh the live Cursor model catalog without restarting pi",
+		description: "Refresh the live Cursor SDK model catalog through OMP",
 		handler: async (_args, ctx) => {
-			let refreshFallbackIssue: CursorModelFallbackIssue | undefined;
-			const apiKey = resolveCursorApiKey(await ctx.modelRegistry.getApiKeyForProvider("cursor"));
-			const refreshedModels = await discoverModels({
-				apiKey,
-				forceRefresh: true,
-				onFallback: (issue) => {
-					refreshFallbackIssue = issue;
-				},
-			});
-			registerCursorProvider(pi, refreshedModels);
-			if (!ctx.hasUI) return;
-			if (refreshFallbackIssue) {
-				ctx.ui.notify(`Cursor model catalog refresh did not use a live catalog: ${refreshFallbackIssue.message}`, "warning");
-			} else {
-				ctx.ui.notify(`Cursor model catalog refreshed with ${refreshedModels.length} model${refreshedModels.length === 1 ? "" : "s"}.`, "info");
+			const apiKey =
+				resolveCursorApiKey(await ctx.modelRegistry.getApiKeyForProvider(CURSOR_SDK_PROVIDER_ID))
+				?? await resolveCursorRuntimeApiKey();
+			if (!apiKey) {
+				ctx.ui.notify(
+					"Cursor SDK model refresh requires a Cursor SDK API key; run /login cursor-sdk or set CURSOR_API_KEY.",
+					"error",
+				);
+				return;
+			}
+			try {
+				await ctx.modelRegistry.refreshProvider(CURSOR_SDK_PROVIDER_ID, "online");
+				if (ctx.hasUI) ctx.ui.notify("Cursor SDK model catalog refreshed.", "info");
+			} catch (error) {
+				if (ctx.hasUI) ctx.ui.notify(sanitizeCursorProviderError(error, apiKey), "error");
 			}
 		},
 	});

@@ -25,17 +25,19 @@ function parseEnvCapture(path) {
 
 export function runVisualSmokeSelfTest(deps) {
 	const { ROOT, DEFAULT_MODE, DEFAULT_MODEL, DEFAULT_SETTING_SOURCES, DEBUG_ENV_NAMES, shellQuote, parseArgs, snapshotJsonlMtimes, findLatestJsonl, sealedNodePath, resolveCommand, requireNode, requireCommand, buildLaunchPlan, run, runVisualSmoke } = deps;
-	const tempDir = mkdtempSync(join(tmpdir(), "pi-cursor-sdk-visual-self-test-"));
+	const tempDir = mkdtempSync(join(tmpdir(), "omp-cursor-sdk-visual-self-test-"));
+	const originalCursorApiKey = process.env.CURSOR_API_KEY;
+	process.env.CURSOR_API_KEY = "cursor-sdk-visual-self-test-key";
 	try {
 		const binDir = join(tempDir, "bin");
 		mkdirSync(binDir, { recursive: true });
-		const fakePi = join(binDir, "pi");
+		const fakePi = join(binDir, "omp");
 		const fakeNode = join(binDir, "node");
 		const fakeNodeMarker = join(tempDir, "fake-node-used");
-		const envCapture = join(tempDir, "fake-pi.env");
+		const envCapture = join(tempDir, "fake-omp.env");
 		writeFileSync(
 			fakePi,
-			`#!/usr/bin/env node\nconst { writeFileSync } = require("node:fs");\nwriteFileSync(${JSON.stringify(envCapture)}, Object.entries(process.env).map(([key, value]) => key + "=" + (value ?? "")).join("\\n") + "\\n", "utf8");\n`,
+			`#!/usr/bin/env node\nimport { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(envCapture)}, Object.entries(process.env).map(([key, value]) => key + "=" + (value ?? "")).join("\\n") + "\\n", "utf8");\n`,
 			"utf8",
 		);
 		writeFileSync(fakeNode, `#!/bin/sh\necho fake-node-used > ${shellQuote(fakeNodeMarker)}\nexit 99\n`, "utf8");
@@ -63,10 +65,10 @@ export function runVisualSmokeSelfTest(deps) {
 		assertSelfTest(!sealedNodePath(process.execPath, "").includes(delimiter), "empty inherited PATH must not leave an empty PATH segment");
 		const hostilePath = `${binDir}${delimiter}${process.env.PATH ?? ""}`;
 		const sealedHostilePath = sealedNodePath(process.execPath, hostilePath);
-		assertSelfTest(resolveCommand("pi", hostilePath) === fakePi, "direct PATH resolver did not prefer fake PATH head");
+		assertSelfTest(resolveCommand("omp", hostilePath) === fakePi, "direct PATH resolver did not prefer fake PATH head");
 		assertSelfTest(requireNode() === process.execPath, "node resolver must use process.execPath");
-		assertSelfTest(requireCommand("pi", { envPath: hostilePath, env: { ...process.env, PATH: sealedHostilePath } }) === fakePi, "pi prereq should use sealed PATH when executing the shim");
-		assertSelfTest(!existsSync(fakeNodeMarker), "pi prereq should not use hostile fake node");
+		assertSelfTest(requireCommand("omp", { envPath: hostilePath, env: { ...process.env, PATH: sealedHostilePath } }) === fakePi, "OMP prereq should use sealed PATH when executing the shim");
+		assertSelfTest(!existsSync(fakeNodeMarker), "OMP prereq should not use hostile fake node");
 
 		const baseOptions = {
 			ext: ROOT,
@@ -76,24 +78,27 @@ export function runVisualSmokeSelfTest(deps) {
 			outDir: tempDir,
 			safeLabel: "self-test",
 			sessionDir: join(tempDir, "session"),
-			sessionId: "self-test",
 			settingSources: DEFAULT_SETTING_SOURCES,
 			bridge: false,
 			exposeBuiltinTools: false,
 			eventDebug: false,
 		};
-		const plan = buildLaunchPlan(baseOptions, { pi: fakePi, node: process.execPath, sealedPath: sealedHostilePath }, "/bin/sh");
+		const plan = buildLaunchPlan(baseOptions, { omp: fakePi, node: process.execPath, sealedPath: sealedHostilePath }, "/bin/sh");
 		const defaults = envMap(plan.envAssignments);
 		assertSelfTest(defaults.get("PI_CURSOR_NATIVE_TOOL_DISPLAY") === "1", "native display must be forced on");
 		assertSelfTest(defaults.get("PI_CURSOR_REGISTER_NATIVE_TOOLS") === "1", "native tool registration must be forced on");
 		assertSelfTest(defaults.get("PI_CURSOR_SETTING_SOURCES") === "none", "setting sources must default to none");
 		assertSelfTest(defaults.get("PI_CURSOR_PI_TOOL_BRIDGE") === "0", "bridge must default off");
 		assertSelfTest(defaults.get("PI_CURSOR_EXPOSE_BUILTIN_TOOLS") === "0", "built-in exposure must default off");
+		assertSelfTest(defaults.get("PI_CODING_AGENT_DIR") === join(tempDir, "omp-agent"), "agent dir must be isolated under out-dir");
+		assertSelfTest(defaults.get("PI_OFFLINE") === "1", "startup network operations must be off");
+		assertSelfTest(defaults.get("PI_SKIP_VERSION_CHECK") === "1", "OMP version check must be off");
+		assertSelfTest(defaults.get("OMP_SKIP_SETUP") === "1", "OMP setup wizard must be skipped");
 		for (const name of DEBUG_ENV_NAMES) {
 			assertSelfTest(plan.clearEnvNames.includes(name), `${name} must be cleared by default`);
 		}
-		assertSelfTest(plan.script.includes(shellQuote(fakePi)), "launch script must use resolved pi path");
-		assertSelfTest(!plan.script.includes(" exec pi "), "launch script must not use bare pi");
+		assertSelfTest(plan.script.includes(shellQuote(fakePi)), "launch script must use resolved OMP path");
+		assertSelfTest(!plan.script.includes(" exec omp "), "launch script must not use bare omp");
 		const hostileEnv = {
 			...process.env,
 			...Object.fromEntries(DEBUG_ENV_NAMES.map((name) => [name, join(tempDir, name)])),
@@ -104,7 +109,7 @@ export function runVisualSmokeSelfTest(deps) {
 			PI_CURSOR_EXPOSE_BUILTIN_TOOLS: "1",
 		};
 		const probe = run("/bin/sh", ["-c", plan.script], { env: hostileEnv });
-		assertSelfTest(probe.status === 0, `fake-pi env capture exited ${probe.status}: ${probe.stderr?.toString() ?? ""}`);
+		assertSelfTest(probe.status === 0, `fake-OMP env capture exited ${probe.status}: ${probe.stderr?.toString() ?? ""}`);
 		const capturedEnv = parseEnvCapture(envCapture);
 		assertSelfTest(!existsSync(fakeNodeMarker), "launch PATH should force the resolved node before hostile fake node");
 		assertSelfTest((capturedEnv.get("PATH") ?? "").split(delimiter)[0] === dirname(process.execPath), "captured PATH should start with resolved node directory");
@@ -113,13 +118,14 @@ export function runVisualSmokeSelfTest(deps) {
 		assertSelfTest(capturedEnv.get("PI_CURSOR_SETTING_SOURCES") === "none", "captured env should force settings off");
 		assertSelfTest(capturedEnv.get("PI_CURSOR_PI_TOOL_BRIDGE") === "0", "captured env should force bridge off");
 		assertSelfTest(capturedEnv.get("PI_CURSOR_EXPOSE_BUILTIN_TOOLS") === "0", "captured env should force built-in exposure off");
+		assertSelfTest(capturedEnv.get("OMP_SKIP_SETUP") === "1", "captured env should skip the OMP setup wizard");
 		for (const name of DEBUG_ENV_NAMES) {
 			assertSelfTest(!capturedEnv.has(name), `${name} should be absent from captured env by default`);
 		}
 
 		const optInPlan = buildLaunchPlan(
 			{ ...baseOptions, settingSources: "all", bridge: true, exposeBuiltinTools: true, eventDebug: true },
-			{ pi: fakePi, node: process.execPath, sealedPath: sealedHostilePath },
+			{ omp: fakePi, node: process.execPath, sealedPath: sealedHostilePath },
 			"/bin/sh",
 		);
 		const optIns = envMap(optInPlan.envAssignments);
@@ -132,7 +138,7 @@ export function runVisualSmokeSelfTest(deps) {
 			assertSelfTest(optInPlan.clearEnvNames.includes(name), `${name} must be cleared even when event debug is explicit`);
 		}
 		const eventDebugProbe = run("/bin/sh", ["-c", optInPlan.script], { env: hostileEnv });
-		assertSelfTest(eventDebugProbe.status === 0, `fake-pi event-debug env capture exited ${eventDebugProbe.status}: ${eventDebugProbe.stderr?.toString() ?? ""}`);
+		assertSelfTest(eventDebugProbe.status === 0, `fake-OMP event-debug env capture exited ${eventDebugProbe.status}: ${eventDebugProbe.stderr?.toString() ?? ""}`);
 		const capturedEventDebugEnv = parseEnvCapture(envCapture);
 		assertSelfTest(capturedEventDebugEnv.get("PI_CURSOR_SDK_EVENT_DEBUG") === "1", "event debug should be explicitly enabled");
 		assertSelfTest(capturedEventDebugEnv.get("PI_CURSOR_SDK_EVENT_DEBUG_DIR") === join(tempDir, "self-test.cursor-sdk-events"), "event debug dir should be deterministic under out-dir");
@@ -144,7 +150,7 @@ export function runVisualSmokeSelfTest(deps) {
 		const deleteBufferMarker = join(tempDir, "delete-buffer-called");
 		writeFileSync(
 			fakeTmux,
-			`#!/bin/sh\ncase "$1" in\n  -V) echo 'tmux fake'; exit 0 ;;\n  new-session) exit 0 ;;\n  load-buffer) cat >/dev/null; exit 0 ;;\n  paste-buffer) exit 77 ;;\n  delete-buffer) echo deleted > ${shellQuote(deleteBufferMarker)}; exit 0 ;;\n  kill-session) exit 0 ;;\n  *) echo "unexpected tmux command: $*" >&2; exit 64 ;;\nesac\n`,
+			`#!/bin/sh\ncase "$1" in\n  -V) echo 'tmux fake'; exit 0 ;;\n  new-session) exit 0 ;;\n  capture-pane) printf '╰─\\n'; exit 0 ;;\n  load-buffer) cat >/dev/null; exit 0 ;;\n  paste-buffer) exit 77 ;;\n  delete-buffer) echo deleted > ${shellQuote(deleteBufferMarker)}; exit 0 ;;\n  kill-session) exit 0 ;;\n  *) echo "unexpected tmux command: $*" >&2; exit 64 ;;\nesac\n`,
 			"utf8",
 		);
 		chmodSync(fakeTmux, 0o755);
@@ -182,7 +188,7 @@ case "$1" in
   paste-buffer) exit 0 ;;
   send-keys) exit 0 ;;
   delete-buffer) exit 0 ;;
-  capture-pane) echo 'captured visual smoke output'; exit 0 ;;
+  capture-pane) printf 'captured visual smoke output\n╰─\n'; exit 0 ;;
   kill-session) exit 0 ;;
   *) echo "unexpected tmux command: $*" >&2; exit 64 ;;
 esac
@@ -223,6 +229,8 @@ esac
 		}
 		console.log("[visual-smoke] self-test PASS");
 	} finally {
+		if (originalCursorApiKey === undefined) delete process.env.CURSOR_API_KEY;
+		else process.env.CURSOR_API_KEY = originalCursorApiKey;
 		rmSync(tempDir, { recursive: true, force: true });
 	}
 }

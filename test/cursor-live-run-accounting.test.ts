@@ -27,16 +27,13 @@ describe("cursor live-run accounting", () => {
 		const matchingDuplicate = makeToolResult("cursor-replay-run-tool-1", "duplicate result should not count");
 		const matchingSecond = makeToolResult("cursor-replay-run-tool-2", "second result");
 		const nonmatching = makeToolResult("other-run-tool-1", "other result");
-		const context: Context = {
-			systemPrompt: "",
-			messages: [
+		const context: Context = { systemPrompt: [""], messages: [
 				{ role: "user", content: "Run tools", timestamp: 0 },
 				nonmatching,
 				matchingFirst,
 				matchingDuplicate,
 				matchingSecond,
-			],
-		};
+			] };
 
 		const firstConsumption = consumeCursorLiveToolResults(
 			createCursorLiveRunAccountingState(promptInputTokens),
@@ -80,10 +77,7 @@ describe("cursor live-run accounting", () => {
 	it("ignores nonmatching tool results without consuming them", () => {
 		const promptInputTokens = 25;
 		const toolResult = makeToolResult("unrelated-tool-1", "not for this live run");
-		const context: Context = {
-			systemPrompt: "",
-			messages: [toolResult],
-		};
+		const context: Context = { systemPrompt: [""], messages: [toolResult] };
 		const state = createCursorLiveRunAccountingState(promptInputTokens);
 		const consumption = consumeCursorLiveToolResults(state, context, () => false);
 

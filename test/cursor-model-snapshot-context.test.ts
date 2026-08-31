@@ -14,50 +14,100 @@ const models = [
 		displayName: "Model A",
 		aliases: ["alias-a", "shared", "model-b"],
 		parameters: [
-			{ id: "context", displayName: "Context", values: [{ value: "1m", displayName: "1M" }] },
+			{ id: "context", displayName: "Context", values: [{ value: "1m", displayName: "1M" }, { value: "300k", displayName: "300K" }] },
 			{ id: "fast", displayName: "Fast", values: [{ value: "true", displayName: "On" }, { value: "false", displayName: "Off" }] },
 		],
-		variants: [{ displayName: "Default", isDefault: true, params: [{ id: "context", value: "1m" }, { id: "fast", value: "false" }] }],
+		variants: [{ displayName: "Default", isDefault: true, params: [{ id: "context", value: "300k" }, { id: "fast", value: "false" }] }],
 	},
 	{ id: "model-b", displayName: "Model B", aliases: ["shared"] },
 ] satisfies ModelListItem[];
 
 describe("Cursor model-selection identities", () => {
-	it("matches runtime registration and canonicalizes default fast aliases", () => {
+	it("matches runtime canonical base and context identities", () => {
 		const identities = getCursorModelSelectionIdentities(models);
 		const runtimeIds = modelDiscoveryTestUtils.registerModelItems(models).map(({ id }) => id).sort();
 		expect(identities.map(({ piModelId }) => piModelId).sort()).toEqual(runtimeIds);
-		expect(Object.fromEntries(identities.map(({ piModelId, contextWindowKey, baseContextWindowKey }) => [
+		expect(Object.fromEntries(identities.map(({ piModelId, contextWindowKey }) => [
 			piModelId,
-			{ contextWindowKey, baseContextWindowKey },
+			contextWindowKey,
 		]))).toEqual({
-			"model-a@1m": { contextWindowKey: "model-a@1m", baseContextWindowKey: "model-a@1m" },
-			"model-a@1m:fast": { contextWindowKey: "model-a@1m:fast", baseContextWindowKey: "model-a@1m:fast" },
-			"model-a@1m:slow": { contextWindowKey: "model-a@1m", baseContextWindowKey: "model-a@1m" },
-			"alias-a@1m": { contextWindowKey: "alias-a@1m", baseContextWindowKey: "model-a@1m" },
-			"alias-a@1m:fast": { contextWindowKey: "alias-a@1m:fast", baseContextWindowKey: "model-a@1m:fast" },
-			"alias-a@1m:slow": { contextWindowKey: "alias-a@1m", baseContextWindowKey: "model-a@1m" },
-			"model-b": { contextWindowKey: "model-b", baseContextWindowKey: "model-b" },
+			"model-a": "model-a@1m",
+			"model-b": "model-b",
+		});
+		expect(identities.find(({ piModelId }) => piModelId === "model-a")?.contextTiers).toEqual({
+			standard: { value: "300k", contextWindowKey: "model-a@300k" },
+			extended: { value: "1m", contextWindowKey: "model-a@1m" },
 		});
 	});
 
-	it("omits stale and ambiguous IDs while collapsing equivalent entries", () => {
+	it("keeps explicit variants unless exactly two ordered context sizes are available", () => {
+		const identities = getCursorModelSelectionIdentities([
+			{
+				id: "three-tier",
+				displayName: "Three Tier",
+				parameters: [
+					{
+						id: "context",
+						displayName: "Context",
+						values: [{ value: "128k" }, { value: "256k" }, { value: "1m" }],
+					},
+				],
+				variants: [
+					{
+						displayName: "Default",
+						isDefault: true,
+						params: [{ id: "context", value: "256k" }],
+					},
+				],
+			},
+			{
+				id: "unordered-two-tier",
+				displayName: "Unordered Two Tier",
+				parameters: [
+					{
+						id: "context",
+						displayName: "Context",
+						values: [{ value: "long" }, { value: "short" }],
+					},
+				],
+				variants: [
+					{
+						displayName: "Default",
+						isDefault: true,
+						params: [{ id: "context", value: "short" }],
+					},
+				],
+			},
+		]);
+
+		expect(identities.map(({ piModelId }) => piModelId)).toEqual([
+			"three-tier",
+			"three-tier@128k",
+			"three-tier@1m",
+			"unordered-two-tier",
+			"unordered-two-tier@long",
+		]);
+		expect(identities.every(({ contextTiers }) => contextTiers === undefined)).toBe(true);
+	});
+
+	it("omits SDK aliases and stale IDs while collapsing equivalent canonical entries", () => {
 		const normalized = normalizeCursorContextWindowEntries(
 			models,
 			new Map([
 				["default", 200_000],
-				["model-a@1m:slow", 300_000],
-				["model-a@1m:fast", 1_000_000],
-				["alias-a@1m:slow", 300_000],
+				["model-a", 950_000],
+				["model-a@300k", 300_000],
+				["alias-a", 310_000],
+				["model-a@slow", 999_000],
+				["model-a@fast", 999_000],
 				["shared", 123_000],
 				["removed-model", 456_000],
 			]),
 		);
 		expect(Object.fromEntries(normalized)).toEqual({
 			default: 200_000,
-			"model-a@1m": 300_000,
-			"model-a@1m:fast": 1_000_000,
-			"alias-a@1m": 300_000,
+			"model-a@1m": 950_000,
+			"model-a@300k": 300_000,
 		});
 	});
 
@@ -66,15 +116,15 @@ describe("Cursor model-selection identities", () => {
 			normalizeCursorContextWindowEntries(
 				models,
 				new Map([
-					["model-a@1m", 1_000_000],
-					["model-a@1m:slow", 300_000],
+					["model-a", 1_000_000],
+					["model-a@1m", 300_000],
 				]),
 				"checkpoint input",
 			),
 		).toThrow("checkpoint input assigns conflicting windows to equivalent selection model-a@1m");
 	});
 
-	it("keeps every bundled key canonical and reachable in the fallback catalog", () => {
+	it("keeps every bundled key canonical context evidence for the fallback catalog", () => {
 		const bundled = new Map(Object.entries(BUNDLED_CONTEXT_WINDOWS));
 		expect(normalizeCursorContextWindowEntries(FALLBACK_MODEL_ITEMS, bundled, "bundled snapshot")).toEqual(bundled);
 	});

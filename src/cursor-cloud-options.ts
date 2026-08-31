@@ -111,7 +111,7 @@ export function preflightCursorCloudRuntime(options: {
 	if (options.hasPriorContext && resolvedConfig.cloud.contextHandoff.value === "never") {
 		issues.push({
 			code: "context_handoff_required",
-			message: "Cursor cloud runtime needs --cursor-cloud-context=fresh or --cursor-cloud-context=bootstrap for sessions with prior pi context.",
+			message: "Cursor cloud runtime needs --cursor-cloud-context=fresh or --cursor-cloud-context=bootstrap for sessions with prior OMP context.",
 		});
 	}
 	if (
