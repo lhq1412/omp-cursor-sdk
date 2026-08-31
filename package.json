@@ -1,6 +1,6 @@
 {
   "name": "omp-cursor-sdk",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Oh My Pi provider extension backed by independent @cursor/sdk local and cloud agents",
   "author": "lhq1412 (https://github.com/lhq1412)",
   "contributors": [
