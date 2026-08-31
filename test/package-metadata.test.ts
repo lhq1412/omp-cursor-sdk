@@ -1,8 +1,6 @@
-import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { join } from "node:path";
 import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
 import { parseConfigFileTextToJson } from "typescript";
 import { describe, expect, it } from "vitest";
@@ -24,6 +22,7 @@ const packageLock = require("../package-lock.json") as {
 		dependencies?: Record<string, string>;
 		devDependencies?: Record<string, string>;
 		bundleDependencies?: boolean | string[];
+		inBundle?: boolean;
 	}>;
 };
 type BunLockHeader = {
@@ -33,8 +32,6 @@ type BunLockHeader = {
 	}>;
 };
 
-const BUNDLED_MCP_HONO_CLOSURE = ["@hono/node-server", "@modelcontextprotocol/sdk"] as const;
-
 function readBunLock(): BunLockHeader {
 	const parsed = parseConfigFileTextToJson("bun.lock", readFileSync(join(process.cwd(), "bun.lock"), "utf8"));
 	if (parsed.error) throw new Error("bun.lock is not valid JSONC");
@@ -43,40 +40,6 @@ function readBunLock(): BunLockHeader {
 
 function lockPackageVersion(packageName: string): string | undefined {
 	return packageLock.packages[`node_modules/${packageName}`]?.version;
-}
-
-function isPathWithin(root: string, target: string): boolean {
-	const pathFromRoot = relative(root, target);
-	return pathFromRoot === "" || (pathFromRoot !== ".." && !pathFromRoot.startsWith(`..${sep}`) && !isAbsolute(pathFromRoot));
-}
-
-function packageIdentitiesFromTarListing(listing: string): Set<string> {
-	const identities = new Set<string>();
-	for (const line of listing.split(/\r?\n/)) {
-		const match = line.match(/(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)\/package\.json$/);
-		if (match?.[1]) identities.add(match[1]);
-	}
-	return identities;
-}
-
-function npmPack(args: string[], cwd: string): string {
-	// `bun run` sets npm_execpath to the bun binary, which has no `pack`
-	// subcommand. Only honor an npm_execpath that actually looks like npm.
-	const npmCli = process.env.npm_execpath;
-	const npmCliBasename = npmCli ? npmCli.split(/[\\/]/).pop() ?? "" : "";
-	const isRealNpmCli = npmCliBasename === "npm" || npmCliBasename === "npm.cmd" || npmCliBasename === "npm-cli.js";
-	return npmCli && isRealNpmCli
-		? execFileSync(process.execPath, [npmCli, ...args], {
-				cwd,
-				encoding: "utf8",
-				stdio: ["ignore", "pipe", "pipe"],
-			})
-		: execFileSync("npm", args, {
-				cwd,
-				encoding: "utf8",
-				stdio: ["ignore", "pipe", "pipe"],
-				shell: process.platform === "win32",
-			});
 }
 
 describe("package metadata cutover baselines", () => {
@@ -113,12 +76,18 @@ describe("package metadata cutover baselines", () => {
 		expect([...hosts]).toEqual(["registry.npmjs.org"]);
 	});
 
-	it("ships an exact MCP/Hono bundledDependencies closure for GitHub/npm packed installs", () => {
-		expect(packageJson.dependencies["@modelcontextprotocol/sdk"]).toBe("1.30.0");
-		expect(lockPackageVersion("@modelcontextprotocol/sdk")).toBe("1.30.0");
-		expect(packageJson.dependencies["@hono/node-server"]).toBe("2.0.12");
-		expect(lockPackageVersion("@hono/node-server")).toBe("2.0.12");
-		expect(packageJson.bundledDependencies).toEqual([...BUNDLED_MCP_HONO_CLOSURE]);
+	it("pins MCP/Hono as exact ordinary dependencies without bundle metadata", () => {
+		for (const [packageName, version] of [
+			["@modelcontextprotocol/sdk", "1.30.0"],
+			["@hono/node-server", "2.0.12"],
+		] as const) {
+			expect(packageJson.dependencies[packageName]).toBe(version);
+			expect(packageLock.packages[""]?.dependencies?.[packageName]).toBe(version);
+			expect(lockPackageVersion(packageName)).toBe(version);
+		}
+		expect(packageJson.bundledDependencies).toBeUndefined();
+		expect(packageLock.packages[""]?.bundleDependencies).toBeUndefined();
+		expect(Object.values(packageLock.packages).some((entry) => entry.inBundle)).toBe(false);
 	});
 
 	it("keeps local agent ID policy aligned with the installed public string contract", () => {
@@ -147,9 +116,6 @@ describe("package metadata cutover baselines", () => {
 
 	it("leaves the Cursor SDK transport dependency tree to npm resolution", () => {
 		expect(packageJson.dependencies.undici).toBeUndefined();
-		expect(packageJson.bundledDependencies).toEqual([...BUNDLED_MCP_HONO_CLOSURE]);
-		expect(packageJson.bundledDependencies).not.toContain("undici");
-		expect(packageJson.bundledDependencies).not.toContain("@cursor/sdk");
 		expect(packageJson.overrides).toBeUndefined();
 		expect(packageLock.packages["node_modules/@connectrpc/connect-node/node_modules/undici"]?.version).toBe("5.29.0");
 	});
@@ -157,66 +123,6 @@ describe("package metadata cutover baselines", () => {
 	it("removes the obsolete sqlite override", () => {
 		expect(packageJson.overrides).toBeUndefined();
 	});
-
-	it("packs an isolated MCP/Hono closure that beats a hostile host @hono/node-server", () => {
-		const tempRoot = mkdtempSync(join(tmpdir(), "pi-cursor-sdk-hono-bundle-"));
-		try {
-			const packOutput = npmPack(["pack", "--ignore-scripts", "--pack-destination", tempRoot], process.cwd());
-			const tarballName = packOutput.trim().split(/\r?\n/).at(-1)?.trim();
-			expect(tarballName).toMatch(/^omp-cursor-sdk-.*\.tgz$/);
-
-			const listing = execFileSync("tar", ["-tzf", tarballName!], { cwd: tempRoot, encoding: "utf8" });
-			expect(listing).toContain("package/package.json");
-			const packedIdentities = packageIdentitiesFromTarListing(listing);
-			expect(packedIdentities.has("@modelcontextprotocol/sdk")).toBe(true);
-			expect(packedIdentities.has("@hono/node-server")).toBe(true);
-			expect(packedIdentities.has("@cursor/sdk")).toBe(false);
-			expect(packedIdentities.has("undici")).toBe(false);
-
-			const extractDirName = "extract";
-			const extractDir = join(tempRoot, extractDirName);
-			mkdirSync(extractDir);
-			execFileSync("tar", ["-xzf", tarballName!, "-C", extractDirName], { cwd: tempRoot });
-
-			const packedPackageJson = JSON.parse(readFileSync(join(extractDir, "package", "package.json"), "utf8")) as {
-				bundledDependencies?: string[];
-				dependencies?: Record<string, string>;
-			};
-			expect(packedPackageJson.bundledDependencies).toEqual([...BUNDLED_MCP_HONO_CLOSURE]);
-			expect(packedPackageJson.dependencies?.["@modelcontextprotocol/sdk"]).toBe("1.30.0");
-			expect(packedPackageJson.dependencies?.["@hono/node-server"]).toBe("2.0.12");
-
-			const hostRoot = join(tempRoot, "host");
-			const hostNodeModules = join(hostRoot, "node_modules");
-			const packageDir = join(hostNodeModules, "pi-cursor-sdk");
-			mkdirSync(packageDir, { recursive: true });
-			cpSync(join(extractDir, "package"), packageDir, { recursive: true });
-
-			const hostileDir = join(hostNodeModules, "@hono", "node-server");
-			mkdirSync(hostileDir, { recursive: true });
-			writeFileSync(
-				join(hostileDir, "package.json"),
-				`${JSON.stringify({ name: "@hono/node-server", version: "1.19.14", main: "index.js" }, null, 2)}\n`,
-			);
-			writeFileSync(join(hostileDir, "index.js"), "module.exports = { hostile: true };\n");
-
-			const mcpPackageJsonPath = join(packageDir, "node_modules", "@modelcontextprotocol", "sdk", "package.json");
-			const bundledMcpPackageJson = JSON.parse(readFileSync(mcpPackageJsonPath, "utf8")) as { version: string };
-			expect(bundledMcpPackageJson.version).toBe("1.30.0");
-			const mcpRequire = createRequire(mcpPackageJsonPath);
-			const resolvedHonoEntry = realpathSync(mcpRequire.resolve("@hono/node-server"));
-			const bundledHonoRoot = realpathSync(join(packageDir, "node_modules", "@hono", "node-server"));
-			const hostileHonoRoot = realpathSync(join(hostNodeModules, "@hono", "node-server"));
-			expect(isPathWithin(bundledHonoRoot, resolvedHonoEntry)).toBe(true);
-			expect(isPathWithin(hostileHonoRoot, resolvedHonoEntry)).toBe(false);
-			const resolvedVersion = (
-				JSON.parse(readFileSync(join(bundledHonoRoot, "package.json"), "utf8")) as { version: string }
-			).version;
-			expect(resolvedVersion).toBe("2.0.12");
-		} finally {
-			rmSync(tempRoot, { recursive: true, force: true });
-		}
-	}, 60_000);
 
 	it("tracks OMP openai-codex GPT-5.6 metadata", () => {
 		for (const modelId of ["gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"] as const) {
