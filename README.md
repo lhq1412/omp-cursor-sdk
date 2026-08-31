@@ -17,23 +17,18 @@ The extension currently pins `@cursor/sdk@1.0.27`. It does not reuse Cursor Desk
 
 ## Install
 
-Stable release:
+GitHub release v0.4.2:
 
 ```bash
-omp plugin install github:lhq1412/omp-cursor-sdk#v0.4.1
+omp plugin install https://github.com/lhq1412/omp-cursor-sdk/releases/download/v0.4.2/omp-cursor-sdk.tgz
 ```
 
-Latest `main`:
+Git source-archive installation is unsupported because Bun does not materialize `bundledDependencies` from Git archives.
 
-```bash
-omp plugin install github:lhq1412/omp-cursor-sdk
-```
-
-If you previously installed `LoneExile/omp-cursor-sdk`, uninstall the old Git source first because both repositories use the same package name:
+If you previously installed `LoneExile/omp-cursor-sdk`, uninstall the old Git source first because both repositories use the same package name, then run the release command above:
 
 ```bash
 omp plugin uninstall omp-cursor-sdk
-omp plugin install github:lhq1412/omp-cursor-sdk#v0.4.1
 ```
 
 From npm after the independent package release:

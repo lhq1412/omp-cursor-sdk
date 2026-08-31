@@ -1,0 +1,35 @@
+name: release-package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.19.0
+      - run: npm ci --ignore-scripts
+      - run: |
+          npm pack --ignore-scripts
+          mv -- ./*.tgz omp-cursor-sdk.tgz
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" omp-cursor-sdk.tgz --clobber

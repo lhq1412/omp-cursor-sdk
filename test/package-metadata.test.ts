@@ -113,7 +113,7 @@ describe("package metadata cutover baselines", () => {
 		expect([...hosts]).toEqual(["registry.npmjs.org"]);
 	});
 
-	it("ships an exact MCP/Hono bundledDependencies closure for published installs", () => {
+	it("ships an exact MCP/Hono bundledDependencies closure for GitHub/npm packed installs", () => {
 		expect(packageJson.dependencies["@modelcontextprotocol/sdk"]).toBe("1.30.0");
 		expect(lockPackageVersion("@modelcontextprotocol/sdk")).toBe("1.30.0");
 		expect(packageJson.dependencies["@hono/node-server"]).toBe("2.0.12");

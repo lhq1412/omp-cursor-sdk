@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2 - 2026-08-31
+
+### Fixed
+
+- Publish the bundled MCP/Hono package as a stable `omp-cursor-sdk.tgz` GitHub Release asset, with manual backfill support, so Bun installs every runtime dependency instead of omitting `bundledDependencies` from Git source archives.
+
 ## 0.4.1 - 2026-08-31
 
 ### Fixed
