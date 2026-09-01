@@ -154,6 +154,7 @@ const sessionAgentsByScope = new Map<string, SessionCursorAgentPoolEntry>();
 const invalidatedScopeKeys = new Set<string>();
 const deadTransportScopeKeys = new Set<string>();
 let deadTransportAgentDisposeTimeoutMs = 3000;
+let sessionShutdownCleanupTimeoutMs = 1250;
 const terminalDisposedScopeGenerations = new Map<string, number>();
 // Minted `<scope>::background` pool keys (advisor turns after session
 // shutdown). Tracked so disposeSessionCursorAgent can reclaim them; without
@@ -682,6 +683,29 @@ export async function refreshSessionCursorAgentConfig(scopeKey: string = getCurs
 export async function resetSessionCursorAgent(scopeKey: string = getCursorSessionScopeKey()): Promise<void> {
 	await disposePoolEntryForScope(scopeKey);
 }
+export async function disposeSessionCursorAgentForShutdown(
+	scopeKey: string = getCursorSessionScopeKey(),
+): Promise<void> {
+	const background = `${scopeKey}::background`;
+	const disposals: Promise<void>[] = [];
+	if (backgroundScopeKeys.delete(background)) {
+		disposals.push(disposePoolEntryForScope(background, { terminal: true }));
+	}
+	disposals.push(disposePoolEntryForScope(scopeKey, { terminal: true }));
+
+	let timer: NodeJS.Timeout | undefined;
+	try {
+		await Promise.race([
+			Promise.all(disposals),
+			new Promise<void>((resolve) => {
+				timer = setTimeout(resolve, sessionShutdownCleanupTimeoutMs);
+				timer.unref?.();
+			}),
+		]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
 
 export async function disposeSessionCursorAgent(scopeKey: string = getCursorSessionScopeKey()): Promise<void> {
 	const background = `${scopeKey}::background`;
@@ -712,6 +736,11 @@ export const __testUtils = {
 	setDeadTransportAgentDisposeTimeoutMs(ms: number): number {
 		const previous = deadTransportAgentDisposeTimeoutMs;
 		deadTransportAgentDisposeTimeoutMs = ms;
+		return previous;
+	},
+	setSessionShutdownCleanupTimeoutMs(ms: number): number {
+		const previous = sessionShutdownCleanupTimeoutMs;
+		sessionShutdownCleanupTimeoutMs = ms;
 		return previous;
 	},
 	SessionCursorAgentCreationSupersededError,

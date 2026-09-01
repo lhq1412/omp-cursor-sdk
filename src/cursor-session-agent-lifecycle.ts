@@ -9,6 +9,7 @@ import { clearCursorSdkHttp1 } from "./cursor-http1.js";
 import { onCursorSessionScopeKeyChange } from "./cursor-session-scope.js";
 import {
 	disposeSessionCursorAgent,
+	disposeSessionCursorAgentForShutdown,
 	invalidateSessionAgent,
 	resetSessionCursorAgent,
 } from "./cursor-session-agent.js";
@@ -25,12 +26,10 @@ export function registerCursorSessionAgentLifecycle(pi: CursorSessionAgentLifecy
 		await disposeSessionCursorAgent(previousScopeKey);
 	});
 	pi.on("session_shutdown", async () => {
-		try {
-			// OMP's session_shutdown carries no reason; always dispose.
-			await disposeSessionCursorAgent();
-		} finally {
-			clearCursorSdkHttp1();
-		}
+		// OMP gives shutdown handlers two seconds. Detach immediately and bound
+		// best-effort SDK cleanup so a stuck asyncDispose cannot delay session exit.
+		clearCursorSdkHttp1();
+		await disposeSessionCursorAgentForShutdown();
 	});
 	pi.on("session_compact", () => {
 		invalidateSessionAgent();

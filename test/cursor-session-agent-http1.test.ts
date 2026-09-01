@@ -24,7 +24,7 @@ describe("Cursor session agent HTTP/1.1 pooling", () => {
 		vi.clearAllMocks();
 	});
 
-	it("clears extension-owned SDK transport after agent disposal on reload", async () => {
+	it("clears extension-owned SDK transport before bounded shutdown disposal", async () => {
 		const configure = vi.fn<(options: CursorConfigureOptions) => void>();
 		let finishDispose: (() => void) | undefined;
 		const dispose = vi.fn(() => new Promise<void>((resolve) => {
@@ -52,19 +52,18 @@ describe("Cursor session agent HTTP/1.1 pooling", () => {
 
 		const shutdown = pi.runSessionShutdown({});
 		await vi.waitFor(() => expect(dispose).toHaveBeenCalledTimes(1));
-		expect(configure).toHaveBeenCalledTimes(1);
-		finishDispose?.();
-		await shutdown;
-
+		expect(configure).toHaveBeenCalledTimes(2);
 		expect(configure).toHaveBeenNthCalledWith(1, {
 			local: { useHttp1ForAgent: true },
 		});
 		expect(configure).toHaveBeenNthCalledWith(2, {
 			local: { useHttp1ForAgent: null },
 		});
-		expect(dispose.mock.invocationCallOrder[0]).toBeLessThan(
-			configure.mock.invocationCallOrder[1] ?? Number.POSITIVE_INFINITY,
+		expect(configure.mock.invocationCallOrder[1]).toBeLessThan(
+			dispose.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
 		);
+		finishDispose?.();
+		await shutdown;
 	});
 
 	it("splits default, HTTP/2, and HTTP/1.1 pool keys", () => {
