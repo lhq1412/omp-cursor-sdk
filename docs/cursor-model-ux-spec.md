@@ -4,7 +4,7 @@
 
 ## Status
 
-Implemented against OMP 18.0.11 and exact `@cursor/sdk@1.0.27`.
+Implemented against OMP 18.0.11 and exact `@cursor/sdk@1.0.30`.
 
 The extension is intentionally independent from OMP's built-in `cursor/*` provider:
 
@@ -212,7 +212,7 @@ The installed OMP fallback resolver is contract-tested for both configurations.
 
 ## Representative catalog contracts
 
-These examples come from the checked-in catalog generated from `@cursor/sdk@1.0.27`. Regeneration may change them; tests must change with the captured SDK contract.
+These examples come from the historical checked-in catalog generated from `@cursor/sdk@1.0.27`; the currently installed SDK baseline is 1.0.30. Regeneration may change them, so tests must change only with recaptured catalog evidence.
 
 ### `grok-4.5`
 

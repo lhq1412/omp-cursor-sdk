@@ -8,9 +8,9 @@ const require = createRequire(import.meta.url);
 const sdkRoot = resolveInstalledPackageRoot("@cursor/sdk");
 const installedSdkVersion = readInstalledPackageVersion("@cursor/sdk");
 
-describe("installed Cursor SDK 1.0.27 getUsage contract", () => {
+describe("installed Cursor SDK 1.0.30 getUsage contract", () => {
 	it("exposes billed AgentUsage with usage totals and runId-keyed runs", () => {
-		expect(installedSdkVersion).toBe("1.0.27");
+		expect(installedSdkVersion).toBe("1.0.30");
 
 		const agentTypes = readFileSync(join(sdkRoot, "dist/esm/agent.d.ts"), "utf8");
 		expect(agentTypes).toContain("getUsage(options?: GetUsageOptions): Promise<AgentUsage>");
@@ -37,12 +37,13 @@ describe("installed Cursor SDK 1.0.27 getUsage contract", () => {
 		expect(bundle).toContain(
 			"Local agent usage cannot be filtered by a client-minted `run-<uuid>` run ID because the backend never receives it. Pass a usage UUID from `getUsage().runs[].runId` instead.",
 		);
-		expect(bundle).toContain("usage:e.totalUsage");
-		expect(bundle).toContain("runId:e.id");
+		expect(bundle).toMatch(/usage:[$\w]+\.totalUsage/);
+		expect(bundle).toMatch(/runId:[$\w]+\.id/);
 	});
 
-	it("attaches a no-op error listener before local shell snapshot writes", () => {
+	it("writes local command-hook payload through stdin end", () => {
 		const localRuntime = readFileSync(join(sdkRoot, "dist/esm/357.js"), "utf8");
-		expect(localRuntime).toContain('function Be(e){e?.on("error",(()=>{}))}function ze(e,t){e&&(Be(e),e.write(t),e.end())}');
+		expect(localRuntime).toContain("writeCommandHookStdinPayload");
+		expect(localRuntime).toContain('e.end(Buffer.from(t,"utf8"))');
 	});
 });

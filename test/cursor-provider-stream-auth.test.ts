@@ -9,6 +9,7 @@ import {
 	makeContext,
 	collectEvents,
 	getErrorEvent,
+	getDoneEvent,
 	getEventsOfType,
 	hasEventType,
 	registerBridgeForProviderTest,
@@ -270,7 +271,35 @@ describe("streamCursor auth and abort", () => {
 		}
 	});
 
-	it("cancels bridge runs promptly when aborted during Agent.messages.list offset probing", async () => {
+	it("does not list messages before sends while the local watermark is healthy", async () => {
+		let sendCount = 0;
+		const mockSend = vi.fn().mockImplementation(async () => {
+			expect(mockedMessagesList).toHaveBeenCalledTimes(sendCount);
+			sendCount++;
+			return asMockCursorRun({
+				id: `run-${sendCount}`,
+				agentId: "agent-1",
+				status: "running",
+				wait: vi.fn().mockResolvedValue({ id: `run-${sendCount}`, status: "finished", result: `turn-${sendCount}` }),
+			});
+		});
+		mockCreatedAgent({ send: mockSend });
+		const firstContext = makeContext();
+		const firstEvents = await collectEvents(streamCursor(makeModel("composer-2"), firstContext, { apiKey: "test-key" }));
+		expect(mockedMessagesList).toHaveBeenCalledTimes(1);
+
+		const secondContext = makeContext([
+			...firstContext.messages,
+			getDoneEvent(firstEvents).message,
+			{ role: "user", content: "Follow up", timestamp: 3 },
+		]);
+		await collectEvents(streamCursor(makeModel("composer-2"), secondContext, { apiKey: "test-key" }));
+
+		expect(mockSend).toHaveBeenCalledTimes(2);
+		expect(mockedMessagesList).toHaveBeenCalledTimes(2);
+	});
+
+	it("cancels bridge runs and removes the abort listener when aborted during recovery message recount", async () => {
 		registerBridgeForProviderTest({
 			active: ["sem_reindex"],
 			tools: [createTestToolInfo("sem_reindex", Type.Object({ target: Type.String() }), "Reindex semantic cache")],
@@ -284,31 +313,46 @@ describe("streamCursor auth and abort", () => {
 			originalBridgeCancel.call(this, reason);
 			bridgeCancelled.resolve();
 		});
-
+		const removeListenerSpy = vi.spyOn(AbortSignal.prototype, "removeEventListener");
 		const messagesListGate = Promise.withResolvers<void>();
-		const messagesListStarted = Promise.withResolvers<void>();
+		const recoveryCountStarted = Promise.withResolvers<void>();
+		let messagesListCalls = 0;
 		mockedMessagesList.mockImplementation(async () => {
-			messagesListStarted.resolve();
+			messagesListCalls++;
+			if (messagesListCalls === 1) throw new Error("transcript unavailable");
+			recoveryCountStarted.resolve();
 			await messagesListGate.promise;
 			return [];
 		});
 
-		const controller = new AbortController();
-		const mockSend = vi.fn().mockImplementation(
-			async () =>
-				new Promise<never>(() => {
-					// Intentionally never resolves so abort during offset probing is observable.
-				}),
-		);
+		const mockSend = vi.fn().mockImplementationOnce(async () => {
+			expect(mockedMessagesList).not.toHaveBeenCalled();
+			return asMockCursorRun({
+				id: "run-before-recovery",
+				agentId: "agent-1",
+				status: "running",
+				wait: vi.fn().mockResolvedValue({ id: "run-before-recovery", status: "finished", result: "first" }),
+			});
+		});
 		mockCreatedAgent({ send: mockSend });
+		const firstContext = makeContext();
+		const firstEvents = await collectEvents(streamCursor(makeModel("composer-2"), firstContext, { apiKey: "test-key" }));
+		expect(mockSend).toHaveBeenCalledTimes(1);
+		expect(mockedMessagesList).toHaveBeenCalledTimes(1);
 
-		const stream = streamCursor(makeModel("composer-2"), makeContext(), {
+		const firstDone = getDoneEvent(firstEvents);
+		const secondContext = makeContext([
+			...firstContext.messages,
+			firstDone.message,
+			{ role: "user", content: "Follow up", timestamp: 3 },
+		]);
+		const controller = new AbortController();
+		const eventsPromise = collectEvents(streamCursor(makeModel("composer-2"), secondContext, {
 			apiKey: "test-key",
 			signal: controller.signal,
-		});
-		const eventsPromise = collectEvents(stream);
+		}));
 
-		await messagesListStarted.promise;
+		await recoveryCountStarted.promise;
 		controller.abort();
 		await bridgeCancelled.promise;
 		expect(bridgeCancelSpy).toHaveBeenCalledWith("Cursor SDK run aborted");
@@ -317,8 +361,10 @@ describe("streamCursor auth and abort", () => {
 		const events = await eventsPromise;
 
 		expect(getErrorEvent(events).reason).toBe("aborted");
-		expect(mockSend).not.toHaveBeenCalled();
+		expect(mockSend).toHaveBeenCalledTimes(1);
+		expect(removeListenerSpy).toHaveBeenCalledWith("abort", expect.any(Function));
 		bridgeCancelSpy.mockRestore();
+		removeListenerSpy.mockRestore();
 	});
 
 	it.each([
@@ -420,37 +466,6 @@ describe("streamCursor auth and abort", () => {
 		const events = await collectEvents(stream);
 
 		expect(getErrorEvent(events).reason).toBe("error");
-		expect(removeListenerSpy).toHaveBeenCalledWith("abort", expect.any(Function));
-		removeListenerSpy.mockRestore();
-	});
-
-	it("removes abort listener when abort happens during send offset probing", async () => {
-		const controller = new AbortController();
-		const removeListenerSpy = vi.spyOn(AbortSignal.prototype, "removeEventListener");
-		let releaseMessagesList: () => void = () => {};
-		const messagesListGate = new Promise<void>((resolve) => {
-			releaseMessagesList = resolve;
-		});
-		mockedMessagesList.mockImplementation(async () => {
-			await messagesListGate;
-			return [];
-		});
-		const mockSend = vi.fn();
-		mockCreatedAgent({ send: mockSend });
-
-		const stream = streamCursor(makeModel(), makeContext(), {
-			apiKey: "test-key",
-			signal: controller.signal,
-		});
-		const eventsPromise = collectEvents(stream);
-
-		await vi.waitFor(() => expect(mockedMessagesList).toHaveBeenCalled());
-		controller.abort();
-		releaseMessagesList();
-		const events = await eventsPromise;
-
-		expect(getErrorEvent(events).reason).toBe("aborted");
-		expect(mockSend).not.toHaveBeenCalled();
 		expect(removeListenerSpy).toHaveBeenCalledWith("abort", expect.any(Function));
 		removeListenerSpy.mockRestore();
 	});

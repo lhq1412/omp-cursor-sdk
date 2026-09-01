@@ -1,10 +1,10 @@
 import { readFileSync, readdirSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { Agent } from "@cursor/sdk";
 import { describe, expect, it } from "vitest";
+import { resolveInstalledPackageRoot } from "./helpers/installed-package.js";
 
-const require = createRequire(import.meta.url);
+const sdkDist = join(resolveInstalledPackageRoot("@cursor/sdk"), "dist/esm");
 type ListedCloudRun = Awaited<ReturnType<typeof Agent.listRuns>>["items"][number];
 
 function listedRunId(run: ListedCloudRun): string {
@@ -13,7 +13,6 @@ function listedRunId(run: ListedCloudRun): string {
 
 describe("installed Cursor SDK cloud listRuns contract", () => {
 	it("returns Run objects with exact IDs for cancel-lane recovery", () => {
-		const sdkDist = dirname(require.resolve("@cursor/sdk"));
 		const declaration = readFileSync(join(sdkDist, "stubs.d.ts"), "utf8");
 		expect(declaration).toMatch(/static listRuns\(agentId: string, options\?: ListRunsOptions\): Promise<ListResult<Run>>/);
 

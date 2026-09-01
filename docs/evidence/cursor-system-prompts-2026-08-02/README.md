@@ -277,7 +277,7 @@ Result:
 - removed `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`, and `gpt-5.2-codex`;
 - normalized 30 locally collected checkpoint inputs to 20 current selectable keys, then emitted 28 total observed/fallback entries after collapsing equivalent fast aliases and removing stale or ambiguous model IDs.
 
-The npm registry's current `@cursor/sdk` release was 1.0.26. This capture deliberately targets 1.0.23 because that is the exact runtime this extension currently pins and validates. Raising the runtime dependency is a separate SDK-contract and platform-smoke change, not part of the catalog snapshot refresh.
+At capture time, the npm registry's current `@cursor/sdk` release was 1.0.26 and this repository pinned 1.0.23. The repository now pins 1.0.30; this bundle intentionally remains historical rather than claiming current installed-package or catalog evidence.
 
 ### Requested-model defaults in the refreshed catalog
 

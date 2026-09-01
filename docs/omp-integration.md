@@ -1,6 +1,6 @@
 # OMP × omp-cursor-sdk integration architecture
 
-This document defines the OMP host boundary for `omp-cursor-sdk`. It reflects the independent-provider port against OMP 18.0.11 and `@cursor/sdk` 1.0.27.
+This document defines the OMP host boundary for `omp-cursor-sdk`. It reflects the independent-provider port against OMP 18.0.11 and `@cursor/sdk` 1.0.30.
 
 The short user guide is [README.md](../README.md). This file is the maintainer source of truth for provider identity, registry ownership, lifecycle adaptation, and upstream synchronization.
 
@@ -208,6 +208,8 @@ OMP lifecycle adaptation:
 
 The send policy chooses bootstrap or incremental prompts from committed session state. It periodically reboots a long-lived agent and never commits send state before the SDK run has reached the required completion point.
 
+The installed 1.0.30 SDK exposes `Agent.messages.list` pagination through `limit` and `offset`, returns checkpoint conversation turns in ascending slice order, and exposes no total count. The extension therefore keeps one process-local offset watermark per `SDKAgent` handle: new handles start at zero without listing, resumed handles start one background count during acquisition, and successful local finalization reads only later pages before advancing by the number consumed. Failed/aborted turns or transcript-list failures invalidate the watermark so the next send recounts and preserves fail-soft replay.
+
 ## 8. Tools, replay, skills, and prompt context
 
 ### Bridge
@@ -223,6 +225,8 @@ OMP does not expose wrapped builtin tool definitions that an extension can safel
 Only the neutral `cursor` replay tool is eligible for registration. Its execution is extension-internal and it renders Cursor SDK activity already recorded by the provider. A registration conflict fails soft: the extension skips the name and retains scrubbed transcript traces.
 
 Tool visibility, aliases, labels, replay side-effect policy, and transcript formatters derive from `src/cursor-tool-presentation-registry.ts`; sibling modules must not maintain competing tool-name tables.
+
+The installed 1.0.30 public `onDelta` / `onStep` schemas still do not expose Cursor `WebSearch` or `WebFetch` activity. Local transcript replay therefore remains required for those completed tools.
 
 ### Skills and project rules
 
@@ -247,7 +251,7 @@ A contract test loads OMP 18's installed fallback resolver and proves both the e
 
 ### Known Cursor SDK contract gaps
 
-The installed `@cursor/sdk@1.0.27` types leave two integrations deliberately blocked:
+The installed `@cursor/sdk@1.0.30` types leave these integrations deliberately blocked:
 
 - `ModelListItem` exposes catalog metadata but no local/cloud availability field, and there is no maintained account-scoped availability preflight. OMP therefore cannot annotate or filter `/model` safely by runtime; `Agent.create()` remains a best-effort catalog check and backend create/send errors are authoritative. Revisit runtime annotations, compatibility warnings, and catalog-drift tests only when the SDK/API exposes authoritative availability metadata; never infer compatibility from catalog size or model parameters.
 - `SDKCustomToolContext` exposes only `toolCallId`, with no abort signal, deadline, or cancellation channel. The loopback MCP bridge remains the canonical local OMP-tool transport. Revisit `local.customTools` only if the SDK adds that lifecycle contract or the extension explicitly owns aborts, timeouts, child cleanup, diagnostics, permissions, and equivalent platform-smoke coverage.

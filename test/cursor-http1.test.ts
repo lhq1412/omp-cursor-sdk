@@ -42,9 +42,9 @@ describe("Cursor SDK HTTP/1.1 configuration", () => {
 		expect(sdkImplementation).toMatch(
 			/void 0!==([A-Za-z_$][\w$]*)\.local&&"useHttp1ForAgent"in \1\.local/,
 		);
-		expect(sdkImplementation).toContain("T=yield this.getExecutor()");
+		expect(sdkImplementation).toContain("h=yield this.getExecutor()");
 		const httpVersionSelection = sdkImplementation.indexOf(
-			'httpVersion:(n=Oh,Hh(n)||(null!==(r=(0,bh.it)())&&void 0!==r?r:Yh())?"1.1":"2")',
+			'httpVersion:(n=ih,fh(n)||(null!==(r=(0,eh.it)())&&void 0!==r?r:gh())?"1.1":"2")',
 		);
 		expect(httpVersionSelection).toBeGreaterThan(-1);
 		const cacheKeyStart = sdkImplementation.indexOf("workingDirectory:e.workingDirectory,dirs:e.dirs");

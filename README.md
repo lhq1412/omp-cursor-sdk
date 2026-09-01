@@ -13,14 +13,14 @@ This repository continues the OMP port lineage of [LoneExile/omp-cursor-sdk](htt
 - Node.js 22.19 or newer (maintenance scripts)
 - a Cursor SDK API key from Cursor Dashboard → API Keys, or a supported team service-account key
 
-The extension currently pins `@cursor/sdk@1.0.27`. It does not reuse Cursor Desktop, Cursor Agent CLI, or OMP built-in Cursor OAuth credentials.
+The extension currently pins `@cursor/sdk@1.0.30`. It does not reuse Cursor Desktop, Cursor Agent CLI, or OMP built-in Cursor OAuth credentials.
 
 ## Install
 
-Tagged v0.4.3:
+Tagged v0.4.5:
 
 ```bash
-omp plugin install github:lhq1412/omp-cursor-sdk#v0.4.3
+omp plugin install github:lhq1412/omp-cursor-sdk#v0.4.5
 ```
 
 Latest main:
