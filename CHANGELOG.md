@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Start local billed-usage baseline initialization before `Agent.send()` without blocking on it, so time-to-first-token is no longer delayed; post-run billed usage still awaits baseline completion and fail-closed retry semantics are unchanged.
+
 ## 0.4.3 - 2026-08-31
 
 ### Changed

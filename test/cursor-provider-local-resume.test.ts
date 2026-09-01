@@ -109,20 +109,18 @@ describe("streamCursor local resume", () => {
 		expect(prompt.text).toContain("prefer pi__mcp for MCP work and pi__subagent for delegation");
 	});
 
-	it("baselines resumed billed history before send and charges only the new usage UUID", async () => {
+	it("starts a resumed billed-history baseline without delaying send and charges only the new usage UUID", async () => {
 		process.env.PI_CURSOR_LOCAL_RESUME = "1";
 		const context = makeContext();
 		const historicalA = { inputTokens: 10, outputTokens: 2, cacheReadTokens: 4, cacheWriteTokens: 1 };
 		const historicalB = { inputTokens: 20, outputTokens: 3, cacheReadTokens: 8, cacheWriteTokens: 2 };
 		const currentC = { inputTokens: 30, outputTokens: 4, cacheReadTokens: 12, cacheWriteTokens: 3 };
+		const baseline = Promise.withResolvers<{
+			usage: typeof historicalA;
+			runs: Array<{ runId: string; usage: typeof historicalA }>;
+		}>();
 		const getUsage = vi.fn()
-			.mockResolvedValueOnce({
-				usage: { inputTokens: 30, outputTokens: 5, cacheReadTokens: 12, cacheWriteTokens: 3 },
-				runs: [
-					{ runId: "usage-a", usage: historicalA },
-					{ runId: "usage-b", usage: historicalB },
-				],
-			})
+			.mockReturnValueOnce(baseline.promise)
 			.mockResolvedValueOnce({
 				usage: { inputTokens: 60, outputTokens: 9, cacheReadTokens: 24, cacheWriteTokens: 6 },
 				runs: [
@@ -140,10 +138,22 @@ describe("streamCursor local resume", () => {
 		mockedResume.mockResolvedValueOnce(asMockSdkAgent({ agentId: "agent-old", getUsage, send: mockSend }));
 		seedResumeHandle("/tmp/resume-billed-session.jsonl", computeCursorContextFingerprint(context));
 
-		const events = await collectEvents(streamCursor(makeModel("gpt-5.5"), context, { apiKey: "test-key" }));
+		const eventsPromise = collectEvents(streamCursor(makeModel("gpt-5.5"), context, { apiKey: "test-key" }));
+		try {
+			await vi.waitFor(() => expect(mockSend).toHaveBeenCalledTimes(1));
+			expect(getUsage).toHaveBeenCalledTimes(1);
+		} finally {
+			baseline.resolve({
+				usage: { inputTokens: 30, outputTokens: 5, cacheReadTokens: 12, cacheWriteTokens: 3 },
+				runs: [
+					{ runId: "usage-a", usage: historicalA },
+					{ runId: "usage-b", usage: historicalB },
+				],
+			});
+		}
+		const events = await eventsPromise;
 
 		expect(getUsage).toHaveBeenCalledTimes(2);
-		expect(getUsage.mock.invocationCallOrder[0]).toBeLessThan(mockSend.mock.invocationCallOrder[0]!);
 		expect(getDoneEvent(events).message.usage).toMatchObject({
 			input: 15,
 			output: 4,
@@ -152,12 +162,16 @@ describe("streamCursor local resume", () => {
 		});
 	});
 
-	it("retries a failed baseline before the next send and bills only that next turn", async () => {
+	it("retries a failed baseline without delaying the next send and bills only that next turn", async () => {
 		const firstUsage = { inputTokens: 10, outputTokens: 2, cacheReadTokens: 4, cacheWriteTokens: 1 };
 		const secondUsage = { inputTokens: 20, outputTokens: 3, cacheReadTokens: 8, cacheWriteTokens: 2 };
+		const retryBaseline = Promise.withResolvers<{
+			usage: typeof firstUsage;
+			runs: Array<{ runId: string; usage: typeof firstUsage }>;
+		}>();
 		const getUsage = vi.fn()
 			.mockRejectedValueOnce(new Error("usage unavailable"))
-			.mockResolvedValueOnce({ usage: firstUsage, runs: [{ runId: "usage-first", usage: firstUsage }] })
+			.mockReturnValueOnce(retryBaseline.promise)
 			.mockResolvedValueOnce({
 				usage: { inputTokens: 30, outputTokens: 5, cacheReadTokens: 12, cacheWriteTokens: 3 },
 				runs: [
@@ -188,12 +202,17 @@ describe("streamCursor local resume", () => {
 			makeAssistantMessage("first"),
 			{ role: "user", content: "Follow up", timestamp: 3 },
 		]);
-		const secondEvents = await collectEvents(streamCursor(makeModel("gpt-5.5"), secondContext, { apiKey: "test-key" }));
+		const secondEventsPromise = collectEvents(streamCursor(makeModel("gpt-5.5"), secondContext, { apiKey: "test-key" }));
+		try {
+			await vi.waitFor(() => expect(mockSend).toHaveBeenCalledTimes(2));
+			expect(getUsage).toHaveBeenCalledTimes(2);
+		} finally {
+			retryBaseline.resolve({ usage: firstUsage, runs: [{ runId: "usage-first", usage: firstUsage }] });
+		}
+		const secondEvents = await secondEventsPromise;
 
 		expect(mockedCreate).toHaveBeenCalledTimes(1);
-		expect(mockSend).toHaveBeenCalledTimes(2);
 		expect(getUsage).toHaveBeenCalledTimes(3);
-		expect(getUsage.mock.invocationCallOrder[1]).toBeLessThan(mockSend.mock.invocationCallOrder[1]!);
 		expect(getDoneEvent(secondEvents).message.usage).toMatchObject({
 			input: 10,
 			output: 3,
