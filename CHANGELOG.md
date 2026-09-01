@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Bound `session_shutdown` cleanup to 1.25 seconds after immediately detaching pooled Cursor agents, cancelling bridge work, and clearing extension-owned HTTP state; normal scope and model resets still await full disposal.
+
 ## 0.4.5 - 2026-09-01
 
 ### Changed

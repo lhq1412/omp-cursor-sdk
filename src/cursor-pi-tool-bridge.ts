@@ -128,10 +128,10 @@ export function registerCursorPiToolBridge(pi: CursorPiToolBridgeExtensionApi): 
 	pi.on("turn_end", () => {
 		bridgeToolExecutionAbortTracker.abortAll("Cursor OMP tool bridge turn ended");
 	});
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", () => {
 		const reason = "Cursor OMP tool bridge session shutdown";
 		bridgeToolExecutionAbortTracker.abortAll(reason);
-		await bridge.disposeAll(reason);
+		void bridge.disposeAll(reason).catch(() => undefined);
 	});
 	return bridge;
 }

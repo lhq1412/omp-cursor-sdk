@@ -684,6 +684,26 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 	});
 
 
+	it("does not await bridge protocol disposal during session shutdown", async () => {
+		const pi = createBridgePiHarness({ active: [], tools: [] });
+		const bridge = registerCursorPiToolBridge(pi);
+		let finishDispose: (() => void) | undefined;
+		const disposeAll = vi.spyOn(bridge, "disposeAll").mockImplementation(
+			() => new Promise<void>((resolve) => {
+				finishDispose = resolve;
+			}),
+		);
+		const shutdown = pi.runSessionShutdown({});
+		try {
+			await shutdown;
+			expect(disposeAll).toHaveBeenCalledWith("Cursor OMP tool bridge session shutdown");
+		} finally {
+			finishDispose?.();
+			await shutdown;
+			disposeAll.mockRestore();
+		}
+	});
+
 	it("cleans active bridged pi tool execution on session shutdown without a tool result", async () => {
 		const pi = createBridgePiHarness({
 			active: ["bash"],

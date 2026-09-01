@@ -664,6 +664,42 @@ describe("cursor-session-agent", () => {
 		expect(mockDispose).toHaveBeenCalledTimes(1);
 	});
 
+	it("bounds terminal session_shutdown cleanup when SDK disposal stalls", async () => {
+		const storeMock = installCursorSessionStoreMock();
+		let finishDispose: (() => void) | undefined;
+		const mockDispose = vi.fn(() => new Promise<void>((resolve) => {
+			finishDispose = resolve;
+		}));
+		const createAgent = vi.fn().mockResolvedValue({
+			agentId: "agent-stalled-dispose",
+			[Symbol.asyncDispose]: mockDispose,
+		});
+		const pi = createEventHarness();
+		const previousTimeout = sessionAgentTestUtils.setSessionShutdownCleanupTimeoutMs(0);
+
+		try {
+			registerCursorSessionAgentLifecycle(pi);
+			cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
+			await acquireSessionCursorAgent({
+				apiKey: "test-key",
+				agentMode: "agent",
+				cwd: "/tmp/project",
+				modelSelection: { id: "composer-2.5" },
+				createAgent,
+			});
+
+			await pi.runSessionShutdown({});
+
+			expect(sessionAgentTestUtils.sessionAgentsByScope.has("/tmp/sessions/test.jsonl")).toBe(false);
+			expect(mockDispose).toHaveBeenCalledTimes(1);
+			expect(storeMock.stores[0].dispose).not.toHaveBeenCalled();
+		} finally {
+			sessionAgentTestUtils.setSessionShutdownCleanupTimeoutMs(previousTimeout);
+			finishDispose?.();
+		}
+		await vi.waitFor(() => expect(storeMock.stores[0].dispose).toHaveBeenCalledTimes(1));
+	});
+
 	it("allows reacquiring a session agent after reload session_shutdown", async () => {
 		const mockDispose = vi.fn().mockResolvedValue(undefined);
 		const createAgent = vi.fn().mockImplementation(async () => ({
