@@ -77,7 +77,7 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 		throwIfAborted();
 		let cursorAgentMessageOffset: number | undefined;
 		if (prepared.runtimeTarget === "local") {
-			await initializeCursorLocalBilledUsage(agent, agent.agentId);
+			void initializeCursorLocalBilledUsage(agent, agent.agentId);
 			try {
 				cursorAgentMessageOffset = await countCursorAgentMessages(agent.agentId, cwd, prepared.sessionAgentLease.store);
 			} catch (error) {

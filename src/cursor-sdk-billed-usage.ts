@@ -133,8 +133,9 @@ export async function attachCursorSdkBilledTurnUsage(options: {
 	runtime: CursorRuntime;
 	runId?: string;
 }): Promise<{ agentUsage?: unknown; turn?: CursorSdkTurnUsage }> {
-	if (options.runtime === "local" && localBilledUsageStateByAgent.get(options.agent)?.status !== "initialized") {
-		return {};
+	if (options.runtime === "local") {
+		const state = localBilledUsageStateByAgent.get(options.agent);
+		if (!state || (state.status === "initializing" && !(await state.promise))) return {};
 	}
 	const agentUsage = await fetchCursorSdkAgentUsage(options.agent, {
 		runtime: options.runtime,
