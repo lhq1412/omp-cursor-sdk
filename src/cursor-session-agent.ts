@@ -14,6 +14,7 @@ import {
 } from "./cursor-session-agent-resume.js";
 import type { CursorSdkEventDebugRecorder } from "./cursor-sdk-event-debug.js";
 import { loadCursorSdk, type CursorSdkModule } from "./cursor-sdk-runtime.js";
+import { initializeCursorAgentMessageOffset } from "./cursor-agent-message-web-tools.js";
 import {
 	cursorSessionStoreIdentitiesEqual,
 	openCursorSessionStore,
@@ -526,6 +527,11 @@ async function createSessionAgentEntry(
 		agent ??= await createAgent(buildAgentOptions());
 		if (!agent) throw new Error("Cursor SDK agent creation returned no agent");
 		if (!sessionStore) throw new Error("Cursor SDK session store was not opened");
+		initializeCursorAgentMessageOffset(agent, {
+			cwd: params.cwd,
+			store: sessionStore.store,
+			resumed,
+		});
 
 		return {
 			status: "ready",

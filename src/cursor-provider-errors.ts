@@ -166,7 +166,7 @@ function isCursorSdkStallAbortNetworkError(code: unknown, evidence: string, stac
 }
 
 /**
- * @cursor/sdk@1.0.27 throws internal RetriableError (name/kind "RetriableError") with message
+ * @cursor/sdk@1.0.30 throws internal RetriableError (name/kind "RetriableError") with message
  * "Connection stalled" or "Connection stalled repeatedly" after fetchWithRetry exhausts stalls.
  * The ConnectError is only the cause; the top-level error is not a ConnectError.
  */
@@ -182,7 +182,7 @@ export function isCursorSdkConnectionStalledError(error: unknown): boolean {
 }
 
 function isCursorExtensionConnectStack(stack: string): boolean {
-	// @cursor/sdk@1.0.27 may surface a dynamically loaded connect-node frame without an
+	// @cursor/sdk@1.0.30 may surface a dynamically loaded connect-node frame without an
 	// @cursor/sdk frame. Attribute it only when the stack also passes through this extension.
 	return stack.includes("@connectrpc/connect-node") && /(?:^|[\\/])omp-cursor-sdk(?:[\\/]|$)/.test(stack);
 }

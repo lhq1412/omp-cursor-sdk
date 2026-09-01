@@ -7,7 +7,7 @@ The required cross-platform release evidence is produced by [the platform smoke 
 ## Baseline
 
 - OMP 18.0.11.
-- `@cursor/sdk` 1.0.27.
+- `@cursor/sdk` 1.0.30.
 - Bun 1.3.14 or newer.
 - Provider/model under test: `cursor-sdk/grok-4.6`.
 - Native replay enabled.

@@ -1,10 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.4.5 - 2026-09-01
+
+### Changed
+
+- Upgrade the exact Cursor SDK runtime and platform packages to 1.0.30, recapturing installed-package pagination, ripgrep, stalled-connection, closed-writable, local stdin, and usage contracts, refreshing fallback-model provenance, and retaining historical 1.0.23 fixtures where their captured provenance remains authoritative.
 
 ### Fixed
 
 - Start local billed-usage baseline initialization before `Agent.send()` without blocking on it, so time-to-first-token is no longer delayed; post-run billed usage still awaits baseline completion and fail-closed retry semantics are unchanged.
+- Track local transcript message offsets per SDK agent handle so healthy steady-state sends replay only newly appended WebSearch/WebFetch messages without a pre-send list call; resumed handles count once during acquisition, while failed, aborted, or unreadable transcripts invalidate the watermark for a fail-soft recount.
 
 ## 0.4.3 - 2026-08-31
 

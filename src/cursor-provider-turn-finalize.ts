@@ -1,5 +1,8 @@
 import type { LocalAgentStore, RunError, SDKAgent } from "@cursor/sdk";
-import { loadCursorTranscriptWebToolCallsAfterOffset } from "./cursor-agent-message-web-tools.js";
+import {
+	invalidateCursorAgentMessageOffset,
+	loadCursorTranscriptWebToolCallsAfterOffset,
+} from "./cursor-agent-message-web-tools.js";
 import {
 	collectCursorCloudRunReport,
 	formatCursorCloudRunReport,
@@ -77,7 +80,7 @@ export function buildCursorRunOutcomeFromWait(params: BuildCursorRunOutcomeParam
 }
 
 async function replayCursorTranscriptWebToolCalls(
-	agentId: string,
+	agent: SDKAgent,
 	cwd: string,
 	messageOffset: number | undefined,
 	turnStore: LocalAgentStore,
@@ -86,19 +89,20 @@ async function replayCursorTranscriptWebToolCalls(
 ): Promise<void> {
 	try {
 		const transcriptToolCalls = await loadCursorTranscriptWebToolCallsAfterOffset({
-			agentId,
+			agent,
 			cwd,
 			offset: messageOffset,
 			store: turnStore,
 		});
 		if (transcriptToolCalls.length === 0) return;
 		sdkEventDebug?.recordCoordinatorEvent("cursor-transcript-web-tools", {
-			agentId,
+			agentId: agent.agentId,
 			messageOffset,
 			count: transcriptToolCalls.length,
 		});
 		turnCoordinator.handleTranscriptCompletedToolCalls(transcriptToolCalls);
 	} catch (error) {
+		invalidateCursorAgentMessageOffset(agent);
 		sdkEventDebug?.recordError("cursor_transcript_web_tools", error);
 	}
 }
@@ -144,7 +148,15 @@ export interface FinalizedCursorRunOutcome {
 /** Single wait/finalize path for SDK runs: wait, debug capture, transcript replay, incomplete tools, artifacts, context cache. */
 export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorRunOutcomeParams): Promise<FinalizedCursorRunOutcome> {
 	const apiKey = params.resolvedApiKey ?? params.optionsApiKey;
-	const waitResult = params.waitResult ?? (await params.run.wait());
+	let waitResult: BuildCursorRunOutcomeParams["waitResult"];
+	try {
+		waitResult = params.waitResult ?? (await params.run.wait());
+	} catch (error) {
+		if (params.prepared.runtimeTarget === "local") {
+			invalidateCursorAgentMessageOffset(params.prepared.agent);
+		}
+		throw error;
+	}
 	const outcome = buildCursorRunOutcomeFromWait({
 		waitResult,
 		prepared: params.prepared,
@@ -154,6 +166,9 @@ export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorR
 		resolvedApiKey: params.resolvedApiKey,
 		optionsApiKey: params.optionsApiKey,
 	});
+	if (params.prepared.runtimeTarget === "local" && !isCursorRunFinishedSuccessfully(outcome)) {
+		invalidateCursorAgentMessageOffset(params.prepared.agent);
+	}
 	const billed = await attachCursorSdkBilledTurnUsage({
 		agent: params.prepared.agent,
 		agentId: params.prepared.runtimeTarget === "local" ? params.prepared.agent.agentId : params.run.agentId,
@@ -201,7 +216,7 @@ export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorR
 	}
 	if (params.prepared.runtimeTarget === "local" && isCursorRunFinishedSuccessfully(outcome)) {
 		await replayCursorTranscriptWebToolCalls(
-			params.run.agentId,
+			params.prepared.agent,
 			params.prepared.cwd,
 			params.cursorAgentMessageOffset,
 			params.prepared.sessionAgentLease.store,

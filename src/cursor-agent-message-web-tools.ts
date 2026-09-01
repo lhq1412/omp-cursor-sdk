@@ -1,9 +1,10 @@
-import type { AgentMessage, LocalAgentStore } from "@cursor/sdk";
+import type { AgentMessage, LocalAgentStore, SDKAgent } from "@cursor/sdk";
 import { asRecord, getArray, getString } from "./cursor-record-utils.js";
 import { stringifyUnknown } from "./cursor-transcript-utils.js";
 import { loadCursorSdk } from "./cursor-sdk-runtime.js";
 
 const CURSOR_AGENT_MESSAGE_PAGE_LIMIT = 8;
+const cursorAgentMessageOffsets = new WeakMap<SDKAgent, Promise<number>>();
 
 export interface CursorTranscriptCompletedToolCall {
 	identity: string;
@@ -34,7 +35,7 @@ async function hasCursorAgentMessageAt(agentId: string, cwd: string, offset: num
 	return messages.length > 0;
 }
 
-export async function countCursorAgentMessages(agentId: string, cwd: string, store?: LocalAgentStore): Promise<number> {
+async function countCursorAgentMessages(agentId: string, cwd: string, store?: LocalAgentStore): Promise<number> {
 	let high = 1;
 	while (await hasCursorAgentMessageAt(agentId, cwd, high, store)) {
 		high *= 2;
@@ -49,22 +50,68 @@ export async function countCursorAgentMessages(agentId: string, cwd: string, sto
 	return low;
 }
 
+export function initializeCursorAgentMessageOffset(
+	agent: SDKAgent,
+	options: { cwd: string; store?: LocalAgentStore; resumed: boolean },
+): void {
+	const offset = options.resumed
+		? countCursorAgentMessages(agent.agentId, options.cwd, options.store)
+		: Promise.resolve(0);
+	cursorAgentMessageOffsets.set(agent, offset);
+	void offset.catch(() => undefined);
+}
+
+export async function readCursorAgentMessageOffset(
+	agent: SDKAgent,
+	cwd: string,
+	store?: LocalAgentStore,
+): Promise<number> {
+	let offset = cursorAgentMessageOffsets.get(agent);
+	if (!offset) {
+		offset = countCursorAgentMessages(agent.agentId, cwd, store);
+		cursorAgentMessageOffsets.set(agent, offset);
+	}
+	try {
+		return await offset;
+	} catch (error) {
+		if (cursorAgentMessageOffsets.get(agent) === offset) cursorAgentMessageOffsets.delete(agent);
+		throw error;
+	}
+}
+
+export function invalidateCursorAgentMessageOffset(agent: SDKAgent): void {
+	cursorAgentMessageOffsets.delete(agent);
+}
+
 export async function loadCursorTranscriptWebToolCallsAfterOffset(options: {
-	agentId: string;
+	agent: SDKAgent;
 	cwd: string;
 	offset: number | undefined;
 	store?: LocalAgentStore;
 }): Promise<CursorTranscriptCompletedToolCall[]> {
 	if (options.offset === undefined) return [];
-	const { Agent } = await loadCursorSdk();
-	const messages = await Agent.messages.list(options.agentId, {
-		runtime: "local",
-		cwd: options.cwd,
-		...(options.store ? { store: options.store } : {}),
-		limit: CURSOR_AGENT_MESSAGE_PAGE_LIMIT,
-		offset: options.offset,
-	});
-	return collectCursorTranscriptWebToolCalls(messages);
+	const toolCalls: CursorTranscriptCompletedToolCall[] = [];
+	let offset = options.offset;
+	try {
+		const { Agent } = await loadCursorSdk();
+		while (true) {
+			const messages = await Agent.messages.list(options.agent.agentId, {
+				runtime: "local",
+				cwd: options.cwd,
+				...(options.store ? { store: options.store } : {}),
+				limit: CURSOR_AGENT_MESSAGE_PAGE_LIMIT,
+				offset,
+			});
+			toolCalls.push(...collectCursorTranscriptWebToolCalls(messages));
+			offset += messages.length;
+			if (messages.length < CURSOR_AGENT_MESSAGE_PAGE_LIMIT) break;
+		}
+		cursorAgentMessageOffsets.set(options.agent, Promise.resolve(offset));
+		return toolCalls;
+	} catch (error) {
+		invalidateCursorAgentMessageOffset(options.agent);
+		throw error;
+	}
 }
 
 export function collectCursorTranscriptWebToolCalls(messages: readonly AgentMessage[]): CursorTranscriptCompletedToolCall[] {

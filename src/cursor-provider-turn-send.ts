@@ -1,5 +1,8 @@
 import type { SendOptions } from "@cursor/sdk";
-import { countCursorAgentMessages } from "./cursor-agent-message-web-tools.js";
+import {
+	invalidateCursorAgentMessageOffset,
+	readCursorAgentMessageOffset,
+} from "./cursor-agent-message-web-tools.js";
 import {
 	createCursorCloudLifecyclePersistenceError,
 	recordCursorCloudLifecycleSafely,
@@ -79,7 +82,7 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 		if (prepared.runtimeTarget === "local") {
 			void initializeCursorLocalBilledUsage(agent, agent.agentId);
 			try {
-				cursorAgentMessageOffset = await countCursorAgentMessages(agent.agentId, cwd, prepared.sessionAgentLease.store);
+				cursorAgentMessageOffset = await readCursorAgentMessageOffset(agent, cwd, prepared.sessionAgentLease.store);
 			} catch (error) {
 				recordDebug(() => sdkEventDebug?.recordError("cursor_agent_message_count", error));
 			}
@@ -154,6 +157,9 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 			abortRegistration,
 		};
 	} finally {
+		if (!completed && prepared.runtimeTarget === "local") {
+			invalidateCursorAgentMessageOffset(agent);
+		}
 		if (!completed && abortRegistration) {
 			abortRegistration.signal.removeEventListener("abort", abortRegistration.listener);
 		}
