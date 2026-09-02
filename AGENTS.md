@@ -124,6 +124,7 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 - Local development run, requires a Cursor SDK key: `CURSOR_API_KEY="your-key" ./node_modules/.bin/omp --auto-approve -e ./src/index.ts --model cursor-sdk/composer-2.5 --no-session -p "Reply with OK."`
 - List Cursor SDK models: `./node_modules/.bin/omp models cursor-sdk -e ./src/index.ts` (OMP lists authenticated providers; configure `/login cursor-sdk` or `CURSOR_API_KEY` first).
 - Capture provider/SDK event artifacts for one prompt, requires a Cursor key: `CURSOR_API_KEY="your-key" npm run debug:provider-events -- --prompt "hello"`
+- Cut a GitHub Release from default-branch Actions → release, passing the current `package.json` version. The workflow tags `v<version>` and attaches the `npm pack` tarball.
 
 There is no lint or format script in `package.json` at this time.
 
