@@ -164,7 +164,7 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 		const onToolResult = vi.fn();
 		const run = cursorLiveRuns.start({
 			id: "chain-exec",
-			agent: { agentId: "a1" } as never,
+			agentId: "a1",
 			promptInputTokens: 0,
 			sessionAgentScopeKey: "chain-exec-scope",
 		});

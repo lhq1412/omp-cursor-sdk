@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import type { Run, RunResult, SDKAgent, TokenUsage } from "@cursor/sdk";
+import type { Run, RunResult, TokenUsage } from "@cursor/sdk";
 import { collectCursorCloudRunReport, fetchCursorCloudRawUsage, formatCursorCloudRunReport } from "../src/cursor-cloud-reporting.js";
 
 const usageContractFixture = JSON.parse(readFileSync(
@@ -104,7 +104,7 @@ describe("cursor cloud reporting", () => {
 		globalThis.fetch = fetchImpl;
 		try {
 			const report = await collectCursorCloudRunReport({
-				agent: {
+				access: {
 					listArtifacts: vi.fn().mockResolvedValue([
 						{ path: "valid.txt", sizeBytes: 1, updatedAt: "now" },
 						{ path: "missing-size.txt", updatedAt: "now" },
@@ -112,7 +112,7 @@ describe("cursor cloud reporting", () => {
 						{ path: "infinite.txt", sizeBytes: Number.POSITIVE_INFINITY, updatedAt: "now" },
 						{ path: 7, sizeBytes: 1, updatedAt: "now" },
 					]),
-				} as unknown as SDKAgent,
+				},
 				run: { id: "run-1", agentId: "bc-agent" } as Run,
 				waitResult: {
 					id: "run-1",
@@ -150,7 +150,7 @@ describe("cursor cloud reporting", () => {
 		globalThis.fetch = fetchImpl;
 		try {
 			const report = await collectCursorCloudRunReport({
-				agent: {
+				access: {
 					listArtifacts: vi.fn().mockResolvedValue([]),
 					getUsage: vi.fn().mockResolvedValue({
 						usage: { inputTokens: 9, outputTokens: 2, cacheReadTokens: 1, cacheWriteTokens: 0, totalTokens: 12 },
@@ -159,7 +159,7 @@ describe("cursor cloud reporting", () => {
 							usage: { inputTokens: 8, outputTokens: 2, cacheReadTokens: 1, cacheWriteTokens: 0, totalTokens: 11 },
 						}],
 					}),
-				} as unknown as SDKAgent,
+				},
 				run: { id: "run-1", agentId: "bc-agent" } as Run,
 				waitResult: { id: "run-1", status: "finished" } as RunResult,
 				apiKey: "key",
@@ -177,10 +177,10 @@ describe("cursor cloud reporting", () => {
 	it("uses a prefetched AgentUsage without calling getUsage again", async () => {
 		const getUsage = vi.fn();
 		const report = await collectCursorCloudRunReport({
-			agent: {
+			access: {
 				listArtifacts: vi.fn().mockResolvedValue([]),
 				getUsage,
-			} as unknown as SDKAgent,
+			},
 			run: { id: "run-1", agentId: "bc-agent" } as Run,
 			waitResult: { id: "run-1", status: "finished" } as RunResult,
 			apiKey: "key",

@@ -6,10 +6,13 @@ import type {
 	Model,
 	SimpleStreamOptions,
 } from "@oh-my-pi/pi-ai";
-import type { AgentModeOption, ModelSelection, SDKAgent, SDKImage } from "@cursor/sdk";
-import type { CursorBackendSession } from "./cursor-backend.js";
+import type { AgentModeOption, ModelSelection, SDKImage } from "@cursor/sdk";
+import type {
+	CloudCursorBackendSession,
+	CursorBackendRun,
+	LocalCursorBackendSession,
+} from "./cursor-backend.js";
 import type { CursorLiveRun } from "./cursor-live-run-coordinator.js";
-import type { SessionCursorAgentLease } from "./cursor-session-agent.js";
 import type { planCursorSessionSend } from "./cursor-session-agent.js";
 import type { CursorSdkEventDebugSink } from "./cursor-sdk-event-debug.js";
 import type { CursorSdkTurnCoordinator } from "./cursor-provider-turn-coordinator.js";
@@ -52,9 +55,8 @@ interface CursorProviderTurnRuntimeBase {
 /**
  * Runtime-agnostic lifecycle operations for a prepared turn.
  *
- * Local implementations delegate to the session agent lease; cloud
- * implementations no-op the local-only operations (commitSend,
- * trackRunCompletion, abandon) and dispose the cloud agent instead.
+ * Local implementations delegate to the backend session; cloud
+ * implementations no-op the local-only operations and dispose the cloud session.
  */
 export interface CursorProviderTurnLifecycle {
 	trackRunCompletion(completion: Promise<unknown>): void;
@@ -76,12 +78,9 @@ export interface LiveCursorProviderTurnRuntime extends CursorProviderTurnRuntime
 export type CursorProviderTurnRuntime = DirectCursorProviderTurnRuntime | LiveCursorProviderTurnRuntime;
 
 interface CursorProviderTurnPrepareResultBase {
-	agent: SDKAgent;
-	backendSession: CursorBackendSession;
 	cwd: string;
 	payload: CursorProviderTurnSendPayload;
 	meta: CursorProviderTurnSendMeta;
-	contextWindowAgentId: string;
 	textDeltas: string[];
 	restoreCursorSdkOutputFilter: () => void;
 	lifecycle: CursorProviderTurnLifecycle;
@@ -90,16 +89,16 @@ interface CursorProviderTurnPrepareResultBase {
 export interface LocalCursorProviderTurnPrepareResult extends CursorProviderTurnPrepareResultBase {
 	runtimeTarget: "local";
 	runtime: CursorProviderTurnRuntime;
+	backendSession: LocalCursorBackendSession;
 	sessionAgentScopeKey: string;
-	sessionAgentLease: SessionCursorAgentLease;
 	localForce: CursorResolvedSetting<boolean>;
 }
 
 export interface CloudCursorProviderTurnPrepareResult extends CursorProviderTurnPrepareResultBase {
 	runtimeTarget: "cloud";
 	runtime: DirectCursorProviderTurnRuntime;
+	backendSession: CloudCursorBackendSession;
 	sessionAgentScopeKey?: undefined;
-	sessionAgentLease?: undefined;
 }
 
 /**
@@ -113,7 +112,7 @@ export type CursorProviderTurnPrepareResult =
 	| CloudCursorProviderTurnPrepareResult;
 
 export interface CursorProviderTurnSend {
-	run: Awaited<ReturnType<SDKAgent["send"]>>;
+	run: CursorBackendRun;
 	cursorAgentMessageOffset: number | undefined;
 }
 

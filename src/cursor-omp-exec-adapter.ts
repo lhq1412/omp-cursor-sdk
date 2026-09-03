@@ -72,26 +72,41 @@ export function toolResultMessageToSdkCustomToolResult(toolResult: ToolResultMes
 }
 
 const INPUT_SCHEMAS: Record<CursorOmpExecCustomToolName, NonNullable<SDKCustomTool["inputSchema"]>> = {
-	read: { type: "object", properties: { path: { type: "string" }, offset: { type: "number" }, limit: { type: "number" } } },
+	read: {
+		type: "object",
+		properties: { path: { type: "string" }, offset: { type: "number" }, limit: { type: "number" } },
+		required: ["path"],
+		additionalProperties: false,
+	},
 	shell: {
 		type: "object",
-		properties: { command: { type: "string" }, workingDirectory: { type: "string" }, timeout: { type: "number" } },
+		properties: { command: { type: "string" }, timeout: { type: "number" } },
+		required: ["command"],
+		additionalProperties: false,
 	},
 	write: {
 		type: "object",
-		properties: { path: { type: "string" }, fileText: { type: "string" }, content: { type: "string" } },
+		properties: { path: { type: "string" }, content: { type: "string" } },
+		required: ["path", "content"],
+		additionalProperties: false,
 	},
 	edit: {
 		type: "object",
 		properties: {
 			path: { type: "string" },
-			edits: { type: "array" },
-			oldText: { type: "string" },
-			newText: { type: "string" },
-			old_string: { type: "string" },
-			new_string: { type: "string" },
-			patchContent: { type: "string" },
+			edits: {
+				type: "array",
+				minItems: 1,
+				items: {
+					type: "object",
+					properties: { oldText: { type: "string" }, newText: { type: "string" } },
+					required: ["oldText", "newText"],
+					additionalProperties: false,
+				},
+			},
 		},
+		required: ["path", "edits"],
+		additionalProperties: false,
 	},
 	grep: {
 		type: "object",
@@ -99,26 +114,31 @@ const INPUT_SCHEMAS: Record<CursorOmpExecCustomToolName, NonNullable<SDKCustomTo
 			pattern: { type: "string" },
 			path: { type: "string" },
 			glob: { type: "string" },
-			caseInsensitive: { type: "boolean" },
+			ignoreCase: { type: "boolean" },
 			literal: { type: "boolean" },
 			context: { type: "number" },
-			headLimit: { type: "number" },
 			limit: { type: "number" },
-			offset: { type: "number" },
 		},
+		required: ["pattern"],
+		additionalProperties: false,
 	},
 	glob: {
 		type: "object",
-		properties: {
-			globPattern: { type: "string" },
-			pattern: { type: "string" },
-			targetDirectory: { type: "string" },
-			path: { type: "string" },
-			limit: { type: "number" },
-		},
+		properties: { pattern: { type: "string" }, path: { type: "string" }, limit: { type: "number" } },
+		required: ["pattern"],
+		additionalProperties: false,
 	},
-	ls: { type: "object", properties: { path: { type: "string" }, ignore: { type: "array", items: { type: "string" } } } },
-	delete: { type: "object", properties: { path: { type: "string" } } },
+	ls: {
+		type: "object",
+		properties: { path: { type: "string" } },
+		additionalProperties: false,
+	},
+	delete: {
+		type: "object",
+		properties: { path: { type: "string" } },
+		required: ["path"],
+		additionalProperties: false,
+	},
 };
 
 export type CursorOmpExecResolvedSink = (
@@ -204,29 +224,25 @@ async function invokeCursorOmpExecHandler(
 		}
 		case "shell": {
 			const command = getString(rawArgs, "command") ?? "";
-			const workingDirectory = getString(rawArgs, "workingDirectory");
 			const timeout = getNumber(rawArgs, "timeout");
-			if (workingDirectory && (handlers.shellStream || handlers.shell)) {
-				const args = { command, ...omitUndefinedArgs({ workingDirectory, timeout, toolCallId }) };
-				if (handlers.shellStream) {
-					return handlers.shellStream(legacyArgs(args), { onStdout() {}, onStderr() {} });
-				}
-				return handlers.shell!(legacyArgs(args));
-			}
 			if (handlers.piBash) {
 				return handlers.piBash({
 					args: { command, ...omitUndefinedArgs({ timeout: piTimeout(timeout) }) },
 					toolCallId,
 				});
 			}
-			if (handlers.shell) {
-				return handlers.shell(legacyArgs({ command, ...omitUndefinedArgs({ workingDirectory, timeout, toolCallId }) }));
+			const args = {
+				command,
+				...omitUndefinedArgs({ workingDirectory: getString(rawArgs, "workingDirectory"), timeout, toolCallId }),
+			};
+			if (handlers.shell) return handlers.shell(legacyArgs(args));
+			if (handlers.shellStream) {
+				return handlers.shellStream(legacyArgs(args), { onStdout() {}, onStderr() {} });
 			}
 			return undefined;
 		}
 		case "write": {
-			const fileText = getString(rawArgs, "fileText");
-			const content = fileText ?? getString(rawArgs, "content") ?? "";
+			const content = getString(rawArgs, "content") ?? getString(rawArgs, "fileText") ?? "";
 			if (handlers.piWrite) {
 				return handlers.piWrite({ args: { path: path ?? "", content }, toolCallId });
 			}
@@ -243,7 +259,7 @@ async function invokeCursorOmpExecHandler(
 		case "grep": {
 			const pattern = getString(rawArgs, "pattern") ?? "";
 			const glob = getString(rawArgs, "glob");
-			const caseInsensitive = getBoolean(rawArgs, "caseInsensitive");
+			const ignoreCase = getBoolean(rawArgs, "ignoreCase") ?? getBoolean(rawArgs, "caseInsensitive");
 			if (handlers.piGrep) {
 				return handlers.piGrep({
 					args: {
@@ -251,10 +267,10 @@ async function invokeCursorOmpExecHandler(
 						...omitUndefinedArgs({
 							path,
 							glob,
-							ignoreCase: caseInsensitive,
+							ignoreCase,
 							literal: getBoolean(rawArgs, "literal"),
 							context: getNumber(rawArgs, "context"),
-							limit: piLimit(getNumber(rawArgs, "headLimit") ?? getNumber(rawArgs, "limit")),
+							limit: piLimit(getNumber(rawArgs, "limit") ?? getNumber(rawArgs, "headLimit")),
 						}),
 					},
 					toolCallId,
@@ -267,7 +283,7 @@ async function invokeCursorOmpExecHandler(
 					...omitUndefinedArgs({
 						path,
 						glob,
-						caseInsensitive,
+						caseInsensitive: ignoreCase,
 						offset: piGrepSkip(getNumber(rawArgs, "offset")),
 					}),
 				}));
@@ -278,9 +294,9 @@ async function invokeCursorOmpExecHandler(
 			if (!handlers.piFind) return undefined;
 			return handlers.piFind({
 				args: {
-					pattern: getString(rawArgs, "globPattern") ?? getString(rawArgs, "pattern") ?? "",
+					pattern: getString(rawArgs, "pattern") ?? getString(rawArgs, "globPattern") ?? "",
 					...omitUndefinedArgs({
-						path: getString(rawArgs, "targetDirectory") ?? path,
+						path: path ?? getString(rawArgs, "targetDirectory"),
 						limit: piLimit(getNumber(rawArgs, "limit")),
 					}),
 				},

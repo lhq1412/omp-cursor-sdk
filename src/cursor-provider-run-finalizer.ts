@@ -105,8 +105,6 @@ export class CursorRunFinalizer {
 			resolvedApiKey: this.params.resolvedApiKey(),
 			optionsApiKey: resolveCursorStringApiKeySync(runnerParams.options?.apiKey),
 			sdkEventDebug,
-			cacheContextWindow: true,
-			contextWindowAgentId: liveRun.agent.agentId,
 		})
 			.then(async (finalized) => {
 				applyLiveRunOutcome(finalized.outcome, prepared, runnerParams.context);

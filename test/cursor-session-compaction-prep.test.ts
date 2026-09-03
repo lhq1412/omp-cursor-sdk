@@ -60,7 +60,7 @@ describe("prepareCursorSessionForCompaction", () => {
 
 		const liveRun = cursorLiveRuns.start({
 			id: "cursor-replay-test",
-			agent,
+			agentId: agent.agentId,
 			sessionAgentScopeKey: scopeKey,
 			promptInputTokens: 0,
 		});

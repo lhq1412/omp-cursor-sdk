@@ -356,7 +356,7 @@ describe("streamCursor prompt and model config", () => {
 		const resolveToolResults = vi.fn().mockResolvedValue(undefined);
 		const liveRun = cursorLiveRuns.start({
 			id: "cursor-replay-cloud-boundary",
-			agent: asMockSdkAgent({ agentId: "local-agent", send: vi.fn() }),
+			agentId: "local-agent",
 			bridgeRun: {
 				hasPendingPiToolCallId: () => false,
 				resolveToolResults,

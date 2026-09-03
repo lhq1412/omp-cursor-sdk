@@ -80,7 +80,7 @@ function makeCoordinator(options: { scopeKey?: string; idleDisposeMs?: number } 
 function startRun(coordinator: ReturnType<typeof makeCoordinator>["coordinator"], options: { id?: string; scopeKey?: string; bridgeRun?: CursorPiToolBridgeRun; sessionBridgeRun?: CursorPiToolBridgeRun } = {}): CursorLiveRun {
 	return coordinator.start({
 		id: options.id ?? "cursor-replay-1",
-		agent: makeAgent(),
+		agentId: "agent-1",
 		bridgeRun: options.bridgeRun,
 		sessionBridgeRun: options.sessionBridgeRun,
 		sessionAgentScopeKey: options.scopeKey,
@@ -140,7 +140,7 @@ describe("cursor live run coordinator", () => {
 		const bridgeRun = makeBridgeRun("bridge-expired");
 		const run = cursorLiveRuns.start({
 			id: "expired-bridge-drain",
-			agent: makeAgent(),
+			agentId: "agent-1",
 			bridgeRun,
 			sessionAgentScopeKey: "expired-bridge-drain-scope",
 			promptInputTokens: 1,

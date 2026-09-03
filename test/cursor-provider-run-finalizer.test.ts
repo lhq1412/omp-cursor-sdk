@@ -1,13 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { createAssistantMessageEventStream } from "@oh-my-pi/pi-ai";
-import type { LocalAgentStore, SDKAgent } from "@cursor/sdk";
 import { buildIncompleteCursorToolRunOutcome } from "../src/cursor-incomplete-tool-visibility.js";
 import { CursorRunFinalizer } from "../src/cursor-provider-run-finalizer.js";
 import { CursorSdkTurnCoordinator } from "../src/cursor-provider-turn-coordinator.js";
 import type { CursorProviderTurnPrepareResult, LiveCursorProviderTurnRuntime, LocalCursorProviderTurnPrepareResult } from "../src/cursor-provider-turn-types.js";
 import { installCursorSdkProcessErrorGuard } from "../src/cursor-sdk-process-error-guard.js";
 import type { CursorSdkEventDebugSink } from "../src/cursor-sdk-event-debug.js";
-import type { SessionCursorAgentLease } from "../src/cursor-session-agent.js";
 import { createCursorLiveRunAccountingState } from "../src/cursor-live-run-accounting.js";
 import { asMockCursorRun } from "./helpers/cursor-provider-harness.js";
 import { collectAssistantEvents, makeAssistantMessage, makeContext, makeModel } from "./helpers/pi-harness.js";
@@ -21,6 +19,29 @@ vi.mock("../src/cursor-provider-turn-finalize.js", () => ({
 	awaitFinalizeCursorRunOutcome: mockAwaitFinalizeCursorRunOutcome,
 	cacheSdkContextWindow: vi.fn(),
 }));
+function makeLocalBackendSession(trackRunCompletion: (completion: Promise<unknown>) => void = () => {}) {
+	return {
+		id: "agent-1",
+		send: async () => {
+			throw new Error("unused");
+		},
+		attachBilledTurnUsage: async () => ({}),
+		dispose: async () => {},
+		scopeKey: "scope-1",
+		poolKey: "pool-1",
+		instanceId: 1,
+		sendState: { bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0 },
+		created: false,
+		commitSend: () => {},
+		trackRunCompletion,
+		initializeBilledUsage: async () => true,
+		readMessageOffset: async () => 0,
+		invalidateMessageOffset: () => {},
+		loadTranscriptWebToolCallsAfterOffset: async () => [],
+		cacheContextWindow: async () => {},
+	};
+}
+
 
 describe("CursorRunFinalizer", () => {
 	it("settles live-run ownership before best-effort debug writes after wait failure", async () => {
@@ -28,15 +49,7 @@ describe("CursorRunFinalizer", () => {
 		mockAwaitFinalizeCursorRunOutcome.mockRejectedValueOnce(new Error("run wait failed"));
 		const prepared: LocalCursorProviderTurnPrepareResult & { runtime: LiveCursorProviderTurnRuntime } = {
 			runtimeTarget: "local",
-			agent: { agentId: "agent-1" } as SDKAgent,
-			backendSession: {
-				id: "agent-1",
-				agent: { agentId: "agent-1" } as SDKAgent,
-				send: async () => {
-					throw new Error("unused");
-				},
-				dispose: async () => {},
-			},
+			backendSession: makeLocalBackendSession(trackRunCompletion),
 			cwd: process.cwd(),
 			payload: { text: "hello" },
 			meta: {
@@ -51,21 +64,8 @@ describe("CursorRunFinalizer", () => {
 				modelSelection: { id: "composer-2.5" },
 			},
 			localForce: { value: false, source: "builtin", trustLevel: "builtin" },
-			contextWindowAgentId: "agent-1",
 			textDeltas: [],
 			sessionAgentScopeKey: "scope-1",
-			sessionAgentLease: {
-				scopeKey: "scope-1",
-				poolKey: "pool-1",
-				instanceId: 1,
-				agent: { agentId: "agent-1" } as SDKAgent,
-				store: {} as LocalAgentStore,
-				storeIdentity: { version: 1, stateRoot: "/tmp/store" },
-				sendState: { bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0 },
-				created: false,
-				commitSend: () => {},
-				trackRunCompletion,
-			} satisfies SessionCursorAgentLease,
 			restoreCursorSdkOutputFilter: () => {},
 			lifecycle: {
 				commitSend: () => {},
@@ -77,7 +77,7 @@ describe("CursorRunFinalizer", () => {
 				kind: "live",
 				liveRun: {
 					id: "replay-1",
-					agent: { agentId: "agent-1" } as SDKAgent,
+					agentId: "agent-1",
 					sessionAgentScopeKey: "scope-1",
 					accounting: createCursorLiveRunAccountingState(0),
 					pendingEvents: [],
@@ -159,15 +159,7 @@ describe("CursorRunFinalizer", () => {
 		});
 		const prepared: CursorProviderTurnPrepareResult = {
 			runtimeTarget: "local",
-			agent: { agentId: "agent-1" } as SDKAgent,
-			backendSession: {
-				id: "agent-1",
-				agent: { agentId: "agent-1" } as SDKAgent,
-				send: async () => {
-					throw new Error("unused");
-				},
-				dispose: async () => {},
-			},
+			backendSession: makeLocalBackendSession(),
 			cwd: process.cwd(),
 			payload: { text: "hello" },
 			meta: {
@@ -182,23 +174,8 @@ describe("CursorRunFinalizer", () => {
 				modelSelection: { id: "composer-2.5" },
 			},
 			localForce: { value: false, source: "builtin", trustLevel: "builtin" },
-			contextWindowAgentId: "agent-1",
 			textDeltas: [],
 			sessionAgentScopeKey: "scope-1",
-			sessionAgentLease: {
-				scopeKey: "scope-1",
-				poolKey: "pool-1",
-				instanceId: 1,
-				agent: { agentId: "agent-1" } as SDKAgent,
-				store: {} as LocalAgentStore,
-				storeIdentity: { version: 1, stateRoot: "/tmp/store" },
-				sendState: { bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0 },
-				created: true,
-				commitSend: () => {
-					throw new Error("commit failed before terminal event");
-				},
-				trackRunCompletion: () => {},
-			} satisfies SessionCursorAgentLease,
 			restoreCursorSdkOutputFilter: () => {},
 			lifecycle: {
 				commitSend: () => {
@@ -275,15 +252,7 @@ describe("CursorRunFinalizer", () => {
 		});
 		const prepared: CursorProviderTurnPrepareResult = {
 			runtimeTarget: "local",
-			agent: { agentId: "agent-1" } as SDKAgent,
-			backendSession: {
-				id: "agent-1",
-				agent: { agentId: "agent-1" } as SDKAgent,
-				send: async () => {
-					throw new Error("unused");
-				},
-				dispose: async () => {},
-			},
+			backendSession: makeLocalBackendSession(),
 			cwd: process.cwd(),
 			payload: { text: "hello" },
 			meta: {
@@ -298,21 +267,8 @@ describe("CursorRunFinalizer", () => {
 				modelSelection: { id: "composer-2.5" },
 			},
 			localForce: { value: false, source: "builtin", trustLevel: "builtin" },
-			contextWindowAgentId: "agent-1",
 			textDeltas: [],
 			sessionAgentScopeKey: "scope-1",
-			sessionAgentLease: {
-				scopeKey: "scope-1",
-				poolKey: "pool-1",
-				instanceId: 1,
-				agent: { agentId: "agent-1" } as SDKAgent,
-				store: {} as LocalAgentStore,
-				storeIdentity: { version: 1, stateRoot: "/tmp/store" },
-				sendState: { bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0 },
-				created: true,
-				commitSend: () => {},
-				trackRunCompletion: () => {},
-			} satisfies SessionCursorAgentLease,
 			restoreCursorSdkOutputFilter: () => {},
 			lifecycle: {
 				commitSend: () => {},
