@@ -16,6 +16,7 @@ import {
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor } from "../src/cursor-provider.js";
 import { CursorSdkTurnCoordinator } from "../src/cursor-provider-turn-coordinator.js";
+import { drainCursorLiveRunTurn, cursorLiveRuns } from "../src/cursor-provider-live-run-drain.js";
 import { makeAssistantMessage } from "./helpers/pi-harness.js";
 import { CURSOR_OMP_EXEC_DISALLOWED_TOOLS } from "../src/cursor-omp-exec-adapter.js";
 
@@ -154,5 +155,32 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 		expect(liveRun.pendingEvents.map((event) => event.type)).toEqual(["text-delta", "omp-exec-resolved"]);
 		expect(partial.content.some((block) => block.type === "toolCall")).toBe(false);
 		expect(onToolResult).not.toHaveBeenCalled();
+	});
+
+	it("flushes queued omp-exec-resolved before chain_user_input release", async () => {
+		const stream = createAssistantMessageEventStream();
+		const eventsPromise = collectEvents(stream);
+		const partial = makeAssistantMessage("");
+		const onToolResult = vi.fn();
+		const run = cursorLiveRuns.start({
+			id: "chain-exec",
+			agent: { agentId: "a1" } as never,
+			promptInputTokens: 0,
+			sessionAgentScopeKey: "chain-exec-scope",
+		});
+		run.done = true;
+		run.pendingEvents.push({
+			type: "omp-exec-resolved",
+			toolResult: toolResult("file"),
+			args: { path: "a.ts" },
+			onToolResult,
+		});
+		await drainCursorLiveRunTurn(stream, partial, makeModel(), makeContext(), run, 0, { mode: "chain_user_input" });
+		stream.push({ type: "done", reason: "stop", message: partial });
+		await eventsPromise;
+		expect(onToolResult).toHaveBeenCalledTimes(1);
+		const block = partial.content.find((entry) => entry.type === "toolCall");
+		expect(block).toMatchObject({ type: "toolCall", id: "tc" });
+		expect(isCursorExecResolved(block)).toBe(true);
 	});
 });
