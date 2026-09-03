@@ -1,5 +1,7 @@
-import type { AssistantMessage, AssistantMessageEventStream } from "@oh-my-pi/pi-ai";
+import type { AssistantMessage, AssistantMessageEventStream, ToolResultMessage } from "@oh-my-pi/pi-ai";
 import type { InteractionUpdate } from "@cursor/sdk";
+import { kCursorExecResolved } from "@oh-my-pi/pi-ai/utils/block-symbols";
+import { omitUndefinedArgs } from "@oh-my-pi/pi-ai/providers/cursor-pi-args";
 import { isCursorOmpExecToolCall } from "./cursor-omp-exec-adapter.js";
 import type { CursorLiveRun } from "./cursor-live-run-coordinator.js";
 import { cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
@@ -145,6 +147,21 @@ export class CursorSdkTurnCoordinator {
 		this.ledger.clearStartedToolCalls();
 		this.shellOutput.clear();
 		this.lifecycleEmitter.clear();
+	}
+
+	emitResolvedOmpExecTool(toolResult: ToolResultMessage, args: Record<string, unknown>): void {
+		this.contentEmitter.closeAll();
+		const contentIndex = this.partial.content.length;
+		const block = {
+			type: "toolCall" as const,
+			id: toolResult.toolCallId,
+			name: toolResult.toolName,
+			arguments: omitUndefinedArgs(args),
+			[kCursorExecResolved]: true as const,
+		};
+		this.partial.content.push(block);
+		this.stream.push({ type: "toolcall_start", contentIndex, partial: this.partial });
+		this.stream.push({ type: "toolcall_end", contentIndex, toolCall: block, partial: this.partial });
 	}
 
 	closeTraceBlock(): void {

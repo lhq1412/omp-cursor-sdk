@@ -121,12 +121,20 @@ const INPUT_SCHEMAS: Record<CursorOmpExecCustomToolName, NonNullable<SDKCustomTo
 	delete: { type: "object", properties: { path: { type: "string" } } },
 };
 
-export function createCursorOmpExecCustomTools(handlers: CursorExecHandlers): Record<string, SDKCustomTool> {
+export type CursorOmpExecResolvedSink = (
+	toolResult: ToolResultMessage,
+	args: Record<string, unknown>,
+) => void | Promise<void>;
+
+export function createCursorOmpExecCustomTools(
+	handlers: CursorExecHandlers,
+	onResolved?: CursorOmpExecResolvedSink,
+): Record<string, SDKCustomTool> {
 	const tools: Record<string, SDKCustomTool> = {};
 	for (const name of CURSOR_OMP_EXEC_CUSTOM_TOOL_NAMES) {
 		tools[name] = {
 			inputSchema: INPUT_SCHEMAS[name],
-			execute: (args, context) => executeCursorOmpExecTool(name, args, context, handlers),
+			execute: (args, context) => executeCursorOmpExecTool(name, args, context, handlers, onResolved),
 		};
 	}
 	return tools;
@@ -137,19 +145,34 @@ async function executeCursorOmpExecTool(
 	args: Record<string, SDKJsonValue>,
 	context: SDKCustomToolContext,
 	handlers: CursorExecHandlers,
+	onResolved?: CursorOmpExecResolvedSink,
 ): Promise<SDKCustomToolResult> {
 	const toolCallId = context.toolCallId ?? "cursor-omp-exec";
 	try {
 		const invoked = await invokeCursorOmpExecHandler(name, args, toolCallId, handlers);
-		if (invoked === undefined) {
-			return { content: [{ type: "text", text: "Tool not available" }], isError: true };
-		}
-		return toolResultMessageToSdkCustomToolResult(unwrapCursorExecHandlerResult(invoked, toolCallId, name));
+		const toolResult = invoked === undefined
+			? {
+				role: "toolResult" as const,
+				toolCallId,
+				toolName: name,
+				content: [{ type: "text" as const, text: "Tool not available" }],
+				isError: true,
+				timestamp: Date.now(),
+			}
+			: unwrapCursorExecHandlerResult(invoked, toolCallId, name);
+		await onResolved?.(toolResult, args);
+		return toolResultMessageToSdkCustomToolResult(toolResult);
 	} catch (error) {
-		return {
-			content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+		const toolResult = {
+			role: "toolResult" as const,
+			toolCallId,
+			toolName: name,
+			content: [{ type: "text" as const, text: error instanceof Error ? error.message : String(error) }],
 			isError: true,
+			timestamp: Date.now(),
 		};
+		await onResolved?.(toolResult, args);
+		return toolResultMessageToSdkCustomToolResult(toolResult);
 	}
 }
 

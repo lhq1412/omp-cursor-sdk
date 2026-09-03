@@ -265,6 +265,30 @@ describe("createCursorOmpExecCustomTools routing", () => {
 		await exec({ piRead }, "read", { path: "a.ts" });
 		expect(piRead).toHaveBeenCalledTimes(1);
 	});
+
+
+	it("reports ToolResultMessage to onResolved for success and missing-handler paths", async () => {
+		const onResolved = vi.fn();
+		const tools = createCursorOmpExecCustomTools({ piRead: async () => okResult("file") }, onResolved);
+		await tools.read!.execute({ path: "a.ts" }, { toolCallId: "tc" });
+		expect(onResolved).toHaveBeenCalledTimes(1);
+		expect(onResolved.mock.calls[0]?.[0]).toMatchObject({
+			role: "toolResult",
+			toolCallId: "tc",
+			toolName: "tool",
+			isError: false,
+		});
+
+		onResolved.mockClear();
+		const missing = createCursorOmpExecCustomTools({}, onResolved);
+		await missing.read!.execute({ path: "a.ts" }, { toolCallId: "missing" });
+		expect(onResolved).toHaveBeenCalledTimes(1);
+		expect(onResolved.mock.calls[0]?.[0]).toMatchObject({
+			toolCallId: "missing",
+			toolName: "read",
+			isError: true,
+		});
+	});
 });
 
 describe("resolveCursorProviderExecHandlers", () => {

@@ -124,7 +124,13 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 			const local: NonNullable<SendOptions["local"]> = {};
 			if (consumeCursorLocalForceOverride(prepared.localForce)) local.force = true;
 			const execHandlers = resolveCursorProviderExecHandlers(options);
-			if (execHandlers) local.customTools = createCursorOmpExecCustomTools(execHandlers);
+			if (execHandlers) {
+				local.customTools = createCursorOmpExecCustomTools(execHandlers, async (toolResult, args) => {
+					const reported = options?.cursorOnToolResult?.(toolResult);
+					turnCoordinator.emitResolvedOmpExecTool(toolResult, args);
+					await reported;
+				});
+			}
 			if (local.force || local.customTools) sendOptions.local = local;
 		}
 		const runPromise = prepared.backendSession.send({ payload, options: sendOptions });

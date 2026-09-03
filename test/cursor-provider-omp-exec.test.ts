@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Type } from "@oh-my-pi/omptype/typebox";
 import type { ToolResultMessage } from "@oh-my-pi/pi-ai";
+import { isCursorExecResolved } from "@oh-my-pi/pi-ai/utils/block-symbols";
 import {
 	resetCursorProviderTestState,
 	mockCreatedAgent,
@@ -8,6 +9,7 @@ import {
 	makeContext,
 	collectEvents,
 	getCreatedAgentOptions,
+	getDoneEvent,
 	registerBridgeForProviderTest,
 	createTestToolInfo,
 } from "./helpers/cursor-provider-harness.js";
@@ -93,5 +95,40 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 
 		expect(getCreatedAgentOptions().mcpServers?.pi_tools?.type).toBe("http");
 		expect(getCreatedAgentOptions().disallowedTools).toEqual([...CURSOR_OMP_EXEC_DISALLOWED_TOOLS]);
+	});
+
+	it("stamps kCursorExecResolved toolCalls and reports cursorOnToolResult", async () => {
+		const piRead = vi.fn(async () => toolResult("file"));
+		const cursorOnToolResult = vi.fn(async (message: ToolResultMessage) => message);
+		const mockSend = vi.fn().mockImplementation(async (_payload: unknown, sendOptions: unknown) => {
+			// Agent.send options are SDK-typed; this mock only needs customTools.execute.
+			const options = sendOptions as { local?: { customTools?: Record<string, { execute: (args: object, context: object) => Promise<unknown> }> } };
+			await options.local?.customTools?.read?.execute({ path: "a.ts" }, { toolCallId: "tc" });
+			return finishedRun();
+		});
+		mockCreatedAgent({
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const events = await collectEvents(streamCursor(makeModel("composer-2"), makeContext(), {
+			apiKey: "test-key",
+			execHandlers: { piRead },
+			cursorOnToolResult,
+		}));
+
+		expect(cursorOnToolResult).toHaveBeenCalledTimes(1);
+		expect(cursorOnToolResult.mock.calls[0]?.[0]).toMatchObject({
+			role: "toolResult",
+			toolCallId: "tc",
+			isError: false,
+		});
+		const toolEnds = events.filter((event) => event.type === "toolcall_end");
+		expect(toolEnds).toHaveLength(1);
+		expect(isCursorExecResolved(toolEnds[0]?.toolCall)).toBe(true);
+		const done = getDoneEvent(events);
+		const block = done.message.content.find((entry) => entry.type === "toolCall");
+		expect(block).toMatchObject({ type: "toolCall", id: "tc" });
+		expect(isCursorExecResolved(block)).toBe(true);
 	});
 });
