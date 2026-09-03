@@ -3,6 +3,7 @@ import {
 	createCursorOmpExecCustomTools,
 	resolveCursorProviderExecHandlers,
 } from "./cursor-omp-exec-adapter.js";
+import { getActiveContextToolNames } from "./cursor-context-tools.js";
 import {
 	createCursorCloudLifecyclePersistenceError,
 	recordCursorCloudLifecycleSafely,
@@ -121,9 +122,13 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 			if (consumeCursorLocalForceOverride(prepared.localForce)) local.force = true;
 			const execHandlers = resolveCursorProviderExecHandlers(options);
 			if (execHandlers) {
-				local.customTools = createCursorOmpExecCustomTools(execHandlers, (toolResult, args) => {
-					turnCoordinator.emitResolvedOmpExecTool(toolResult, args, options?.cursorOnToolResult);
-				});
+				local.customTools = createCursorOmpExecCustomTools(
+					execHandlers,
+					getActiveContextToolNames(params.context),
+					(toolResult, args) => {
+						turnCoordinator.emitResolvedOmpExecTool(toolResult, args, options?.cursorOnToolResult);
+					},
+				);
 			}
 			if (local.force || local.customTools) sendOptions.local = local;
 		}

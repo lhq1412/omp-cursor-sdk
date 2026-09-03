@@ -143,6 +143,16 @@ const INPUT_SCHEMAS: Record<CursorOmpExecCustomToolName, NonNullable<SDKCustomTo
 	},
 };
 
+const CUSTOM_TOOL_OMP_NAMES: { [K in CursorOmpExecCustomToolName]?: string } = {
+	read: "read",
+	shell: "bash",
+	write: "write",
+	edit: "edit",
+	grep: "grep",
+	glob: "glob",
+	ls: "read",
+};
+
 export type CursorOmpExecResolvedSink = (
 	toolResult: ToolResultMessage,
 	args: Record<string, unknown>,
@@ -150,10 +160,13 @@ export type CursorOmpExecResolvedSink = (
 
 export function createCursorOmpExecCustomTools(
 	handlers: CursorExecHandlers,
+	activeToolNames?: ReadonlySet<string>,
 	onResolved?: CursorOmpExecResolvedSink,
 ): Record<string, SDKCustomTool> {
 	const tools: Record<string, SDKCustomTool> = {};
 	for (const name of CURSOR_OMP_EXEC_CUSTOM_TOOL_NAMES) {
+		const ompName = CUSTOM_TOOL_OMP_NAMES[name];
+		if (activeToolNames && ompName !== undefined && !activeToolNames.has(ompName)) continue;
 		tools[name] = {
 			inputSchema: INPUT_SCHEMAS[name],
 			execute: (args, context) => executeCursorOmpExecTool(name, args, context, handlers, onResolved),

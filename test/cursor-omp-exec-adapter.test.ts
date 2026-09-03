@@ -2,6 +2,7 @@ import { describe, expect, it, vi, type Mock } from "vitest";
 import type { CursorExecHandlers, ToolResultMessage } from "@oh-my-pi/pi-ai";
 import {
 	createCursorOmpExecCustomTools,
+	CURSOR_OMP_EXEC_CUSTOM_TOOL_NAMES,
 	isCursorOmpExecToolCall,
 	resolveCursorProviderExecHandlers,
 	toolResultMessageToSdkCustomToolResult,
@@ -243,6 +244,22 @@ describe("createCursorOmpExecCustomTools routing", () => {
 		});
 	});
 
+	it("omits custom tools whose OMP builtins are inactive", () => {
+		const handlers: CursorExecHandlers = {
+			piRead: async () => okResult(),
+			piBash: async () => okResult(),
+			piWrite: async () => okResult(),
+		};
+		expect(Object.keys(createCursorOmpExecCustomTools(handlers, new Set(["read", "bash"]))).sort()).toEqual([
+			"delete",
+			"ls",
+			"read",
+			"shell",
+		]);
+		expect(Object.keys(createCursorOmpExecCustomTools(handlers, new Set())).sort()).toEqual(["delete"]);
+		expect(Object.keys(createCursorOmpExecCustomTools(handlers)).sort()).toEqual([...CURSOR_OMP_EXEC_CUSTOM_TOOL_NAMES].sort());
+	});
+
 	it("does not pre-apply piReadPath", async () => {
 		const piRead = vi.fn(async () => okResult());
 		await exec({ piRead }, "read", { path: "src/file.ts", offset: 3, limit: 7 });
@@ -305,7 +322,7 @@ describe("createCursorOmpExecCustomTools routing", () => {
 
 	it("reports ToolResultMessage to onResolved for success and missing-handler paths", async () => {
 		const onResolved = vi.fn();
-		const tools = createCursorOmpExecCustomTools({ piRead: async () => okResult("file") }, onResolved);
+		const tools = createCursorOmpExecCustomTools({ piRead: async () => okResult("file") }, undefined, onResolved);
 		await tools.read!.execute({ path: "a.ts" }, { toolCallId: "tc" });
 		expect(onResolved).toHaveBeenCalledTimes(1);
 		expect(onResolved.mock.calls[0]?.[0]).toMatchObject({
@@ -316,7 +333,7 @@ describe("createCursorOmpExecCustomTools routing", () => {
 		});
 
 		onResolved.mockClear();
-		const missing = createCursorOmpExecCustomTools({}, onResolved);
+		const missing = createCursorOmpExecCustomTools({}, undefined, onResolved);
 		await missing.read!.execute({ path: "a.ts" }, { toolCallId: "missing" });
 		expect(onResolved).toHaveBeenCalledTimes(1);
 		expect(onResolved.mock.calls[0]?.[0]).toMatchObject({
