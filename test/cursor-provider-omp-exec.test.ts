@@ -134,7 +134,6 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 		expect(block).toMatchObject({ type: "toolCall", id: "tc" });
 		expect(isCursorExecResolved(block)).toBe(true);
 	});
-
 	it("queues resolved exec behind live-run text instead of jumping the stream", () => {
 		const stream = createAssistantMessageEventStream();
 		const partial = makeAssistantMessage("");
@@ -149,9 +148,11 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 			liveRun: liveRun as never,
 			ompExecEnabled: true,
 		});
+		const onToolResult = vi.fn();
 		coordinator.handleDelta({ type: "text-delta", text: "hello" } as never);
-		coordinator.emitResolvedOmpExecTool(toolResult("file"), { path: "a.ts" });
+		coordinator.emitResolvedOmpExecTool(toolResult("file"), { path: "a.ts" }, onToolResult);
 		expect(liveRun.pendingEvents.map((event) => event.type)).toEqual(["text-delta", "omp-exec-resolved"]);
 		expect(partial.content.some((block) => block.type === "toolCall")).toBe(false);
+		expect(onToolResult).not.toHaveBeenCalled();
 	});
 });

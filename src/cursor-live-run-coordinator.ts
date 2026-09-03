@@ -1,4 +1,4 @@
-import type { Context, ToolResultMessage } from "@oh-my-pi/pi-ai";
+import type { Context, CursorToolResultHandler, ToolResultMessage } from "@oh-my-pi/pi-ai";
 import type { SDKAgent } from "@cursor/sdk";
 import {
 	consumeCursorLiveToolResults,
@@ -29,7 +29,7 @@ export type CursorLiveQueuedEvent =
 	| { type: "text-delta"; text: string }
 	| { type: "tool"; tool: CursorNativeToolDisplayItem }
 	| { type: "bridge-tool"; request: CursorPiBridgeToolRequest }
-	| { type: "omp-exec-resolved"; toolResult: ToolResultMessage; args: Record<string, unknown> };
+	| { type: "omp-exec-resolved"; toolResult: ToolResultMessage; args: Record<string, unknown>; onToolResult?: CursorToolResultHandler };
 
 export interface CursorLiveSdkRun {
 	cancel(): Promise<void>;

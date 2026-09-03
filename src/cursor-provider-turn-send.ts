@@ -125,10 +125,8 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 			if (consumeCursorLocalForceOverride(prepared.localForce)) local.force = true;
 			const execHandlers = resolveCursorProviderExecHandlers(options);
 			if (execHandlers) {
-				local.customTools = createCursorOmpExecCustomTools(execHandlers, async (toolResult, args) => {
-					const reported = options?.cursorOnToolResult?.(toolResult);
-					turnCoordinator.emitResolvedOmpExecTool(toolResult, args);
-					await reported;
+				local.customTools = createCursorOmpExecCustomTools(execHandlers, (toolResult, args) => {
+					turnCoordinator.emitResolvedOmpExecTool(toolResult, args, options?.cursorOnToolResult);
 				});
 			}
 			if (local.force || local.customTools) sendOptions.local = local;
