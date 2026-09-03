@@ -161,6 +161,8 @@ function emitCursorLiveQueuedEvent(
 		turn.emittedText += event.text;
 		if (run) run.emittedText += event.text;
 		turn.emitter.appendTextDelta(event.text);
+	} else if (event.type === "omp-exec-resolved") {
+		turn.emitter.appendResolvedOmpExecTool(event.toolResult, event.args);
 	}
 }
 

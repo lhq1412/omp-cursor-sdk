@@ -28,7 +28,8 @@ export type CursorLiveQueuedEvent =
 	| { type: "thinking-completed" }
 	| { type: "text-delta"; text: string }
 	| { type: "tool"; tool: CursorNativeToolDisplayItem }
-	| { type: "bridge-tool"; request: CursorPiBridgeToolRequest };
+	| { type: "bridge-tool"; request: CursorPiBridgeToolRequest }
+	| { type: "omp-exec-resolved"; toolResult: ToolResultMessage; args: Record<string, unknown> };
 
 export interface CursorLiveSdkRun {
 	cancel(): Promise<void>;

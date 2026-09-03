@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Type } from "@oh-my-pi/omptype/typebox";
 import type { ToolResultMessage } from "@oh-my-pi/pi-ai";
+import { createAssistantMessageEventStream } from "@oh-my-pi/pi-ai";
 import { isCursorExecResolved } from "@oh-my-pi/pi-ai/utils/block-symbols";
 import {
 	resetCursorProviderTestState,
@@ -14,6 +15,8 @@ import {
 	createTestToolInfo,
 } from "./helpers/cursor-provider-harness.js";
 import { streamCursor } from "../src/cursor-provider.js";
+import { CursorSdkTurnCoordinator } from "../src/cursor-provider-turn-coordinator.js";
+import { makeAssistantMessage } from "./helpers/pi-harness.js";
 import { CURSOR_OMP_EXEC_DISALLOWED_TOOLS } from "../src/cursor-omp-exec-adapter.js";
 
 function finishedRun() {
@@ -130,5 +133,25 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 		const block = done.message.content.find((entry) => entry.type === "toolCall");
 		expect(block).toMatchObject({ type: "toolCall", id: "tc" });
 		expect(isCursorExecResolved(block)).toBe(true);
+	});
+
+	it("queues resolved exec behind live-run text instead of jumping the stream", () => {
+		const stream = createAssistantMessageEventStream();
+		const partial = makeAssistantMessage("");
+		const liveRun = { disposed: false, pendingEvents: [] as Array<{ type: string }> };
+		const coordinator = new CursorSdkTurnCoordinator({
+			stream,
+			partial,
+			cwd: process.cwd(),
+			useNativeToolReplay: false,
+			nativeReplayId: "nr",
+			textDeltas: [],
+			liveRun: liveRun as never,
+			ompExecEnabled: true,
+		});
+		coordinator.handleDelta({ type: "text-delta", text: "hello" } as never);
+		coordinator.emitResolvedOmpExecTool(toolResult("file"), { path: "a.ts" });
+		expect(liveRun.pendingEvents.map((event) => event.type)).toEqual(["text-delta", "omp-exec-resolved"]);
+		expect(partial.content.some((block) => block.type === "toolCall")).toBe(false);
 	});
 });
