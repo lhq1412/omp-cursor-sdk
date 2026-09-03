@@ -5,12 +5,16 @@ import { installCursorMcpToolTimeoutOverride } from "./cursor-mcp-timeout-overri
 import { ensureCursorRipgrepPath } from "./cursor-ripgrep-path.js";
 import { installCursorSdkOutputFilter, suppressCursorSdkOutput } from "./cursor-sdk-output-filter.js";
 import {
-	acquireSessionCursorAgent,
 	buildCursorSessionSendPrompt,
 	planCursorSessionSend,
 	resetSessionCursorAgent,
 	type CursorSessionSendPlan,
 } from "./cursor-session-agent.js";
+import { sdkCursorBackend } from "./cursor-backend.js";
+import {
+	CURSOR_OMP_EXEC_DISALLOWED_TOOLS,
+	resolveCursorProviderExecHandlers,
+} from "./cursor-omp-exec-adapter.js";
 import type { CursorPiBridgeToolRequest } from "./cursor-pi-tool-bridge.js";
 import { buildCursorPrompt, estimateCursorPromptTokens } from "./context.js";
 import { getCursorPromptOptions } from "./cursor-usage-accounting.js";
@@ -173,15 +177,19 @@ async function prepareCursorCloudProviderTurn(
 			promptOptions,
 		);
 		const promptInputTokens = estimateCursorPromptTokens(prompt, promptOptions);
-		const agent = await suppressCursorSdkOutput(() =>
-			Agent.create(buildCursorCloudAgentOptions({
-				apiKey: resolvedApiKey,
-				modelSelection: selection,
-				agentMode,
-				resolvedConfig,
-				name: getCursorSessionName(),
-			})),
-		);
+		const backendSession = await sdkCursorBackend.acquire({
+			runtimeTarget: "cloud",
+			createAgent: () => suppressCursorSdkOutput(() =>
+				Agent.create(buildCursorCloudAgentOptions({
+					apiKey: resolvedApiKey,
+					modelSelection: selection,
+					agentMode,
+					resolvedConfig,
+					name: getCursorSessionName(),
+				})),
+			),
+		});
+		const agent = backendSession.agent;
 		cloudAgentForCleanup = agent;
 		if (!recordCursorCloudLifecycleSafely({ agentId: agent.agentId }, resolvedApiKey)) {
 			throw createCursorCloudLifecyclePersistenceError(agent.agentId, "intent", undefined, resolvedApiKey);
@@ -224,6 +232,7 @@ async function prepareCursorCloudProviderTurn(
 		return {
 			runtimeTarget: "cloud",
 			agent,
+			backendSession,
 			cwd,
 			payload: {
 				text: prompt.text,
@@ -259,6 +268,7 @@ async function prepareCursorLocalProviderTurn(
 ): Promise<LocalCursorProviderTurnPrepareResult> {
 	const { params, cwd, resolvedApiKey, sdkEventDebug, throwIfAborted, resolvedConfig, agentMode, selection, fastEnabled } = prepareParams;
 	const { model, context, options } = params;
+	const execHandlers = resolveCursorProviderExecHandlers(options);
 
 	let restoreCursorSdkOutputFilter: (() => void) | undefined;
 	let sessionAgentScopeKey: string | undefined;
@@ -293,6 +303,7 @@ async function prepareCursorLocalProviderTurn(
 			localSafety,
 			localResume: resolvedConfig.local.resume.value,
 			useHttp1ForAgent,
+			...(execHandlers ? { disallowedTools: [...CURSOR_OMP_EXEC_DISALLOWED_TOOLS] } : {}),
 			debugRecorder: sdkEventDebug,
 			onBridgeToolRequest: (request: CursorPiBridgeToolRequest) => {
 				if (liveRunForBridgeQueue && !liveRunForBridgeQueue.disposed) {
@@ -304,7 +315,11 @@ async function prepareCursorLocalProviderTurn(
 			createAgent: (createOptions: Parameters<typeof Agent.create>[0]) =>
 				suppressCursorSdkOutput(() => Agent.create(createOptions)),
 		};
-		let sessionAgentLease = await acquireSessionCursorAgent(sessionAgentAcquireParams);
+		let backendSession = await sdkCursorBackend.acquire({
+			runtimeTarget: "local",
+			sessionAgent: sessionAgentAcquireParams,
+		});
+		let sessionAgentLease = backendSession.lease;
 		sessionAgentScopeKey = sessionAgentLease.scopeKey;
 		throwIfAborted();
 
@@ -337,7 +352,11 @@ async function prepareCursorLocalProviderTurn(
 		let prompt = buildCursorSessionSendPrompt(context, promptOptions, sendPlan);
 		if (sendPlan.resetAgent) {
 			await resetSessionCursorAgent(sessionAgentScopeKey);
-			sessionAgentLease = await acquireSessionCursorAgent({ ...sessionAgentAcquireParams, forceCreate: true });
+			backendSession = await sdkCursorBackend.acquire({
+				runtimeTarget: "local",
+				sessionAgent: { ...sessionAgentAcquireParams, forceCreate: true },
+			});
+			sessionAgentLease = backendSession.lease;
 			sessionAgentScopeKey = sessionAgentLease.scopeKey;
 			bridgeToolNames = new Set(sessionAgentLease.bridgeRun?.snapshot.tools.map((tool) => tool.mcpToolName) ?? []);
 			includePiBridgeGuidance = bridgeToolNames.size > 0;
@@ -410,12 +429,14 @@ async function prepareCursorLocalProviderTurn(
 			nativeReplayId,
 			textDeltas,
 			debugRecorder: sdkEventDebug,
+			ompExecEnabled: execHandlers !== undefined,
 		});
 
 		completed = true;
 		return {
 			runtimeTarget: "local",
 			agent,
+			backendSession,
 			cwd,
 			payload: sendPayload,
 			meta: {

@@ -11,8 +11,8 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 - `shared/cursor-model-selection-identities.mjs` owns canonical selectable model/context identities, exactly-two-tier native `extendedContext` convergence, and context-window evidence-key normalization shared by runtime discovery and the snapshot generator; its `.d.mts` file owns the TypeScript contract.
 - `src/cursor-provider.ts` is a thin `streamCursor()` wrapper that delegates turn execution to the turn runner.
 - `src/cursor-provider-turn-runner.ts` orchestrates provider turns (pre-send drain, prepare, send, finalize, emit, cleanup).
-- `src/cursor-provider-turn-prepare.ts` owns turn prepare (auth, MCP timeout install, effective local HTTP transport configuration, session agent, live-run setup, coordinator).
-- `src/cursor-provider-turn-send.ts` owns pre-send local billed-usage baselining, SDK `agent.send()` wiring, and abort listener registration.
+- `src/cursor-provider-turn-prepare.ts` owns turn prepare (auth, MCP timeout install, effective local HTTP transport configuration, backend acquire, session agent, live-run setup, coordinator).
+- `src/cursor-provider-turn-send.ts` owns pre-send local billed-usage baselining, backend session send, and abort listener registration.
 - `src/cursor-provider-turn-finalize.ts` owns unified `awaitFinalizeCursorRunOutcome()` (wait, transcript replay, incomplete tools, artifacts, context cache).
 - `src/cursor-provider-turn-emit.ts` owns live vs direct emission from finalized outcomes.
 - `src/cursor-provider-turn-types.ts` owns immutable turn phase data and explicit phase result types; phase-local cleanup stays inside the owning phase.
@@ -26,6 +26,8 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 - `src/cursor-http1.ts` owns branch-scoped local HTTP/1.1 session state, global-preference override tracking, and extension-owned SDK configuration/null reset.
 - `src/cursor-ripgrep-path.ts` owns bundled Cursor SDK platform ripgrep resolution and local-agent environment initialization.
 - `src/cursor-session-agent.ts` owns session-scoped SDK agent pooling, transport-aware pool identity, send-state commits, busy tracking for in-flight SDK `run.wait()` work, and scoped acquire/dispose state.
+- `src/cursor-backend.ts` owns CursorBackend acquire/send wrapping session-agent pooling (local) and Agent.create (cloud).
+- `src/cursor-omp-exec-adapter.ts` owns SDK custom-tool routing of built-in Cursor tools through OMP `CursorExecHandlers`; extension tools stay on the loopback MCP bridge.
 - `src/cursor-session-agent-lineage.ts` owns non-resumable per-session local agent lineage custom entries independent of local resume.
 - `src/cursor-session-agent-lifecycle.ts` owns lazy session-agent lifecycle invalidation on model select, compaction, tree navigation, shutdown, and scope changes, including shutdown-time HTTP transport reset before module reload.
 - `src/cursor-session-compaction-prep.ts` owns `prepareCursorSessionForCompaction()` (release scoped live runs, reset pooled agent, suppress summarizer resume-handle persist) wired from `session_before_compact` in `src/index.ts`.

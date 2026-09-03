@@ -1,5 +1,6 @@
 import type { AssistantMessage, AssistantMessageEventStream } from "@oh-my-pi/pi-ai";
 import type { InteractionUpdate } from "@cursor/sdk";
+import { isCursorOmpExecToolCall } from "./cursor-omp-exec-adapter.js";
 import type { CursorLiveRun } from "./cursor-live-run-coordinator.js";
 import { cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
 import { truncateCursorDisplayLine } from "./cursor-display-text.js";
@@ -45,6 +46,7 @@ export interface CursorSdkTurnCoordinatorOptions {
 	nativeReplayId: string;
 	textDeltas: string[];
 	debugRecorder?: CursorSdkEventDebugRecorder;
+	ompExecEnabled?: boolean;
 }
 
 export class CursorSdkTurnCoordinator {
@@ -58,6 +60,7 @@ export class CursorSdkTurnCoordinator {
 	readonly nativeReplayId: string;
 	readonly textDeltas: string[];
 
+	private readonly ompExecEnabled: boolean;
 	private readonly debugRecorder?: CursorSdkEventDebugRecorder;
 	private readonly ledger = new CursorToolCompletionLedger();
 	private readonly shellOutput = new CursorShellOutputTracker();
@@ -77,6 +80,7 @@ export class CursorSdkTurnCoordinator {
 		this.nativeReplayId = options.nativeReplayId;
 		this.textDeltas = options.textDeltas;
 		this.debugRecorder = options.debugRecorder;
+		this.ompExecEnabled = options.ompExecEnabled === true;
 		this.contentEmitter = createTurnCoordinatorContentEmitter(options.stream, options.partial);
 		this.displayRouter = new CursorTurnDisplayRouter({
 			cwd: options.cwd,
@@ -94,8 +98,13 @@ export class CursorSdkTurnCoordinator {
 			contentEmitter: this.contentEmitter,
 			debugRecorder: options.debugRecorder,
 			hasStartedToolCall: (callId) => this.ledger.hasStartedToolCall(callId),
-			isBridgeMcpToolCall: (toolCall) => options.liveRun?.bridgeRun?.isBridgeMcpToolCall(toolCall) ?? false,
+			isBridgeMcpToolCall: (toolCall) => this.isHostExecutedToolCall(toolCall),
 		});
+	}
+
+	private isHostExecutedToolCall(toolCall: unknown): boolean {
+		if (this.liveRun?.bridgeRun?.isBridgeMcpToolCall(toolCall)) return true;
+		return this.ompExecEnabled && isCursorOmpExecToolCall(toolCall);
 	}
 
 	get planTextCandidate(): string | undefined {
@@ -182,7 +191,7 @@ export class CursorSdkTurnCoordinator {
 			return;
 		}
 		if (update.type === "tool-call-started") {
-			if (this.liveRun?.bridgeRun?.isBridgeMcpToolCall(update.toolCall)) {
+			if (this.isHostExecutedToolCall(update.toolCall)) {
 				if (typeof update.callId === "string") this.ledger.markBridgeStarted(update.callId);
 			} else {
 				this.lifecycleEmitter.maybeSchedule(update.callId, update.toolCall);
@@ -202,6 +211,7 @@ export class CursorSdkTurnCoordinator {
 				liveRun: this.liveRun,
 				ledger: this.ledger,
 				shellOutput: this.shellOutput,
+				isHostExecutedToolCall: (toolCall) => this.isHostExecutedToolCall(toolCall),
 				onClearStartedCallId: (callId) => {
 					this.lifecycleEmitter.cancel(callId);
 					this.shellOutput.onShellToolCleared(callId);
@@ -261,6 +271,7 @@ export class CursorSdkTurnCoordinator {
 			liveRun: this.liveRun,
 			ledger: this.ledger,
 			shellOutput: this.shellOutput,
+			isHostExecutedToolCall: (toolCall) => this.isHostExecutedToolCall(toolCall),
 			onClearStartedCallId: (callId) => {
 				this.lifecycleEmitter.cancel(callId);
 				this.shellOutput.onShellToolCleared(callId);
