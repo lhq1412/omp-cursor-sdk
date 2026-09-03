@@ -62,9 +62,11 @@ export function isCursorOmpExecToolCall(toolCall: unknown): boolean {
 }
 
 export function toolResultMessageToSdkCustomToolResult(toolResult: ToolResultMessage): SDKCustomToolResult {
-	const content = toolResult.content
-		.filter((block): block is { type: "text"; text: string } => block.type === "text")
-		.map((block) => ({ type: "text" as const, text: block.text }));
+	const content = toolResult.content.map((block) =>
+		block.type === "text"
+			? { type: "text" as const, text: block.text }
+			: { type: "image" as const, data: block.data, mimeType: block.mimeType },
+	);
 	return {
 		content: content.length > 0 ? content : [{ type: "text", text: "" }],
 		isError: toolResult.isError === true,

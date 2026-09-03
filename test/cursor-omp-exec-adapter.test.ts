@@ -352,6 +352,26 @@ describe("toolResultMessageToSdkCustomToolResult", () => {
 			isError: false,
 		});
 	});
+
+	it("preserves image content", () => {
+		expect(toolResultMessageToSdkCustomToolResult({
+			role: "toolResult",
+			toolCallId: "tc",
+			toolName: "read",
+			content: [
+				{ type: "text", text: "preview" },
+				{ type: "image", data: "aW1hZ2U=", mimeType: "image/png" },
+			],
+			isError: false,
+			timestamp: 1,
+		})).toEqual({
+			content: [
+				{ type: "text", text: "preview" },
+				{ type: "image", data: "aW1hZ2U=", mimeType: "image/png" },
+			],
+			isError: false,
+		});
+	});
 });
 
 describe("isCursorOmpExecToolCall", () => {
