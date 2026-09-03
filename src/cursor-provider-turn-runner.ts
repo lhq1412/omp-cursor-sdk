@@ -145,7 +145,6 @@ export class CursorProviderTurnRunner {
 				resolvedApiKey: this.resolvedApiKey,
 				optionsApiKey: resolveCursorStringApiKeySync(options?.apiKey),
 				sdkEventDebug: this.sdkEventDebug,
-				contextWindowAgentId: prepared.contextWindowAgentId,
 			});
 			prepared.lifecycle.trackRunCompletion(outcomePromise);
 			const finalized = await outcomePromise;

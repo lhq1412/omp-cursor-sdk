@@ -1,5 +1,4 @@
 import type { Context, CursorToolResultHandler, ToolResultMessage } from "@oh-my-pi/pi-ai";
-import type { SDKAgent } from "@cursor/sdk";
 import {
 	consumeCursorLiveToolResults,
 	createCursorLiveRunAccountingState,
@@ -37,7 +36,7 @@ export interface CursorLiveSdkRun {
 
 export interface CursorLiveRun {
 	id: string;
-	agent: SDKAgent;
+	agentId: string;
 	bridgeRun?: CursorPiToolBridgeRun;
 	sessionBridgeRun?: CursorPiToolBridgeRun;
 	sessionAgentScopeKey: string;
@@ -62,7 +61,7 @@ export interface CursorLiveRun {
 
 export interface CursorLiveRunCreateParams {
 	id: string;
-	agent: SDKAgent;
+	agentId: string;
 	bridgeRun?: CursorPiToolBridgeRun;
 	sessionBridgeRun?: CursorPiToolBridgeRun;
 	sessionAgentScopeKey?: string;
@@ -287,7 +286,7 @@ export function createCursorLiveRunCoordinator(deps: CursorLiveRunCoordinatorDep
 			const sessionAgentScopeKey = params.sessionAgentScopeKey ?? getScopeKey();
 			const run: CursorLiveRun = {
 				id: params.id,
-				agent: params.agent,
+				agentId: params.agentId,
 				bridgeRun: params.bridgeRun,
 				sessionBridgeRun: params.sessionBridgeRun,
 				sessionAgentScopeKey,

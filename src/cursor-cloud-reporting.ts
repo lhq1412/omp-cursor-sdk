@@ -1,4 +1,4 @@
-import type { Run, RunResult, SDKAgent, SDKArtifact, TokenUsage } from "@cursor/sdk";
+import type { Run, RunResult, SDKArtifact, TokenUsage } from "@cursor/sdk";
 import { truncateCursorDisplayLine } from "./cursor-display-text.js";
 import { scrubSensitiveText } from "./cursor-sensitive-text.js";
 import { asRecord, getArray, getNumber, getRecord, getString } from "./cursor-record-utils.js";
@@ -180,25 +180,30 @@ function mapCursorSdkAgentUsageToCloudReport(value: unknown, runId?: string): Cu
 	});
 }
 
+export interface CursorCloudRunAccess {
+	listArtifacts?: () => Promise<SDKArtifact[]>;
+	getUsage?: (options?: { runId?: string }) => Promise<unknown>;
+}
+
 export async function collectCursorCloudRunReport(options: {
-	agent: SDKAgent;
+	access: CursorCloudRunAccess;
 	run: Run;
 	waitResult: RunResult;
 	apiKey: string | undefined;
 	agentUsage?: unknown;
 }): Promise<CursorCloudRunReport> {
-	const listArtifacts = options.agent.listArtifacts;
+	const listArtifacts = options.access.listArtifacts;
 	const sdkUsage =
 		options.agentUsage !== undefined
 			? mapCursorSdkAgentUsageToCloudReport(options.agentUsage, options.run.id)
-			: typeof options.agent.getUsage === "function"
+			: typeof options.access.getUsage === "function"
 				? mapCursorSdkAgentUsageToCloudReport(
-					await withTimeout(Promise.resolve(options.agent.getUsage({ runId: options.run.id }))),
+					await withTimeout(Promise.resolve(options.access.getUsage({ runId: options.run.id }))),
 					options.run.id,
 				)
 				: undefined;
 	const [artifactResult, restUsage] = await Promise.all([
-		typeof listArtifacts === "function" ? withTimeout(listArtifacts.call(options.agent)) : undefined,
+		typeof listArtifacts === "function" ? withTimeout(listArtifacts()) : undefined,
 		sdkUsage ? undefined : fetchCursorCloudRawUsage({ agentId: options.run.agentId, runId: options.run.id, apiKey: options.apiKey }),
 	]);
 	const usage = sdkUsage ?? restUsage;

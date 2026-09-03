@@ -8,13 +8,36 @@ import { __testUtils as cursorSessionScopeTestUtils } from "../src/cursor-sessio
 import { __testUtils as resumeTestUtils } from "../src/cursor-session-agent-resume.js";
 import { installCursorSessionStoreMock } from "./helpers/cursor-session-store.js";
 
-const { recordCursorCloudLifecycleSafely } = vi.hoisted(() => ({
+const {
+	recordCursorCloudLifecycleSafely,
+	sdkCreate,
+	createAgentPlatform,
+	loadLatest,
+	saveCachedContextWindow,
+} = vi.hoisted(() => ({
 	recordCursorCloudLifecycleSafely: vi.fn(() => true),
+	sdkCreate: vi.fn(),
+	createAgentPlatform: vi.fn(),
+	loadLatest: vi.fn(),
+	saveCachedContextWindow: vi.fn(),
 }));
 
 vi.mock("../src/cursor-cloud-lifecycle.js", () => ({
 	recordCursorCloudLifecycleSafely,
 	createCursorCloudLifecyclePersistenceError: vi.fn(),
+}));
+
+vi.mock("../src/cursor-sdk-runtime.js", () => ({
+	loadCursorSdk: vi.fn(async () => ({
+		Agent: { create: sdkCreate, resume: vi.fn() },
+		createAgentPlatform,
+	})),
+}));
+
+vi.mock("../src/context-window-cache.js", () => ({
+	getCheckpointContextWindow: (checkpoint: unknown) =>
+		(checkpoint as { tokenDetails?: { maxTokens?: number } } | null)?.tokenDetails?.maxTokens,
+	saveCachedContextWindow,
 }));
 
 function localAcquireParams(createAgent: (options: unknown) => Promise<unknown>) {
@@ -25,6 +48,10 @@ function localAcquireParams(createAgent: (options: unknown) => Promise<unknown>)
 		modelSelection: { id: "composer-2.5" },
 		createAgent: createAgent as NonNullable<Parameters<typeof acquireSessionCursorAgent>[0]["createAgent"]>,
 	};
+}
+function backendLocalAcquireParams() {
+	const { createAgent: _createAgent, ...params } = localAcquireParams(vi.fn());
+	return params;
 }
 
 describe("cursor-backend", () => {
@@ -37,10 +64,10 @@ describe("cursor-backend", () => {
 		recordCursorCloudLifecycleSafely.mockReturnValue(true);
 	});
 
-	it("local acquire calls through to createAgent and session.send calls agent.send", async () => {
+	it("local acquire hides the SDK agent and forwards send", async () => {
 		const send = vi.fn().mockResolvedValue({ id: "run-1", agentId: "agent-1", status: "finished" });
 		const dispose = vi.fn().mockResolvedValue(undefined);
-		const createAgent = vi.fn().mockResolvedValue({
+		sdkCreate.mockResolvedValue({
 			agentId: "agent-1",
 			send,
 			[Symbol.asyncDispose]: dispose,
@@ -49,17 +76,27 @@ describe("cursor-backend", () => {
 
 		const session = await sdkCursorBackend.acquire({
 			runtimeTarget: "local",
-			sessionAgent: localAcquireParams(createAgent),
+			sessionAgent: backendLocalAcquireParams(),
 		});
 
-		expect(createAgent).toHaveBeenCalledTimes(1);
+		expect(sdkCreate).toHaveBeenCalledTimes(1);
 		expect(session.id).toBe("agent-1");
-		expect(session.agent).toBe(session.lease.agent);
-		expect(session.agent.agentId).toBe("agent-1");
+		expect("agent" in session).toBe(false);
+		expect("lease" in session).toBe(false);
 		const payload = { text: "hello" };
 		const options = { mode: "agent" as const };
 		await session.send({ payload, options });
 		expect(send).toHaveBeenCalledWith(payload, options);
+		createAgentPlatform.mockResolvedValue({ checkpointStore: { loadLatest } });
+		loadLatest.mockResolvedValue({ tokenDetails: { maxTokens: 200_000 } });
+		await session.cacheContextWindow("composer-2.5");
+		expect(createAgentPlatform).toHaveBeenCalledWith(expect.objectContaining({
+			workspaceRef: "/tmp/project",
+			scopedWorkspaceRef: "/tmp/project",
+			localStore: expect.any(Object),
+		}));
+		expect(loadLatest).toHaveBeenCalledWith("agent-1");
+		expect(saveCachedContextWindow).toHaveBeenCalledWith("composer-2.5", 200_000);
 
 		await session.dispose();
 		expect(dispose).not.toHaveBeenCalled();
@@ -73,15 +110,15 @@ describe("cursor-backend", () => {
 			send,
 			[Symbol.asyncDispose]: dispose,
 		} as unknown as SDKAgent;
-		const createAgent = vi.fn().mockResolvedValue(agent);
+		sdkCreate.mockResolvedValue(agent);
 
 		const session = await sdkCursorBackend.acquire({
 			runtimeTarget: "cloud",
-			createAgent,
+			options: { apiKey: "test-key", cloud: {} },
 		});
 
-		expect(createAgent).toHaveBeenCalledTimes(1);
-		expect(session.agent).toBe(agent);
+		expect(sdkCreate).toHaveBeenCalledTimes(1);
+		expect("agent" in session).toBe(false);
 		expect(session.id).toBe("bc-1");
 		expect("lease" in session).toBe(false);
 
@@ -94,20 +131,18 @@ describe("cursor-backend", () => {
 		expect(dispose).toHaveBeenCalledTimes(1);
 	});
 
-	it("sendCursorProviderTurn uses backendSession.send instead of agent.send", async () => {
-		const agentSend = vi.fn();
+	it("sendCursorProviderTurn sends through the backend session", async () => {
 		const run = { id: "run-1", agentId: "agent-cloud", requestId: "req-1", status: "running", cancel: vi.fn() };
 		const sessionSend = vi.fn().mockResolvedValue(run);
-		const agent = { agentId: "agent-cloud", send: agentSend } as unknown as SDKAgent;
 		const backendSession = {
 			id: "agent-cloud",
-			agent,
 			send: sessionSend,
+			attachBilledTurnUsage: async () => ({}),
+			collectRunReport: async () => ({ agentId: "agent-cloud", runId: "run-1", branches: [] }),
 			dispose: async () => {},
 		};
 		const prepared = {
 			runtimeTarget: "cloud",
-			agent,
 			backendSession,
 			cwd: "/tmp",
 			payload: { text: "hi" },
@@ -122,7 +157,6 @@ describe("cursor-backend", () => {
 				agentMode: "agent",
 				modelSelection: { id: "composer-2.5" },
 			},
-			contextWindowAgentId: "agent-cloud",
 			textDeltas: [],
 			restoreCursorSdkOutputFilter: () => {},
 			lifecycle: {
@@ -155,7 +189,6 @@ describe("cursor-backend", () => {
 			payload: { text: "hi" },
 			options: expect.objectContaining({ mode: "agent" }),
 		});
-		expect(agentSend).not.toHaveBeenCalled();
 	});
 
 	it("omits disallowedTools from Agent.create when unset", async () => {

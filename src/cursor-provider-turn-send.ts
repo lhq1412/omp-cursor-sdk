@@ -3,10 +3,7 @@ import {
 	createCursorOmpExecCustomTools,
 	resolveCursorProviderExecHandlers,
 } from "./cursor-omp-exec-adapter.js";
-import {
-	invalidateCursorAgentMessageOffset,
-	readCursorAgentMessageOffset,
-} from "./cursor-agent-message-web-tools.js";
+import { getActiveContextToolNames } from "./cursor-context-tools.js";
 import {
 	createCursorCloudLifecyclePersistenceError,
 	recordCursorCloudLifecycleSafely,
@@ -14,7 +11,6 @@ import {
 import { CursorLiveRunAbortError } from "./cursor-live-run-coordinator.js";
 import { cursorLiveRuns } from "./cursor-provider-live-run-drain.js";
 import { consumeCursorLocalForceOverride } from "./cursor-runtime-state.js";
-import { initializeCursorLocalBilledUsage } from "./cursor-sdk-billed-usage.js";
 import { recordCursorSessionAgentLineage } from "./cursor-session-agent-lineage.js";
 import type { installCursorSdkProcessErrorGuard } from "./cursor-sdk-process-error-guard.js";
 import type {
@@ -23,6 +19,7 @@ import type {
 	CursorProviderTurnSendResult,
 } from "./cursor-provider-turn-types.js";
 import type { CursorSdkEventDebugSink } from "./cursor-sdk-event-debug.js";
+import type { CursorBackendRun } from "./cursor-backend.js";
 
 export interface SendCursorProviderTurnParams {
 	params: CursorProviderTurnRunnerParams;
@@ -35,7 +32,7 @@ export interface SendCursorProviderTurnParams {
 
 const CLOUD_LEDGER_CANCEL_TIMEOUT_MS = 5000;
 
-async function requestBoundedCloudRunCancellation(run: Awaited<ReturnType<CursorProviderTurnPrepareResult["agent"]["send"]>>): Promise<boolean> {
+async function requestBoundedCloudRunCancellation(run: CursorBackendRun): Promise<boolean> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const timeout = new Promise<false>((resolve) => {
 		timer = setTimeout(() => resolve(false), CLOUD_LEDGER_CANCEL_TIMEOUT_MS);
@@ -62,11 +59,11 @@ function recordDebug(action: () => void): void {
 export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnParams): Promise<CursorProviderTurnSendResult> {
 	const { params, prepared, sdkEventDebug, sdkProcessErrorGuard, throwIfAborted, resolvedApiKey } = sendParams;
 	const { options } = params;
-	const { agent, cwd, payload, meta, runtime } = prepared;
+	const { backendSession, payload, meta, runtime } = prepared;
 	const { turnCoordinator, liveRun } = runtime;
 
 	let completed = false;
-	let sdkRun: Awaited<ReturnType<typeof agent.send>> | null = null;
+	let sdkRun: CursorBackendRun | null = null;
 	const abortListener = () => {
 		sdkProcessErrorGuard.suppressAbortErrors();
 		liveRun?.bridgeRun?.cancel("Cursor SDK run aborted");
@@ -84,9 +81,9 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 		throwIfAborted();
 		let cursorAgentMessageOffset: number | undefined;
 		if (prepared.runtimeTarget === "local") {
-			void initializeCursorLocalBilledUsage(agent, agent.agentId);
+			void prepared.backendSession.initializeBilledUsage();
 			try {
-				cursorAgentMessageOffset = await readCursorAgentMessageOffset(agent, cwd, prepared.sessionAgentLease.store);
+				cursorAgentMessageOffset = await prepared.backendSession.readMessageOffset();
 			} catch (error) {
 				recordDebug(() => sdkEventDebug?.recordError("cursor_agent_message_count", error));
 			}
@@ -125,16 +122,20 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 			if (consumeCursorLocalForceOverride(prepared.localForce)) local.force = true;
 			const execHandlers = resolveCursorProviderExecHandlers(options);
 			if (execHandlers) {
-				local.customTools = createCursorOmpExecCustomTools(execHandlers, (toolResult, args) => {
-					turnCoordinator.emitResolvedOmpExecTool(toolResult, args, options?.cursorOnToolResult);
-				});
+				local.customTools = createCursorOmpExecCustomTools(
+					execHandlers,
+					getActiveContextToolNames(params.context),
+					(toolResult, args) => {
+						turnCoordinator.emitResolvedOmpExecTool(toolResult, args, options?.cursorOnToolResult);
+					},
+				);
 			}
 			if (local.force || local.customTools) sendOptions.local = local;
 		}
 		const runPromise = prepared.backendSession.send({ payload, options: sendOptions });
 		// Record at send initiation (promise created), including later reject/cancel paths.
 		if (prepared.runtimeTarget === "local") {
-			recordCursorSessionAgentLineage(agent.agentId);
+			recordCursorSessionAgentLineage(backendSession.id);
 		}
 		const run = await runPromise;
 		sdkRun = run;
@@ -170,7 +171,7 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 		};
 	} finally {
 		if (!completed && prepared.runtimeTarget === "local") {
-			invalidateCursorAgentMessageOffset(agent);
+			prepared.backendSession.invalidateMessageOffset();
 		}
 		if (!completed && abortRegistration) {
 			abortRegistration.signal.removeEventListener("abort", abortRegistration.listener);

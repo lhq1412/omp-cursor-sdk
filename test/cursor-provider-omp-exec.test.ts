@@ -19,6 +19,7 @@ import { CursorSdkTurnCoordinator } from "../src/cursor-provider-turn-coordinato
 import { drainCursorLiveRunTurn, cursorLiveRuns } from "../src/cursor-provider-live-run-drain.js";
 import { makeAssistantMessage } from "./helpers/pi-harness.js";
 import { CURSOR_OMP_EXEC_DISALLOWED_TOOLS } from "../src/cursor-omp-exec-adapter.js";
+import { CursorPartialContentEmitter } from "../src/cursor-partial-content-emitter.js";
 
 function finishedRun() {
 	return {
@@ -80,6 +81,34 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 			isError: false,
 		});
 		expect(piRead).toHaveBeenCalledTimes(1);
+	});
+
+	it("exposes only custom tools granted in context.tools", async () => {
+		const mockSend = vi.fn().mockResolvedValue(finishedRun());
+		mockCreatedAgent({
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		await collectEvents(streamCursor(makeModel("composer-2"), {
+			...makeContext(),
+			tools: [{ name: "read" } as never],
+		}, {
+			apiKey: "test-key",
+			execHandlers: {
+				piRead: async () => toolResult("file"),
+				piBash: async () => toolResult("sh"),
+				piWrite: async () => toolResult("wrote"),
+			},
+		}));
+
+		const customTools = mockSend.mock.calls[0]?.[1]?.local?.customTools ?? {};
+		expect(customTools.read).toBeDefined();
+		expect(customTools.ls).toBeDefined();
+		expect(customTools.delete).toBeDefined();
+		expect(customTools.shell).toBeUndefined();
+		expect(customTools.write).toBeUndefined();
+		expect(customTools.edit).toBeUndefined();
 	});
 
 	it("keeps the extension MCP bridge when execHandlers are present", async () => {
@@ -164,7 +193,7 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 		const onToolResult = vi.fn();
 		const run = cursorLiveRuns.start({
 			id: "chain-exec",
-			agent: { agentId: "a1" } as never,
+			agentId: "a1",
 			promptInputTokens: 0,
 			sessionAgentScopeKey: "chain-exec-scope",
 		});
@@ -182,5 +211,22 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 		const block = partial.content.find((entry) => entry.type === "toolCall");
 		expect(block).toMatchObject({ type: "toolCall", id: "tc" });
 		expect(isCursorExecResolved(block)).toBe(true);
+	});
+
+	it("recognizes a foreign cursorExecResolved symbol without changing serialized toolCall shape", () => {
+		const stream = createAssistantMessageEventStream();
+		const partial = makeAssistantMessage("");
+		new CursorPartialContentEmitter(stream, partial).appendResolvedOmpExecTool(toolResult("file"), { path: "a.ts" });
+		const block = partial.content.find((entry) => entry.type === "toolCall");
+		const foreignResolved = Symbol("provider.block.cursorExecResolved");
+		expect(isCursorExecResolved(block)).toBe(true);
+		expect(block && (block as unknown as Record<symbol, unknown>)[foreignResolved]).toBe(true);
+		expect(Object.keys(block as object)).toEqual(["type", "id", "name", "arguments"]);
+		expect(JSON.parse(JSON.stringify(block))).toEqual({
+			type: "toolCall",
+			id: "tc",
+			name: "read",
+			arguments: { path: "a.ts" },
+		});
 	});
 });

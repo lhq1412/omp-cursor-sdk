@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ModelSelection, SDKAgent } from "@cursor/sdk";
+import type { SDKAgent } from "@cursor/sdk";
+import type { CursorBackendRun, CursorBackendRunResult } from "../src/cursor-backend.js";
 import type { CursorProviderTurnPrepareResult } from "../src/cursor-provider-turn-types.js";
 import type { CursorSdkEventDebugSink } from "../src/cursor-sdk-event-debug.js";
+import { collectCursorCloudRunReport } from "../src/cursor-cloud-reporting.js";
 import {
 	CLOUD_LIFECYCLE_ENTRY_TYPE,
 	__testUtils as cloudLifecycleTestUtils,
@@ -12,36 +14,36 @@ import { createPiHarness } from "./helpers/pi-harness.js";
 
 const CLOUD_AGENT_ID = "bc-00000000-0000-0000-0000-000000000001";
 
-const { createAgentPlatform, loadLatest, saveCachedContextWindow } = vi.hoisted(() => ({
-	createAgentPlatform: vi.fn(),
-	loadLatest: vi.fn(),
-	saveCachedContextWindow: vi.fn(),
-}));
 
-vi.mock("../src/cursor-sdk-runtime.js", () => ({
-	loadCursorSdk: vi.fn(async () => ({ createAgentPlatform })),
-}));
-
-vi.mock("../src/context-window-cache.js", () => ({
-	getCheckpointContextWindow: (checkpoint: unknown) =>
-		(checkpoint as { tokenDetails?: { maxTokens?: number } } | null)?.tokenDetails?.maxTokens,
-	getCursorContextWindowCacheKey: (modelId: string, selection: ModelSelection) => {
-		const context = selection.params?.find((param) => param.id === "context")?.value;
-		return context ? `${selection.id}@${context}` : modelId;
-	},
-	saveCachedContextWindow,
-}));
-
-import { awaitFinalizeCursorRunOutcome, cacheSdkContextWindow } from "../src/cursor-provider-turn-finalize.js";
+import { awaitFinalizeCursorRunOutcome } from "../src/cursor-provider-turn-finalize.js";
 
 function makeCloudPrepared(agent: SDKAgent): CursorProviderTurnPrepareResult {
 	return {
 		runtimeTarget: "cloud",
-		agent,
+		backendSession: {
+			id: agent.agentId,
+			send: async () => { throw new Error("unused"); },
+			attachBilledTurnUsage: async () => ({}),
+			collectRunReport: (
+				run: CursorBackendRun,
+				waitResult: CursorBackendRunResult,
+				apiKey: string | undefined,
+				agentUsage?: unknown,
+			) => collectCursorCloudRunReport({
+				access: {
+					listArtifacts: agent.listArtifacts?.bind(agent),
+					getUsage: agent.getUsage?.bind(agent),
+				},
+				run,
+				waitResult,
+				apiKey,
+				agentUsage,
+			}),
+			dispose: async () => {},
+		},
 		cwd: process.cwd(),
 		payload: { text: "hello" },
 		meta: {},
-		contextWindowAgentId: CLOUD_AGENT_ID,
 		textDeltas: [],
 		restoreCursorSdkOutputFilter: () => {},
 		runtime: {
@@ -191,30 +193,5 @@ describe("awaitFinalizeCursorRunOutcome", () => {
 
 		expect(finalized.outcome.kind).toBe("finished");
 		expect(pi.appendEntry).toHaveBeenCalledTimes(1);
-	});
-});
-
-describe("cacheSdkContextWindow", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-		createAgentPlatform.mockResolvedValue({ checkpointStore: { loadLatest } });
-		loadLatest.mockResolvedValue({ tokenDetails: { maxTokens: 200_000 } });
-	});
-
-	it("opens the Cursor SDK platform scoped to the pi session cwd", async () => {
-		await cacheSdkContextWindow("agent-1", "composer-2.5", "/repo/session-cwd");
-
-		expect(createAgentPlatform).toHaveBeenCalledWith({
-			workspaceRef: "/repo/session-cwd",
-			scopedWorkspaceRef: "/repo/session-cwd",
-		});
-		expect(loadLatest).toHaveBeenCalledWith("agent-1");
-		expect(saveCachedContextWindow).toHaveBeenCalledWith("composer-2.5", 200_000);
-	});
-
-	it("keeps the SDK default platform path when no cwd is available", async () => {
-		await cacheSdkContextWindow("agent-1", "composer-2.5");
-
-		expect(createAgentPlatform).toHaveBeenCalledWith(undefined);
 	});
 });

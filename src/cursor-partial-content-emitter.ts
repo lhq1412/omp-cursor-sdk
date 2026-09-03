@@ -4,6 +4,15 @@ import { omitUndefinedArgs } from "@oh-my-pi/pi-ai/providers/cursor-pi-args";
 
 const DEFAULT_THINKING_TRACE_MAX_CHARS = 50000;
 
+const resolvedToolCallProxyHandler: ProxyHandler<object> = {
+	get(target, prop, receiver) {
+		if (typeof prop === "symbol" && prop.description === "provider.block.cursorExecResolved") {
+			return true;
+		}
+		return Reflect.get(target, prop, receiver);
+	},
+};
+
 export interface CursorPartialContentEmitterOptions {
 	stream: AssistantMessageEventStream;
 	partial: AssistantMessage;
@@ -65,13 +74,14 @@ export class CursorPartialContentEmitter {
 	): void {
 		this.closeAll();
 		const contentIndex = this.partial.content.length;
-		const block = {
+		const toolCall = {
 			type: "toolCall" as const,
 			id: toolResult.toolCallId,
 			name: toolResult.toolName,
 			arguments: omitUndefinedArgs(args),
 			[kCursorExecResolved]: true as const,
 		};
+		const block = new Proxy(toolCall, resolvedToolCallProxyHandler as ProxyHandler<typeof toolCall>);
 		this.partial.content.push(block);
 		this.stream.push({ type: "toolcall_start", contentIndex, partial: this.partial });
 		this.stream.push({ type: "toolcall_end", contentIndex, toolCall: block, partial: this.partial });

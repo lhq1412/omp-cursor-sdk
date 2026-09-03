@@ -1,18 +1,12 @@
-import type { LocalAgentStore, RunError, SDKAgent } from "@cursor/sdk";
+import type { RunError } from "@cursor/sdk";
+import type { CursorBackendRun, CursorBackendRunResult, LocalCursorBackendSession } from "./cursor-backend.js";
 import {
-	invalidateCursorAgentMessageOffset,
-	loadCursorTranscriptWebToolCallsAfterOffset,
-} from "./cursor-agent-message-web-tools.js";
-import {
-	collectCursorCloudRunReport,
 	formatCursorCloudRunReport,
 	type CursorCloudRunReport,
 } from "./cursor-cloud-reporting.js";
 import { recordCursorCloudLifecycleRun } from "./cursor-cloud-lifecycle.js";
 import {
-	getCheckpointContextWindow,
 	getCursorContextWindowCacheKey,
-	saveCachedContextWindow,
 } from "./context-window-cache.js";
 import { scrubSensitiveText } from "./cursor-sensitive-text.js";
 import type { CursorSdkEventDebugSink } from "./cursor-sdk-event-debug.js";
@@ -23,35 +17,9 @@ import {
 	type CursorRunOutcome,
 } from "./cursor-provider-run-outcome.js";
 import type { CursorProviderTurnPrepareResult } from "./cursor-provider-turn-types.js";
-import { loadCursorSdk } from "./cursor-sdk-runtime.js";
-import { attachCursorSdkBilledTurnUsage } from "./cursor-sdk-billed-usage.js";
-
-export async function cacheSdkContextWindow(
-	agentId: string,
-	modelId: string,
-	cwd?: string,
-	store?: LocalAgentStore,
-): Promise<void> {
-	try {
-		const { createAgentPlatform } = await loadCursorSdk();
-		const platform = await createAgentPlatform(
-			cwd || store
-				? {
-						...(cwd ? { workspaceRef: cwd, scopedWorkspaceRef: cwd } : {}),
-						...(store ? { localStore: store } : {}),
-					}
-				: undefined,
-		);
-		const checkpoint = await platform.checkpointStore.loadLatest(agentId);
-		const contextWindow = getCheckpointContextWindow(checkpoint);
-		if (contextWindow) saveCachedContextWindow(modelId, contextWindow);
-	} catch {
-		// Context-window cache failures must not affect response streaming.
-	}
-}
 
 export interface BuildCursorRunOutcomeParams {
-	waitResult: Awaited<ReturnType<Awaited<ReturnType<SDKAgent["send"]>>["wait"]>>;
+	waitResult: CursorBackendRunResult;
 	prepared: CursorProviderTurnPrepareResult;
 	signal?: AbortSignal;
 	runResultFallback?: string;
@@ -80,29 +48,22 @@ export function buildCursorRunOutcomeFromWait(params: BuildCursorRunOutcomeParam
 }
 
 async function replayCursorTranscriptWebToolCalls(
-	agent: SDKAgent,
-	cwd: string,
+	backendSession: LocalCursorBackendSession,
 	messageOffset: number | undefined,
-	turnStore: LocalAgentStore,
 	turnCoordinator: CursorSdkTurnCoordinator,
 	sdkEventDebug: CursorSdkEventDebugSink | undefined,
 ): Promise<void> {
 	try {
-		const transcriptToolCalls = await loadCursorTranscriptWebToolCallsAfterOffset({
-			agent,
-			cwd,
-			offset: messageOffset,
-			store: turnStore,
-		});
+		const transcriptToolCalls = await backendSession.loadTranscriptWebToolCallsAfterOffset(messageOffset);
 		if (transcriptToolCalls.length === 0) return;
 		sdkEventDebug?.recordCoordinatorEvent("cursor-transcript-web-tools", {
-			agentId: agent.agentId,
+			agentId: backendSession.id,
 			messageOffset,
 			count: transcriptToolCalls.length,
 		});
 		turnCoordinator.handleTranscriptCompletedToolCalls(transcriptToolCalls);
 	} catch (error) {
-		invalidateCursorAgentMessageOffset(agent);
+		backendSession.invalidateMessageOffset();
 		sdkEventDebug?.recordError("cursor_transcript_web_tools", error);
 	}
 }
@@ -124,7 +85,7 @@ function recordCursorCloudReportingError(
 }
 
 export interface AwaitFinalizeCursorRunOutcomeParams {
-	run: Awaited<ReturnType<SDKAgent["send"]>>;
+	run: CursorBackendRun;
 	prepared: CursorProviderTurnPrepareResult;
 	cursorAgentMessageOffset: number | undefined;
 	modelId: string;
@@ -134,10 +95,8 @@ export interface AwaitFinalizeCursorRunOutcomeParams {
 	resolvedApiKey?: string;
 	optionsApiKey?: string;
 	sdkEventDebug?: CursorSdkEventDebugSink;
-	waitResult?: Awaited<ReturnType<Awaited<ReturnType<SDKAgent["send"]>>["wait"]>>;
+	waitResult?: CursorBackendRunResult;
 	cacheContextWindow?: boolean;
-	/** Session agent id for checkpoint cache; defaults to run.agentId when omitted. */
-	contextWindowAgentId?: string;
 }
 
 export interface FinalizedCursorRunOutcome {
@@ -153,7 +112,7 @@ export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorR
 		waitResult = params.waitResult ?? (await params.run.wait());
 	} catch (error) {
 		if (params.prepared.runtimeTarget === "local") {
-			invalidateCursorAgentMessageOffset(params.prepared.agent);
+			params.prepared.backendSession.invalidateMessageOffset();
 		}
 		throw error;
 	}
@@ -167,14 +126,9 @@ export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorR
 		optionsApiKey: params.optionsApiKey,
 	});
 	if (params.prepared.runtimeTarget === "local" && !isCursorRunFinishedSuccessfully(outcome)) {
-		invalidateCursorAgentMessageOffset(params.prepared.agent);
+		params.prepared.backendSession.invalidateMessageOffset();
 	}
-	const billed = await attachCursorSdkBilledTurnUsage({
-		agent: params.prepared.agent,
-		agentId: params.prepared.runtimeTarget === "local" ? params.prepared.agent.agentId : params.run.agentId,
-		runtime: params.prepared.runtimeTarget,
-		runId: params.run.id,
-	});
+	const billed = await params.prepared.backendSession.attachBilledTurnUsage(params.run.id);
 	params.prepared.runtime.billedTurnUsage = billed.turn;
 	if (params.prepared.runtime.liveRun) {
 		params.prepared.runtime.liveRun.billedTurnUsage = billed.turn;
@@ -183,13 +137,12 @@ export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorR
 	if (params.prepared.runtimeTarget === "cloud" && isCursorRunFinishedSuccessfully(outcome)) {
 		let report: CursorCloudRunReport = { agentId: params.run.agentId, runId: params.run.id, branches: [] };
 		try {
-			report = await collectCursorCloudRunReport({
-				agent: params.prepared.agent,
-				run: params.run,
+			report = await params.prepared.backendSession.collectRunReport(
+				params.run,
 				waitResult,
 				apiKey,
-				agentUsage: billed.agentUsage,
-			});
+				billed.agentUsage,
+			);
 		} catch (error) {
 			recordCursorCloudReportingError(params.sdkEventDebug, error, apiKey);
 		}
@@ -216,10 +169,8 @@ export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorR
 	}
 	if (params.prepared.runtimeTarget === "local" && isCursorRunFinishedSuccessfully(outcome)) {
 		await replayCursorTranscriptWebToolCalls(
-			params.prepared.agent,
-			params.prepared.cwd,
+			params.prepared.backendSession,
 			params.cursorAgentMessageOffset,
-			params.prepared.sessionAgentLease.store,
 			params.prepared.runtime.turnCoordinator,
 			params.sdkEventDebug,
 		);
@@ -231,11 +182,8 @@ export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorR
 		// Debug artifact failures must never affect provider execution.
 	}
 	if (params.prepared.runtimeTarget === "local" && params.cacheContextWindow !== false) {
-		await cacheSdkContextWindow(
-			params.contextWindowAgentId ?? params.run.agentId,
+		await params.prepared.backendSession.cacheContextWindow(
 			getCursorContextWindowCacheKey(params.modelId, params.prepared.meta.modelSelection),
-			params.prepared.cwd,
-			params.prepared.sessionAgentLease.store,
 		);
 	}
 	return { outcome, displayOnlyTraceBlock };
