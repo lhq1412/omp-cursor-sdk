@@ -29,6 +29,14 @@ describe("CursorRunFinalizer", () => {
 		const prepared: LocalCursorProviderTurnPrepareResult & { runtime: LiveCursorProviderTurnRuntime } = {
 			runtimeTarget: "local",
 			agent: { agentId: "agent-1" } as SDKAgent,
+			backendSession: {
+				id: "agent-1",
+				agent: { agentId: "agent-1" } as SDKAgent,
+				send: async () => {
+					throw new Error("unused");
+				},
+				dispose: async () => {},
+			},
 			cwd: process.cwd(),
 			payload: { text: "hello" },
 			meta: {
@@ -152,6 +160,14 @@ describe("CursorRunFinalizer", () => {
 		const prepared: CursorProviderTurnPrepareResult = {
 			runtimeTarget: "local",
 			agent: { agentId: "agent-1" } as SDKAgent,
+			backendSession: {
+				id: "agent-1",
+				agent: { agentId: "agent-1" } as SDKAgent,
+				send: async () => {
+					throw new Error("unused");
+				},
+				dispose: async () => {},
+			},
 			cwd: process.cwd(),
 			payload: { text: "hello" },
 			meta: {
@@ -260,6 +276,14 @@ describe("CursorRunFinalizer", () => {
 		const prepared: CursorProviderTurnPrepareResult = {
 			runtimeTarget: "local",
 			agent: { agentId: "agent-1" } as SDKAgent,
+			backendSession: {
+				id: "agent-1",
+				agent: { agentId: "agent-1" } as SDKAgent,
+				send: async () => {
+					throw new Error("unused");
+				},
+				dispose: async () => {},
+			},
 			cwd: process.cwd(),
 			payload: { text: "hello" },
 			meta: {

@@ -43,6 +43,7 @@ export interface ResolveCursorToolCompletionOptions {
 	ledger: CursorToolCompletionLedger;
 	shellOutput: CursorShellOutputTracker;
 	onClearStartedCallId?: (callId: string) => void;
+	isHostExecutedToolCall?: (toolCall: unknown) => boolean;
 }
 
 export function resolveCursorToolCompletion(options: ResolveCursorToolCompletionOptions): ToolCompletionResolution {
@@ -92,7 +93,10 @@ export function resolveCursorToolCompletion(options: ResolveCursorToolCompletion
 		identity = identityId ? `cursor-tool:${identityId}` : undefined;
 	}
 
-	if (options.liveRun?.bridgeRun?.isBridgeMcpToolCall(resolvedToolCall)) {
+	if (
+		options.isHostExecutedToolCall?.(resolvedToolCall) ||
+		options.liveRun?.bridgeRun?.isBridgeMcpToolCall(resolvedToolCall)
+	) {
 		const bridgeIdentity =
 			options.source === "step" && matchedStartedCallId ? `cursor-tool:${matchedStartedCallId}` : identity;
 		if (bridgeIdentity) options.ledger.recordCompletedIdentity(bridgeIdentity);

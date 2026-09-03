@@ -161,7 +161,27 @@ function emitCursorLiveQueuedEvent(
 		turn.emittedText += event.text;
 		if (run) run.emittedText += event.text;
 		turn.emitter.appendTextDelta(event.text);
+	} else if (event.type === "omp-exec-resolved") {
+		turn.emitter.appendResolvedOmpExecTool(event.toolResult, event.args, event.onToolResult);
 	}
+}
+
+function flushQueuedOmpExecResolved(
+	stream: AssistantMessageEventStream,
+	partial: AssistantMessage,
+	run: CursorLiveRun,
+): void {
+	if (run.disposed) return;
+	const turn: CursorLiveTurnState = {
+		emitter: new CursorPartialContentEmitter(stream, partial, -1, true),
+		emittedText: "",
+	};
+	const preserved: CursorLiveQueuedEvent[] = [];
+	for (const event of run.pendingEvents) {
+		if (event.type === "omp-exec-resolved") emitCursorLiveQueuedEvent(turn, event, run);
+		else preserved.push(event);
+	}
+	run.pendingEvents = preserved;
 }
 
 function emitCursorNativeToolUseTurn(
@@ -318,6 +338,7 @@ export async function drainCursorLiveRunTurn(
 	try {
 		while (true) {
 			if (options.mode === "chain_user_input" && cursorLiveRuns.isReady(run)) {
+				flushQueuedOmpExecResolved(stream, partial, run);
 				await cursorLiveRuns.release(run);
 				outcome = "chain_user_input";
 				return outcome;
@@ -373,6 +394,7 @@ export async function drainCursorLiveRunTurn(
 			}
 			if (run.done) {
 				if (options.mode === "chain_user_input") {
+					flushQueuedOmpExecResolved(stream, partial, run);
 					await cursorLiveRuns.release(run);
 					outcome = "chain_user_input";
 					outcomeDetails = { reason: "run_done" };

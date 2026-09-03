@@ -1,4 +1,6 @@
-import type { AssistantMessage, AssistantMessageEventStream } from "@oh-my-pi/pi-ai";
+import type { AssistantMessage, AssistantMessageEventStream, CursorToolResultHandler, ToolResultMessage } from "@oh-my-pi/pi-ai";
+import { kCursorExecResolved } from "@oh-my-pi/pi-ai/utils/block-symbols";
+import { omitUndefinedArgs } from "@oh-my-pi/pi-ai/providers/cursor-pi-args";
 
 const DEFAULT_THINKING_TRACE_MAX_CHARS = 50000;
 
@@ -54,6 +56,26 @@ export class CursorPartialContentEmitter {
 	closeAll(): string {
 		this.closeThinking();
 		return this.closeText();
+	}
+
+	appendResolvedOmpExecTool(
+		toolResult: ToolResultMessage,
+		args: Record<string, unknown>,
+		onToolResult?: CursorToolResultHandler,
+	): void {
+		this.closeAll();
+		const contentIndex = this.partial.content.length;
+		const block = {
+			type: "toolCall" as const,
+			id: toolResult.toolCallId,
+			name: toolResult.toolName,
+			arguments: omitUndefinedArgs(args),
+			[kCursorExecResolved]: true as const,
+		};
+		this.partial.content.push(block);
+		this.stream.push({ type: "toolcall_start", contentIndex, partial: this.partial });
+		this.stream.push({ type: "toolcall_end", contentIndex, toolCall: block, partial: this.partial });
+		void onToolResult?.(toolResult);
 	}
 
 	appendThinkingDelta(delta: string, options?: { closeText?: boolean }): void {

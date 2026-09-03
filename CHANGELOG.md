@@ -2,15 +2,22 @@
 
 ## Unreleased
 
+### Changed
+
+- Route local `cursor-sdk` built-in Cursor tools through OMP `CursorExecHandlers` behind a thin `CursorBackend` session/send boundary; extension tools stay on the existing loopback MCP bridge. Cloud runtime create/send options are unchanged.
+
 ### Fixed
 
 - Bound `session_shutdown` cleanup to 1.25 seconds after immediately detaching pooled Cursor agents, cancelling bridge work, and clearing extension-owned HTTP state; normal scope and model resets still await full disposal.
+
+## 0.4.6 - 2026-09-03
 
 ## 0.4.5 - 2026-09-01
 
 ### Changed
 
 - Upgrade the exact Cursor SDK runtime and platform packages to 1.0.30, recapturing installed-package pagination, ripgrep, stalled-connection, closed-writable, local stdin, and usage contracts, refreshing fallback-model provenance, and retaining historical 1.0.23 fixtures where their captured provenance remains authoritative.
+
 
 ### Fixed
 

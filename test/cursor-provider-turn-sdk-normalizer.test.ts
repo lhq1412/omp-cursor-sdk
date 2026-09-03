@@ -109,4 +109,25 @@ describe("resolveCursorToolCompletion", () => {
 		expect(resolution.action).toBe("ignore-bridge");
 		expect(isBridgeMcpToolCall).toHaveBeenCalled();
 	});
+
+	it("ignores OMP exec custom-tool MCP completions", () => {
+		const ledger = new CursorToolCompletionLedger();
+		const shellOutput = new CursorShellOutputTracker();
+		const isHostExecutedToolCall = vi.fn(() => true);
+
+		const resolution = resolveCursorToolCompletion({
+			source: "delta",
+			callId: "exec-1",
+			toolCall: { type: "mcp", args: { providerIdentifier: "custom-user-tools", toolName: "read" } },
+			ledger,
+			shellOutput,
+			isHostExecutedToolCall,
+		});
+
+		expect(resolution).toEqual({
+			action: "ignore-bridge",
+			identity: "cursor-tool:exec-1",
+		});
+		expect(isHostExecutedToolCall).toHaveBeenCalled();
+	});
 });

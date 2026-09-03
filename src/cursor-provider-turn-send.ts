@@ -1,5 +1,9 @@
 import type { SendOptions } from "@cursor/sdk";
 import {
+	createCursorOmpExecCustomTools,
+	resolveCursorProviderExecHandlers,
+} from "./cursor-omp-exec-adapter.js";
+import {
 	invalidateCursorAgentMessageOffset,
 	readCursorAgentMessageOffset,
 } from "./cursor-agent-message-web-tools.js";
@@ -116,10 +120,18 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 			},
 		};
 		throwIfAborted();
-		if (prepared.runtimeTarget === "local" && consumeCursorLocalForceOverride(prepared.localForce)) {
-			sendOptions.local = { force: true };
+		if (prepared.runtimeTarget === "local") {
+			const local: NonNullable<SendOptions["local"]> = {};
+			if (consumeCursorLocalForceOverride(prepared.localForce)) local.force = true;
+			const execHandlers = resolveCursorProviderExecHandlers(options);
+			if (execHandlers) {
+				local.customTools = createCursorOmpExecCustomTools(execHandlers, (toolResult, args) => {
+					turnCoordinator.emitResolvedOmpExecTool(toolResult, args, options?.cursorOnToolResult);
+				});
+			}
+			if (local.force || local.customTools) sendOptions.local = local;
 		}
-		const runPromise = agent.send(payload, sendOptions);
+		const runPromise = prepared.backendSession.send({ payload, options: sendOptions });
 		// Record at send initiation (promise created), including later reject/cancel paths.
 		if (prepared.runtimeTarget === "local") {
 			recordCursorSessionAgentLineage(agent.agentId);

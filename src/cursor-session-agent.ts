@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { AgentModeOption, LocalAgentOptions, LocalAgentStore, ModelSelection, SDKAgent, SettingSource } from "@cursor/sdk";
+import type { AgentModeOption, LocalAgentOptions, LocalAgentStore, ModelSelection, SDKAgent, SettingSource, ToolName } from "@cursor/sdk";
 import type { Context } from "@oh-my-pi/pi-ai";
 import {
 	getRegisteredCursorPiToolBridge,
@@ -134,7 +134,7 @@ function rethrowSupersededWhenReplacedByDifferentPoolKey(scopeKey: string, poolK
 	}
 }
 
-interface SessionCursorAgentCreateParams {
+export interface SessionCursorAgentCreateParams {
 	apiKey: string;
 	agentMode: AgentModeOption;
 	cwd: string;
@@ -146,6 +146,7 @@ interface SessionCursorAgentCreateParams {
 	debugRecorder?: CursorSdkEventDebugRecorder;
 	localResume?: boolean;
 	forceCreate?: boolean;
+	disallowedTools?: ToolName[];
 	createAgent?: CursorSdkModule["Agent"]["create"];
 	resumeAgent?: CursorSdkModule["Agent"]["resume"];
 }
@@ -244,6 +245,7 @@ function buildSessionAgentPoolKey(scopeKey: string, params: SessionCursorAgentCr
 				: "http1:off",
 		buildApiKeyPoolKeyFingerprint(params.apiKey),
 		buildBridgePoolKeySuffix(),
+		`omp-exec:${params.disallowedTools?.join(",") || "off"}`,
 	].join("\0");
 }
 
@@ -508,6 +510,9 @@ async function createSessionAgentEntry(
 				store: sessionStore!.store,
 			}),
 			...(bridgeRun?.mcpServers ? { mcpServers: bridgeRun.mcpServers } : {}),
+			...(params.disallowedTools && params.disallowedTools.length > 0
+				? { disallowedTools: params.disallowedTools }
+				: {}),
 		});
 		let agent: SDKAgent | undefined;
 		let effectiveSendState = sendState;
