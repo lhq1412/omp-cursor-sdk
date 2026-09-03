@@ -156,7 +156,7 @@ const CUSTOM_TOOL_OMP_NAMES: { [K in CursorOmpExecCustomToolName]?: string } = {
 export type CursorOmpExecResolvedSink = (
 	toolResult: ToolResultMessage,
 	args: Record<string, unknown>,
-) => void | Promise<void>;
+) => ToolResultMessage | undefined | Promise<ToolResultMessage | undefined>;
 
 export function createCursorOmpExecCustomTools(
 	handlers: CursorExecHandlers,
@@ -173,6 +173,19 @@ export function createCursorOmpExecCustomTools(
 		};
 	}
 	return tools;
+}
+
+async function applyCursorOmpExecResolvedSink(
+	onResolved: CursorOmpExecResolvedSink | undefined,
+	toolResult: ToolResultMessage,
+	args: Record<string, unknown>,
+): Promise<ToolResultMessage> {
+	if (!onResolved) return toolResult;
+	try {
+		return (await onResolved(toolResult, args)) ?? toolResult;
+	} catch {
+		return toolResult;
+	}
 }
 
 async function executeCursorOmpExecTool(
@@ -195,8 +208,8 @@ async function executeCursorOmpExecTool(
 				timestamp: Date.now(),
 			}
 			: unwrapCursorExecHandlerResult(invoked, toolCallId, name);
-		await onResolved?.(toolResult, args);
-		return toolResultMessageToSdkCustomToolResult(toolResult);
+		const resolvedToolResult = await applyCursorOmpExecResolvedSink(onResolved, toolResult, args);
+		return toolResultMessageToSdkCustomToolResult(resolvedToolResult);
 	} catch (error) {
 		const toolResult = {
 			role: "toolResult" as const,
@@ -206,8 +219,8 @@ async function executeCursorOmpExecTool(
 			isError: true,
 			timestamp: Date.now(),
 		};
-		await onResolved?.(toolResult, args);
-		return toolResultMessageToSdkCustomToolResult(toolResult);
+		const resolvedToolResult = await applyCursorOmpExecResolvedSink(onResolved, toolResult, args);
+		return toolResultMessageToSdkCustomToolResult(resolvedToolResult);
 	}
 }
 

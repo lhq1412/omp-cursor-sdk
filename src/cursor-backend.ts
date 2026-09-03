@@ -12,8 +12,6 @@ import { getCheckpointContextWindow, saveCachedContextWindow } from "./context-w
 import { loadCursorSdk, type CursorSdkModule } from "./cursor-sdk-runtime.js";
 import { suppressCursorSdkOutput } from "./cursor-sdk-output-filter.js";
 
-// TODO(issue-11): align bootstrap/context conversion with OMP built-in cursor/* semantics.
-
 export type CursorBackendRun = Run;
 export type CursorBackendRunResult = Awaited<ReturnType<CursorBackendRun["wait"]>>;
 

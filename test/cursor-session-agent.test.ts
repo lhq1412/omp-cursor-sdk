@@ -823,24 +823,28 @@ describe("cursor-session-agent", () => {
 		expect(mockDispose).toHaveBeenCalledTimes(2);
 	});
 
-	it("disposes the previous scope agent when the session file changes", async () => {
+	it("does not reuse committed send state after a copy-switch session file change", async () => {
 		const mockDispose = vi.fn().mockResolvedValue(undefined);
-		const createAgent = vi.fn().mockResolvedValue({
-			agentId: "agent-1",
+		const createAgent = vi.fn().mockImplementation(async () => ({
+			agentId: `agent-${createAgent.mock.calls.length + 1}`,
 			[Symbol.asyncDispose]: mockDispose,
-		});
+		}));
 		const pi = createEventHarness();
-
-		registerCursorSessionScope(pi);
-		registerCursorSessionAgentLifecycle(pi);
-		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/session-a.jsonl");
-		await acquireSessionCursorAgent({
+		const params = {
 			apiKey: "test-key",
 			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
-		});
+		};
+		const context = makeContext([{ role: "user", content: "Hello", timestamp: 1 }]);
+
+		registerCursorSessionScope(pi);
+		registerCursorSessionAgentLifecycle(pi);
+		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/session-a.jsonl");
+		const first = await acquireSessionCursorAgent(params);
+		first.commitSend(context, true);
+		expect(first.sendState.bootstrapped).toBe(true);
 
 		await pi.invokeEventWithContext(
 			"session_start",
@@ -855,6 +859,11 @@ describe("cursor-session-agent", () => {
 
 		expect(sessionAgentTestUtils.sessionAgentsByScope.has("/tmp/sessions/session-a.jsonl")).toBe(false);
 		expect(mockDispose).toHaveBeenCalledTimes(1);
+
+		const second = await acquireSessionCursorAgent(params);
+		expect(second.scopeKey).toBe("/tmp/sessions/session-b.jsonl");
+		expect(second.agent).not.toBe(first.agent);
+		expect(second.sendState).toEqual({ bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0 });
 	});
 
 	it("invalidates and recreates the session agent after session_tree-style invalidation", async () => {
@@ -882,28 +891,36 @@ describe("cursor-session-agent", () => {
 		expect(mockDispose).toHaveBeenCalledTimes(1);
 	});
 
-	it("resets the scoped session agent when session_tree fires", async () => {
+	it("does not reuse committed send state after session_tree", async () => {
 		const mockDispose = vi.fn().mockResolvedValue(undefined);
-		const createAgent = vi.fn().mockResolvedValue({
-			agentId: "agent-1",
+		const createAgent = vi.fn().mockImplementation(async () => ({
+			agentId: `agent-${createAgent.mock.calls.length + 1}`,
 			[Symbol.asyncDispose]: mockDispose,
-		});
+		}));
 		const pi = createEventHarness();
-
-		registerCursorSessionAgentLifecycle(pi);
-		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
-		await acquireSessionCursorAgent({
+		const params = {
 			apiKey: "test-key",
 			agentMode: "agent" as const,
 			cwd: "/tmp/project",
 			modelSelection: { id: "composer-2.5" },
 			createAgent,
-		});
+		};
+		const context = makeContext([{ role: "user", content: "Hello", timestamp: 1 }]);
+
+		registerCursorSessionAgentLifecycle(pi);
+		cursorSessionScopeTestUtils.set("/tmp/project", "/tmp/sessions/test.jsonl");
+		const first = await acquireSessionCursorAgent(params);
+		first.commitSend(context, true);
+		expect(first.sendState.bootstrapped).toBe(true);
 
 		expect(sessionAgentTestUtils.sessionAgentsByScope.has("/tmp/sessions/test.jsonl")).toBe(true);
 		await pi.runSessionTree();
 		expect(sessionAgentTestUtils.sessionAgentsByScope.has("/tmp/sessions/test.jsonl")).toBe(false);
 		expect(mockDispose).toHaveBeenCalledTimes(1);
+
+		const second = await acquireSessionCursorAgent(params);
+		expect(second.agent).not.toBe(first.agent);
+		expect(second.sendState).toEqual({ bootstrapped: false, contextFingerprint: "", incrementalSendCount: 0 });
 	});
 
 	it("invalidates before branch summary when session_before_tree fires", async () => {

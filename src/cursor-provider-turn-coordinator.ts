@@ -1,4 +1,4 @@
-import type { AssistantMessage, AssistantMessageEventStream, CursorToolResultHandler, ToolResultMessage } from "@oh-my-pi/pi-ai";
+import type { AssistantMessage, AssistantMessageEventStream, ToolResultMessage } from "@oh-my-pi/pi-ai";
 import type { InteractionUpdate } from "@cursor/sdk";
 import { isCursorOmpExecToolCall } from "./cursor-omp-exec-adapter.js";
 import type { CursorLiveRun } from "./cursor-live-run-coordinator.js";
@@ -150,13 +150,12 @@ export class CursorSdkTurnCoordinator {
 	emitResolvedOmpExecTool(
 		toolResult: ToolResultMessage,
 		args: Record<string, unknown>,
-		onToolResult?: CursorToolResultHandler,
 	): void {
 		if (this.liveRun && !this.liveRun.disposed) {
-			cursorLiveRuns.queueEvent(this.liveRun, { type: "omp-exec-resolved", toolResult, args, onToolResult });
+			cursorLiveRuns.queueEvent(this.liveRun, { type: "omp-exec-resolved", toolResult, args });
 			return;
 		}
-		this.contentEmitter.appendResolvedOmpExecTool(toolResult, args, onToolResult);
+		this.contentEmitter.appendResolvedOmpExecTool(toolResult, args);
 	}
 
 	closeTraceBlock(): void {

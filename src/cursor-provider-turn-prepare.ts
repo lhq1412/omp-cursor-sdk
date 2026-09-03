@@ -331,9 +331,6 @@ async function prepareCursorLocalProviderTurn(
 			};
 		};
 		let sendPlan = planCursorSessionSend(backendSession.sendState, context);
-		if (backendSession.created && backendSession.resumed && sendPlan.mode === "incremental") {
-			sendPlan = { mode: "bootstrap", resetAgent: false, reason: "process_resume" };
-		}
 		let promptOptions = buildPromptOptions(sendPlan);
 		let prompt = buildCursorSessionSendPrompt(context, promptOptions, sendPlan);
 		if (sendPlan.resetAgent) {

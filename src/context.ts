@@ -21,21 +21,7 @@ export interface CursorPromptOptions {
 	includePiAskQuestionGuidance?: boolean;
 }
 
-type CursorSummaryMessage = {
-	role: "branchSummary" | "compactionSummary";
-	summary: string;
-};
-
-type CursorPromptMessage = Message | CursorSummaryMessage;
-
-function isCursorSummaryMessage(message: unknown): message is CursorSummaryMessage {
-	if (!message || typeof message !== "object") return false;
-	const candidate = message as { role?: unknown; summary?: unknown };
-	return (
-		(candidate.role === "branchSummary" || candidate.role === "compactionSummary")
-		&& typeof candidate.summary === "string"
-	);
-}
+type CursorPromptMessage = Message;
 
 export const CURSOR_APPROX_CHARS_PER_TOKEN = 4;
 export const CURSOR_IMAGE_TOKEN_ESTIMATE = 1200;
@@ -83,7 +69,7 @@ function getCursorToolBoundaryText(
 		"Do not claim OMP-side or WebSearch/WebFetch tools unless Cursor ran an equivalent tool.",
 		includePiAskQuestionGuidance ? "Use pi__cursor_ask_question for material choices if exposed." : undefined,
 		getCursorPlanModeToolGuidanceText(options.agentMode, { includePiBridgeGuidance }),
-		"Images: only latest user images are sent; ask to reattach prior images.",
+		"Images: only active final user/developer images are attached; prior images use deterministic transcript markers.",
 	].filter((line): line is string => line !== undefined);
 	if (options.hasToolManifest) {
 		lines.push("See callable surfaces below.");
@@ -92,18 +78,19 @@ function getCursorToolBoundaryText(
 }
 
 function getCursorBootstrapTailSections(
+	hasActiveMessage: boolean,
 	options: Pick<CursorPromptOptions, "agentMode" | "includePiBridgeGuidance"> = {},
 ): string[] {
 	return [
-		"Answer the latest user request above using the instructions and Cursor SDK capabilities available in this run.",
+		hasActiveMessage
+			? "Answer the active user/developer request above using the instructions and Cursor SDK capabilities available in this run."
+			: "Continue from the reconciled OMP conversation state above using the instructions and Cursor SDK capabilities available in this run.",
 		getCursorToolTailGuardText({ ...options, includePlanModeGuidance: false }),
 	];
 }
 
 function normalizePiContextMessages(messages: Context["messages"]): CursorPromptMessage[] {
-	const normalized = convertToLlm(messages as Parameters<typeof convertToLlm>[0]);
-	const summaries = messages.filter(isCursorSummaryMessage);
-	return [...normalized, ...summaries];
+	return convertToLlm(messages as Parameters<typeof convertToLlm>[0]);
 }
 
 function isTextBlock(block: { type: string }): block is { type: "text"; text: string } {
@@ -118,31 +105,33 @@ function isToolCallBlock(block: { type: string }): block is ToolCall {
 	return block.type === "toolCall";
 }
 
-function extractLatestImages(messages: CursorPromptMessage[]): SDKImage[] {
-	// Find the last user message and extract images only from it
-	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i];
-		if (msg.role !== "user") continue;
-		if (typeof msg.content === "string") return [];
+function extractActiveImages(messages: CursorPromptMessage[], activeMessageIndex: number): SDKImage[] {
+	if (activeMessageIndex < 0) return [];
+	const message = messages[activeMessageIndex];
+	if ((message.role !== "user" && message.role !== "developer") || typeof message.content === "string") return [];
 
-		const images: SDKImage[] = [];
-		for (const block of msg.content) {
-			if (isImageBlock(block) && block.data && block.mimeType) {
-				images.push({ data: block.data, mimeType: block.mimeType });
-			}
+	const images: SDKImage[] = [];
+	for (const block of message.content) {
+		if (isImageBlock(block) && block.data && block.mimeType) {
+			images.push({ data: block.data, mimeType: block.mimeType });
 		}
-		return images;
 	}
-	return [];
+	return images;
 }
 
-function formatContentBlocks(content: string | { type: string; text?: string; data?: string; mimeType?: string }[]): string {
+function formatContentBlocks(
+	content: string | { type: string; text?: string; data?: string; mimeType?: string }[],
+	imageMode: "active" | "history" | "tool",
+): string {
 	if (typeof content === "string") return content;
 	return content
 		.map((block) => {
 			if (isTextBlock(block)) return block.text;
-			if (isImageBlock(block)) return "[image omitted from transcript]";
-			return "";
+			if (!isImageBlock(block)) return "";
+			if (imageMode === "active") return "";
+			return imageMode === "tool"
+				? `[${block.mimeType} image]`
+				: `[${block.mimeType} image omitted from SDK history]`;
 		})
 		.filter(Boolean)
 		.join("\n");
@@ -168,17 +157,16 @@ function sanitizeSystemPromptForCursor(systemPrompt: string): string {
 	].join("\n\n");
 }
 
-function formatMessage(msg: CursorPromptMessage): string | undefined {
-	if (msg.role === "branchSummary") {
-		return `Here is a summary of a branch that this conversation came back from:\n${msg.summary}`;
-	}
-	if (msg.role === "compactionSummary") {
-		return `The conversation history before this point was compacted:\n${msg.summary}`;
-	}
+function formatMessage(
+	msg: CursorPromptMessage,
+	options: { active?: boolean; pairedToolResult?: boolean } = {},
+): string | undefined {
 	switch (msg.role) {
-		case "user": {
-			const text = formatContentBlocks(msg.content);
-			return text ? `User: ${text}` : undefined;
+		case "user":
+		case "developer": {
+			const text = formatContentBlocks(msg.content, options.active ? "active" : "history");
+			if (!text) return undefined;
+			return `${msg.role === "user" ? "User" : "Developer"}: ${text}`;
 		}
 		case "assistant": {
 			const blocks = Array.isArray(msg.content) ? msg.content : [{ type: "text" as const, text: String(msg.content) }];
@@ -189,23 +177,44 @@ function formatMessage(msg: CursorPromptMessage): string | undefined {
 				} else if (isToolCallBlock(block)) {
 					textParts.push(formatToolCall(block));
 				}
-				// Omit thinking content from transcript
+				// The public SDK cannot inject historical thinking.
 			}
 			return textParts.length > 0 ? `Assistant: ${textParts.join("\n")}` : undefined;
 		}
 		case "toolResult": {
-			const text = formatContentBlocks(msg.content);
+			const text = formatContentBlocks(msg.content, "tool");
+			if (!options.pairedToolResult) {
+				return `Assistant: [Tool ${msg.isError ? "Error" : "Result"}]\n${text || "(empty result)"}`;
+			}
 			const label = msg.isError ? "Tool error" : "Tool result";
 			return `${label} (${getCursorReplayPromptLabel(msg.toolName)}, call ${msg.toolCallId}): ${text}`;
 		}
 	}
 }
 
-function getLatestUserMessageIndex(messages: CursorPromptMessage[]): number {
-	for (let index = messages.length - 1; index >= 0; index -= 1) {
-		if (messages[index].role === "user") return index;
+function getActiveMessageIndex(messages: CursorPromptMessage[]): number {
+	const index = messages.length - 1;
+	if (index < 0) return -1;
+	const role = messages[index].role;
+	return role === "user" || role === "developer" ? index : -1;
+}
+
+function buildHistoricalMessageSections(messages: CursorPromptMessage[]): Array<{ index: number; text: string }> {
+	const sections: Array<{ index: number; text: string }> = [];
+	const pairedSectionIndexes = new Map<string, number>();
+	for (let index = 0; index < messages.length; index += 1) {
+		const message = messages[index];
+		const pairedSectionIndex = message.role === "toolResult" ? pairedSectionIndexes.get(message.toolCallId) : undefined;
+		const text = formatMessage(message, { pairedToolResult: pairedSectionIndex !== undefined });
+		if (!text) continue;
+		sections.push({ index: pairedSectionIndex ?? index, text });
+		if (message.role === "assistant" && Array.isArray(message.content)) {
+			for (const block of message.content) {
+				if (isToolCallBlock(block)) pairedSectionIndexes.set(block.id, index);
+			}
+		}
 	}
-	return -1;
+	return sections;
 }
 
 function getSectionCost(section: string): number {
@@ -233,12 +242,19 @@ function applyPromptBudget(
 	);
 	let remainingChars = maxChars - requiredCost;
 	const includedMessageIndexes = new Set(requiredMessageSections.map((section) => section.index));
+	const messageSectionCosts = new Map<number, number>();
+	for (const section of messageSections) {
+		messageSectionCosts.set(
+			section.index,
+			(messageSectionCosts.get(section.index) ?? 0) + getSectionCost(section.text),
+		);
+	}
 	let omittedMessageCount = 0;
 
 	for (let index = messageSections.length - 1; index >= 0; index -= 1) {
 		const section = messageSections[index];
 		if (includedMessageIndexes.has(section.index)) continue;
-		const cost = getSectionCost(section.text);
+		const cost = messageSectionCosts.get(section.index) ?? 0;
 		if (cost <= remainingChars) {
 			includedMessageIndexes.add(section.index);
 			remainingChars -= cost;
@@ -406,15 +422,17 @@ export function shouldBootstrapCursorSend(
 export function buildCursorIncrementalPrompt(context: Context, options: CursorPromptOptions = {}): CursorPrompt {
 	// Incremental sends omit OMP system instructions and the full tool boundary; the session agent retains both from bootstrap.
 	const messages = normalizePiContextMessages(context.messages);
-	const latestUserMessageIndex = getLatestUserMessageIndex(messages);
-	const latestUserMessage = latestUserMessageIndex >= 0 ? messages[latestUserMessageIndex] : undefined;
-	const latestUserText = latestUserMessage ? formatMessage(latestUserMessage) : undefined;
+	const activeMessageIndex = getActiveMessageIndex(messages);
+	const activeMessage = activeMessageIndex >= 0 ? messages[activeMessageIndex] : undefined;
+	const activeMessageText = activeMessage ? formatMessage(activeMessage, { active: true }) : undefined;
 	const sectionsBeforeMessages = [
-		"Continue the conversation using Cursor SDK capabilities only. Do not list, promise, or call OMP-only tools from earlier context as if they were available.",
+		activeMessage
+			? "Continue the conversation using Cursor SDK capabilities only with the active OMP request below. Do not list, promise, or call OMP-only tools from earlier context as if they were available."
+			: "Continue the reconciled OMP conversation using Cursor SDK capabilities only. Do not list, promise, or call OMP-only tools from earlier context as if they were available.",
 	];
-	const latestUserMessageSections =
-		latestUserText && latestUserMessageIndex >= 0 ? [{ index: latestUserMessageIndex, text: latestUserText }] : [];
-	const images = extractLatestImages(messages);
+	const activeMessageSections =
+		activeMessageText && activeMessageIndex >= 0 ? [{ index: activeMessageIndex, text: activeMessageText }] : [];
+	const images = extractActiveImages(messages, activeMessageIndex);
 	const imageTokenReserve = images.length * (options.imageTokenEstimate ?? 0);
 	const budgetOptions =
 		options.maxInputTokens === undefined
@@ -422,9 +440,9 @@ export function buildCursorIncrementalPrompt(context: Context, options: CursorPr
 			: { ...options, maxInputTokens: Math.max(1, options.maxInputTokens - imageTokenReserve) };
 	const parts = applyPromptBudget(
 		sectionsBeforeMessages,
-		latestUserMessageSections,
+		activeMessageSections,
 		[getCursorToolTailGuardText(options)],
-		latestUserMessageIndex,
+		activeMessageIndex,
 		budgetOptions,
 	);
 	return { text: parts.join(SECTION_SEPARATOR), images };
@@ -447,14 +465,16 @@ export function buildCursorPrompt(context: Context, options: CursorPromptOptions
 	}
 
 	const messages = normalizePiContextMessages(context.messages);
-	const messageSections = messages
-		.map((msg, index) => {
-			const text = formatMessage(msg);
-			return text ? { index, text } : undefined;
-		})
-		.filter((section): section is { index: number; text: string } => section !== undefined);
-	const sectionsAfterMessages = getCursorBootstrapTailSections(options);
-	const images = extractLatestImages(messages);
+	const activeMessageIndex = getActiveMessageIndex(messages);
+	const activeMessage = activeMessageIndex >= 0 ? messages[activeMessageIndex] : undefined;
+	const historyMessages = activeMessage ? messages.slice(0, activeMessageIndex) : messages;
+	const messageSections = buildHistoricalMessageSections(historyMessages);
+	const activeMessageText = activeMessage ? formatMessage(activeMessage, { active: true }) : undefined;
+	const sectionsAfterMessages = [
+		...(activeMessageText ? [activeMessageText] : []),
+		...getCursorBootstrapTailSections(activeMessage !== undefined, options),
+	];
+	const images = extractActiveImages(messages, activeMessageIndex);
 	const imageTokenReserve = images.length * (options.imageTokenEstimate ?? 0);
 	const budgetOptions =
 		options.maxInputTokens === undefined
@@ -464,7 +484,7 @@ export function buildCursorPrompt(context: Context, options: CursorPromptOptions
 		sectionsBeforeMessages,
 		messageSections,
 		sectionsAfterMessages,
-		getLatestUserMessageIndex(messages),
+		-1,
 		budgetOptions,
 	);
 	const text = parts.join(SECTION_SEPARATOR);

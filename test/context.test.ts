@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Type } from "@oh-my-pi/omptype/typebox";
+import { buildCursorHistoryForTest } from "@oh-my-pi/pi-ai/providers/cursor";
+import { convertToLlm } from "@oh-my-pi/pi-coding-agent";
 import {
 	buildCursorPrompt,
 	buildCursorIncrementalPrompt,
@@ -15,6 +17,38 @@ import {
 	planCursorSessionSend,
 } from "../src/cursor-session-send-policy.js";
 import type { Context, UserMessage, AssistantMessage, ToolResultMessage } from "@oh-my-pi/pi-ai";
+
+function makeAssistant(
+	content: AssistantMessage["content"],
+	timestamp: number,
+	stopReason: AssistantMessage["stopReason"] = "stop",
+): AssistantMessage {
+	return {
+		role: "assistant",
+		content,
+		api: "cursor-sdk",
+		provider: "cursor-sdk",
+		model: "test",
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
+		stopReason,
+		timestamp,
+	};
+}
+
+function buildBuiltInSemanticReference(context: Context) {
+	const messages = convertToLlm(context.messages as Parameters<typeof convertToLlm>[0]);
+	const finalMessage = messages.at(-1);
+	const activeMessageIndex =
+		finalMessage?.role === "user" || finalMessage?.role === "developer" ? messages.length - 1 : -1;
+	return buildCursorHistoryForTest(messages, activeMessageIndex);
+}
 
 describe("buildCursorPrompt", () => {
 	it("includes system prompt", () => {
@@ -180,7 +214,7 @@ describe("buildCursorPrompt", () => {
 		expect(result.text).not.toContain("internal thought");
 	});
 
-	it("formats tool results", () => {
+	it("renders orphan tool results as assistant-visible fallback text", () => {
 		const ctx: Context = {
 			messages: [
 				{ role: "user", content: "Run it", timestamp: 1 } satisfies UserMessage,
@@ -195,10 +229,11 @@ describe("buildCursorPrompt", () => {
 			],
 		};
 		const result = buildCursorPrompt(ctx);
-		expect(result.text).toContain("Tool result (bash, call tc1): output here");
+		expect(result.text).toContain("Assistant: [Tool Result]\noutput here");
+		expect(result.text).not.toContain("Tool result (bash, call tc1)");
 	});
 
-	it("formats tool errors", () => {
+	it("renders orphan tool errors as assistant-visible fallback text", () => {
 		const ctx: Context = {
 			messages: [
 				{ role: "user", content: "Run it", timestamp: 1 } satisfies UserMessage,
@@ -213,7 +248,8 @@ describe("buildCursorPrompt", () => {
 			],
 		};
 		const result = buildCursorPrompt(ctx);
-		expect(result.text).toContain("Tool error (bash, call tc1): command failed");
+		expect(result.text).toContain("Assistant: [Tool Error]\ncommand failed");
+		expect(result.text).not.toContain("Tool error (bash, call tc1)");
 	});
 
 	it("preserves real OMP edit and write tool names in Cursor prompt labels", () => {
@@ -338,7 +374,7 @@ describe("buildCursorPrompt", () => {
 			timestamp: 3,
 		} satisfies ToolResultMessage;
 
-		expect(estimateCursorPromptMessageTokens(toolResult, { charsPerToken: 1 })).toBe("Tool result (bash, call tc1): README.md".length);
+		expect(estimateCursorPromptMessageTokens(toolResult, { charsPerToken: 1 })).toBe("Assistant: [Tool Result]\nREADME.md".length);
 	});
 
 	it("estimates tool-result image prompt content as the replay placeholder text", () => {
@@ -352,7 +388,7 @@ describe("buildCursorPrompt", () => {
 		} satisfies ToolResultMessage;
 
 		expect(estimateCursorPromptMessageTokens(toolResult, { charsPerToken: 1 })).toBe(
-			"Tool result (read_image, call tc1): [image omitted from transcript]".length,
+			"Assistant: [Tool Result]\n[image/png image]".length,
 		);
 	});
 
@@ -410,6 +446,34 @@ describe("buildCursorPrompt", () => {
 		expect(result.text).toContain("Tool result (bash, call tc1): README.md");
 	});
 
+	it("budgets a paired tool call and result as one unit", () => {
+		const callMarker = `CALL_${"x".repeat(300)}`;
+		const resultMarker = `RESULT_${"y".repeat(300)}`;
+		const activeMessage = { role: "user", content: "Active request stays", timestamp: 3 } satisfies UserMessage;
+		const requiredPromptChars = buildCursorPrompt({ messages: [activeMessage] }, { charsPerToken: 1 }).text.length;
+		const result = buildCursorPrompt({
+			messages: [
+				makeAssistant([
+					{ type: "toolCall", id: "tc-budget", name: "bash", arguments: { command: callMarker } },
+				], 1, "toolUse"),
+				{
+					role: "toolResult",
+					toolCallId: "tc-budget",
+					toolName: "bash",
+					content: [{ type: "text", text: resultMarker }],
+					isError: false,
+					timestamp: 2,
+				} satisfies ToolResultMessage,
+				activeMessage,
+			],
+		}, { maxInputTokens: requiredPromptChars + 450, charsPerToken: 1 });
+
+		expect(result.text).toContain("User: Active request stays");
+		expect(result.text).toContain("[Earlier transcript omitted: 2 messages");
+		expect(result.text).not.toContain(callMarker);
+		expect(result.text).not.toContain(resultMarker);
+	});
+
 	it("extracts images from latest user message only", () => {
 		const ctx: Context = {
 			messages: [
@@ -436,10 +500,10 @@ describe("buildCursorPrompt", () => {
 		expect(result.images[0]).toEqual({ data: "newbase64", mimeType: "image/jpeg" });
 	});
 
-	it("explains that only latest user images are available as image bytes", () => {
+	it("documents current and historical image handling", () => {
 		const result = buildCursorPrompt({ messages: [{ role: "user", content: "test", timestamp: 1 }] });
-		expect(result.text).toContain("only latest user images are sent");
-		expect(result.text).toContain("ask to reattach prior images");
+		expect(result.text).toContain("only active final user/developer images are attached");
+		expect(result.text).toContain("prior images use deterministic transcript markers");
 	});
 
 	it("replaces historical images with placeholder text", () => {
@@ -461,7 +525,7 @@ describe("buildCursorPrompt", () => {
 			],
 		};
 		const result = buildCursorPrompt(ctx);
-		expect(result.text).toContain("[image omitted from transcript]");
+		expect(result.text).toContain("[image/png image omitted from SDK history]");
 		expect(result.images).toHaveLength(0);
 	});
 
@@ -488,7 +552,7 @@ describe("buildCursorPrompt", () => {
 
 		expect(result.text).toContain("Always preserve this system instruction.");
 		expect(result.text).toContain("User: latest request must stay");
-		expect(result.text).toContain("Answer the latest user request");
+		expect(result.text).toContain("Answer the active user/developer request");
 		expect(result.text).toContain("[Earlier transcript omitted: 2 messages to fit Cursor context budget]");
 		expect(result.text).not.toContain("old request");
 		expect(result.text).not.toContain("old answer");
@@ -515,7 +579,7 @@ describe("buildCursorPrompt", () => {
 
 		expect(result.text).toContain("User: latest request");
 		expect(result.text).toContain("User: recent request");
-		expect(result.text).toContain("Tool result (bash, call tc1): recent tool output");
+		expect(result.text).toContain("Assistant: [Tool Result]\nrecent tool output");
 		expect(result.text).not.toContain("old request");
 	});
 
@@ -548,7 +612,7 @@ describe("buildCursorPrompt", () => {
 			messages: [{ role: "user", content: "test", timestamp: 1 }],
 		};
 		const result = buildCursorPrompt(ctx);
-		expect(result.text).toContain("Answer the latest user request");
+		expect(result.text).toContain("Answer the active user/developer request");
 		expect(result.text.endsWith(getCursorToolTailGuardText())).toBe(true);
 	});
 
@@ -669,6 +733,167 @@ describe("buildCursorPrompt", () => {
 		expect(bootstrap.text).toContain("Exposed pi__* bridge tools are also callable in plan mode");
 		expect(incremental.text.match(/Cursor SDK mode is plan for this run/g)).toHaveLength(1);
 		expect(buildCursorPrompt(context).text).not.toContain("Cursor SDK mode is plan for this run");
+	});
+});
+
+describe("OMP built-in Cursor semantic parity", () => {
+	it("preserves prior turn order, omits thinking, and separates an active developer request", () => {
+		const context: Context = {
+			messages: [
+				{ role: "user", content: "First request", timestamp: 1 },
+				makeAssistant([
+					{ type: "thinking", thinking: "private chain" },
+					{ type: "text", text: "First answer" },
+				], 2),
+				{ role: "developer", content: "Active developer request", timestamp: 3 },
+			],
+		};
+
+		const reference = JSON.stringify(buildBuiltInSemanticReference(context).rootPromptMessagesJson);
+		const prompt = buildCursorPrompt(context).text;
+
+		expect(reference).toContain("First request");
+		expect(reference).toContain("First answer");
+		expect(reference).not.toContain("Active developer request");
+		expect(reference).not.toContain("private chain");
+		expect(prompt.indexOf("User: First request")).toBeLessThan(prompt.indexOf("Assistant: First answer"));
+		expect(prompt.indexOf("Assistant: First answer")).toBeLessThan(prompt.indexOf("Developer: Active developer request"));
+		expect(prompt).not.toContain("private chain");
+	});
+
+	it("does not invent an active request or resend old images after a final assistant message", () => {
+		const context: Context = {
+			messages: [
+				{
+					role: "user",
+					content: [
+						{ type: "text", text: "Prior image request" },
+						{ type: "image", data: "YWJj", mimeType: "image/png" },
+					],
+					timestamp: 1,
+				},
+				makeAssistant([{ type: "text", text: "Completed answer" }], 2),
+			],
+		};
+
+		const reference = JSON.stringify(buildBuiltInSemanticReference(context).rootPromptMessagesJson);
+		const prompt = buildCursorPrompt(context);
+
+		expect(reference).toContain("Completed answer");
+		expect(prompt.images).toEqual([]);
+		expect(prompt.text).toContain("Continue from the reconciled OMP conversation state");
+		expect(prompt.text).not.toContain("Answer the active user/developer request");
+	});
+
+	it("keeps paired tool success/error results and matches orphan fallback policy", () => {
+		const context: Context = {
+			messages: [
+				{ role: "user", content: "Run tools", timestamp: 1 },
+				makeAssistant([
+					{ type: "toolCall", id: "image-call", name: "read_image", arguments: {} },
+					{ type: "toolCall", id: "error-call", name: "bash", arguments: { command: "false" } },
+				], 2, "toolUse"),
+				{
+					role: "toolResult",
+					toolCallId: "image-call",
+					toolName: "read_image",
+					content: [{ type: "image", data: "YWJj", mimeType: "image/png" }],
+					isError: false,
+					timestamp: 3,
+				},
+				{
+					role: "toolResult",
+					toolCallId: "error-call",
+					toolName: "bash",
+					content: [{ type: "text", text: "exit 1" }],
+					isError: true,
+					timestamp: 4,
+				},
+				{
+					role: "toolResult",
+					toolCallId: "orphan",
+					toolName: "bash",
+					content: [{ type: "text", text: "orphan failure" }],
+					isError: true,
+					timestamp: 5,
+				},
+				{ role: "user", content: "Continue", timestamp: 6 },
+			],
+		};
+
+		const reference = JSON.stringify(buildBuiltInSemanticReference(context).rootPromptMessagesJson);
+		const prompt = buildCursorPrompt(context).text;
+
+		expect(reference).toContain('"role":"tool"');
+		expect(reference).toContain("[image/png image]");
+		expect(reference).toContain("[Tool Error]\\norphan failure");
+		expect(prompt).toContain("Tool result (read_image, call image-call): [image/png image]");
+		expect(prompt).toContain("Tool error (bash, call error-call): exit 1");
+		expect(prompt).toContain("Assistant: [Tool Error]\norphan failure");
+	});
+
+	it("attaches only the active image and marks prior images deterministically", () => {
+		const context: Context = {
+			messages: [
+				{
+					role: "user",
+					content: [
+						{ type: "text", text: "Prior image" },
+						{ type: "image", data: "YWJj", mimeType: "image/png" },
+					],
+					timestamp: 1,
+				},
+				{
+					role: "user",
+					content: [
+						{ type: "text", text: "Active image" },
+						{ type: "image", data: "ZGVm", mimeType: "image/jpeg" },
+					],
+					timestamp: 2,
+				},
+			],
+		};
+
+		const reference = JSON.stringify(buildBuiltInSemanticReference(context).rootPromptMessagesJson);
+		const prompt = buildCursorPrompt(context);
+
+		expect(reference).toContain("data:image/png;base64,YWJj");
+		expect(reference).not.toContain("ZGVm");
+		expect(prompt.text).toContain("[image/png image omitted from SDK history]");
+		expect(prompt.text).not.toContain("[image/jpeg image omitted from SDK history]");
+		expect(prompt.images).toEqual([{ data: "ZGVm", mimeType: "image/jpeg" }]);
+	});
+
+	it("uses OMP summary conversion once and preserves summary chronology", () => {
+		const context: Context = {
+			messages: [
+				{ role: "user", content: "Before summaries", timestamp: 1 },
+				{
+					role: "branchSummary",
+					summary: "Branch semantic marker",
+					fromId: "entry-a",
+					timestamp: 2,
+				} as unknown as Context["messages"][number],
+				{
+					role: "compactionSummary",
+					summary: "Compaction semantic marker",
+					tokensBefore: 12000,
+					timestamp: 3,
+				} as unknown as Context["messages"][number],
+				{ role: "user", content: "Active after summaries", timestamp: 4 },
+			],
+		};
+
+		const reference = JSON.stringify(buildBuiltInSemanticReference(context).rootPromptMessagesJson);
+		const prompt = buildCursorPrompt(context).text;
+
+		expect(reference.match(/Branch semantic marker/g)).toHaveLength(1);
+		expect(reference.match(/Compaction semantic marker/g)).toHaveLength(1);
+		expect(prompt.match(/Branch semantic marker/g)).toHaveLength(1);
+		expect(prompt.match(/Compaction semantic marker/g)).toHaveLength(1);
+		expect(prompt.indexOf("Before summaries")).toBeLessThan(prompt.indexOf("Branch semantic marker"));
+		expect(prompt.indexOf("Branch semantic marker")).toBeLessThan(prompt.indexOf("Compaction semantic marker"));
+		expect(prompt.indexOf("Compaction semantic marker")).toBeLessThan(prompt.indexOf("Active after summaries"));
 	});
 });
 
@@ -829,8 +1054,8 @@ describe("cursor session prompt assembly", () => {
 
 		const prompt = buildCursorPrompt(context);
 
-		expect(prompt.text).toContain("summary of a branch that this conversation came back from");
-		expect(prompt.text).toContain("We explored approach A and decided against it.");
+		expect(prompt.text).toContain("Branch-return summary:");
+		expect(prompt.text.match(/We explored approach A and decided against it\./g)).toHaveLength(1);
 		expect(prompt.text).toContain("User: Continue on approach B");
 	});
 
@@ -874,7 +1099,7 @@ describe("cursor session prompt assembly", () => {
 
 		const prompt = buildCursorPrompt(context);
 
-		expect(prompt.text).toContain("conversation history before this point was compacted");
-		expect(prompt.text).toContain("Earlier work covered auth setup.");
+		expect(prompt.text).toContain("Prior model work/tool state available.");
+		expect(prompt.text.match(/Earlier work covered auth setup\./g)).toHaveLength(1);
 	});
 });

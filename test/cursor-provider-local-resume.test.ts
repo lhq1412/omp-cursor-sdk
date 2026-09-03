@@ -69,7 +69,7 @@ describe("streamCursor local resume", () => {
 		});
 	}
 
-	it("resumes with current bridge MCP and bootstraps the current Pi transcript", async () => {
+	it("resumes with current bridge MCP and sends only the current OMP delta", async () => {
 		process.env.PI_CURSOR_LOCAL_RESUME = "1";
 		registerBridgeForProviderTest({
 			active: ["mcp", "subagent"],
@@ -105,7 +105,9 @@ describe("streamCursor local resume", () => {
 		});
 		const prompt = mockSend.mock.calls[0]?.[0] as { text?: string };
 		expect(prompt.text).toContain("User: Follow up");
-		expect(prompt.text).toContain("User: Hello");
+		expect(prompt.text).not.toContain("User: Hello");
+		expect(prompt.text).not.toContain("Assistant: Prior answer");
+		expect(prompt.text).not.toContain("Cursor SDK tool boundary:");
 		expect(prompt.text).toContain("prefer pi__mcp for MCP work and pi__subagent for delegation");
 	});
 

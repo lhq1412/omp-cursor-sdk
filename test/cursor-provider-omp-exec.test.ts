@@ -130,13 +130,17 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 		expect(getCreatedAgentOptions().disallowedTools).toEqual([...CURSOR_OMP_EXEC_DISALLOWED_TOOLS]);
 	});
 
-	it("stamps kCursorExecResolved toolCalls and reports cursorOnToolResult", async () => {
+	it("returns async cursorOnToolResult rewrites to the SDK while emitting the resolved call", async () => {
 		const piRead = vi.fn(async () => toolResult("file"));
-		const cursorOnToolResult = vi.fn(async (message: ToolResultMessage) => message);
+		const cursorOnToolResult = vi.fn(async (message: ToolResultMessage) => ({
+			...message,
+			content: [{ type: "text" as const, text: "rewritten" }],
+		}));
+		let sdkResult: unknown;
 		const mockSend = vi.fn().mockImplementation(async (_payload: unknown, sendOptions: unknown) => {
 			// Agent.send options are SDK-typed; this mock only needs customTools.execute.
 			const options = sendOptions as { local?: { customTools?: Record<string, { execute: (args: object, context: object) => Promise<unknown> }> } };
-			await options.local?.customTools?.read?.execute({ path: "a.ts" }, { toolCallId: "tc" });
+			sdkResult = await options.local?.customTools?.read?.execute({ path: "a.ts" }, { toolCallId: "tc" });
 			return finishedRun();
 		});
 		mockCreatedAgent({
@@ -156,6 +160,10 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 			toolCallId: "tc",
 			isError: false,
 		});
+		expect(sdkResult).toEqual({
+			content: [{ type: "text", text: "rewritten" }],
+			isError: false,
+		});
 		const toolEnds = events.filter((event) => event.type === "toolcall_end");
 		expect(toolEnds).toHaveLength(1);
 		expect(isCursorExecResolved(toolEnds[0]?.toolCall)).toBe(true);
@@ -164,6 +172,34 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 		expect(block).toMatchObject({ type: "toolCall", id: "tc" });
 		expect(isCursorExecResolved(block)).toBe(true);
 	});
+
+	it("keeps the original SDK result when cursorOnToolResult rejects", async () => {
+		let sdkResult: unknown;
+		const mockSend = vi.fn().mockImplementation(async (_payload: unknown, sendOptions: unknown) => {
+			const options = sendOptions as { local?: { customTools?: Record<string, { execute: (args: object, context: object) => Promise<unknown> }> } };
+			sdkResult = await options.local?.customTools?.read?.execute({ path: "a.ts" }, { toolCallId: "tc" });
+			return finishedRun();
+		});
+		mockCreatedAgent({
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const events = await collectEvents(streamCursor(makeModel("composer-2"), makeContext(), {
+			apiKey: "test-key",
+			execHandlers: { piRead: async () => toolResult("file") },
+			cursorOnToolResult: async () => {
+				throw new Error("rewrite failed");
+			},
+		}));
+
+		expect(sdkResult).toEqual({
+			content: [{ type: "text", text: "file" }],
+			isError: false,
+		});
+		expect(events.filter((event) => event.type === "toolcall_end")).toHaveLength(1);
+	});
+
 	it("queues resolved exec behind live-run text instead of jumping the stream", () => {
 		const stream = createAssistantMessageEventStream();
 		const partial = makeAssistantMessage("");
@@ -178,19 +214,16 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 			liveRun: liveRun as never,
 			ompExecEnabled: true,
 		});
-		const onToolResult = vi.fn();
 		coordinator.handleDelta({ type: "text-delta", text: "hello" } as never);
-		coordinator.emitResolvedOmpExecTool(toolResult("file"), { path: "a.ts" }, onToolResult);
+		coordinator.emitResolvedOmpExecTool(toolResult("file"), { path: "a.ts" });
 		expect(liveRun.pendingEvents.map((event) => event.type)).toEqual(["text-delta", "omp-exec-resolved"]);
 		expect(partial.content.some((block) => block.type === "toolCall")).toBe(false);
-		expect(onToolResult).not.toHaveBeenCalled();
 	});
 
 	it("flushes queued omp-exec-resolved before chain_user_input release", async () => {
 		const stream = createAssistantMessageEventStream();
 		const eventsPromise = collectEvents(stream);
 		const partial = makeAssistantMessage("");
-		const onToolResult = vi.fn();
 		const run = cursorLiveRuns.start({
 			id: "chain-exec",
 			agentId: "a1",
@@ -202,12 +235,10 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 			type: "omp-exec-resolved",
 			toolResult: toolResult("file"),
 			args: { path: "a.ts" },
-			onToolResult,
 		});
 		await drainCursorLiveRunTurn(stream, partial, makeModel(), makeContext(), run, 0, { mode: "chain_user_input" });
 		stream.push({ type: "done", reason: "stop", message: partial });
 		await eventsPromise;
-		expect(onToolResult).toHaveBeenCalledTimes(1);
 		const block = partial.content.find((entry) => entry.type === "toolCall");
 		expect(block).toMatchObject({ type: "toolCall", id: "tc" });
 		expect(isCursorExecResolved(block)).toBe(true);

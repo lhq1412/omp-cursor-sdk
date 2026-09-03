@@ -1,6 +1,6 @@
 # OMP × omp-cursor-sdk integration architecture
 
-This document defines the OMP host boundary for `omp-cursor-sdk`. It reflects the independent-provider port against OMP 18.0.11 and `@cursor/sdk` 1.0.30.
+This document defines the OMP host boundary for `omp-cursor-sdk`. It reflects the independent-provider port against OMP 18.1.6 and `@cursor/sdk` 1.0.30.
 
 The short user guide is [README.md](../README.md). This file is the maintainer source of truth for provider identity, registry ownership, lifecycle adaptation, and upstream synchronization.
 
@@ -33,7 +33,7 @@ Load-bearing invariants:
 
 OMP 18 loads TypeScript extensions under Bun. The package does not ship or load a generated `dist/` tree.
 
-The `@oh-my-pi/*` runtime packages remain regular dependencies because an installed extension imports their public runtime modules directly. Versions are pinned together at 18.0.11 to avoid cross-package type/runtime skew.
+The `@oh-my-pi/*` runtime packages remain regular dependencies because an installed extension imports their public runtime modules directly. Versions are pinned together at 18.1.6 to avoid cross-package type/runtime skew.
 
 `src/index.ts` is the composition root. It registers session scope first, then agent/session lifecycle, runtime controls, replay/question/skill/bridge surfaces, OMP prompt deduplication, the provider, and finally the process-error guard. Provider modules remain side-effect-light until OMP calls `streamSimple`.
 
@@ -165,7 +165,7 @@ Fast is Cursor-specific runtime state. Selection precedence is:
 3. configured per-model default
 4. built-in off
 
-OMP 18.0.11's built-in `/fast` is hard-wired to fixed OpenAI, Anthropic, and Google service-tier families and exposes no custom-provider family registration hook. `/cursor-fast` therefore remains the canonical control for the independent `cursor-sdk` provider. Cloud status reports fast as not applicable rather than pretending the Cloud API supports the local selection flag.
+OMP 18.1.6's built-in `/fast` is hard-wired to fixed OpenAI, Anthropic, and Google service-tier families and exposes no custom-provider family registration hook. `/cursor-fast` therefore remains the canonical control for the independent `cursor-sdk` provider. Cloud status reports fast as not applicable rather than pretending the Cloud API supports the local selection flag.
 
 ## 7. Turn and session path
 
@@ -182,6 +182,20 @@ streamCursor
 ```
 
 `src/cursor-provider-turn-types.ts` keeps immutable phase data and explicit results. Each phase owns the cleanup it creates; the runner does not duplicate collaborator internals.
+
+### Context reconciliation
+
+OMP `Context` is authoritative; an SDK checkpoint is only opaque backend lineage. `src/context.ts` uses OMP's public `convertToLlm()` conversion once, in place, so branch and compaction summaries retain host-defined text and chronology. It then builds one deterministic SDK-safe prompt:
+
+- OMP system instructions remain a distinct bootstrap section after host-only tool policy is removed.
+- Prior user/developer and assistant turns preserve order. Historical thinking is omitted because the public SDK cannot inject it.
+- Only a final normalized user/developer message is active. A matching agent lineage sends that delta only; a final assistant/tool result produces a continuation request instead of replaying an older user message.
+- Assistant tool calls and known-ID results stay in one budget unit. Unmatched results use built-in Cursor's assistant-visible `[Tool Result]` / `[Tool Error]` fallback.
+- Images on the active message are attached through `SDKUserMessage.images`. Prior user/developer images receive MIME-aware omission markers; tool-result images use the same `[<mime> image]` textual value as built-in Cursor.
+
+`src/cursor-session-send-policy.ts` selects incremental versus bootstrap. A resumed agent restores its committed send fingerprint, so an unchanged prefix plus a new active request remains incremental. An unbootstrapped or resume-fallback agent, changed system prompt, changed or shortened message prefix, branch summary, compaction summary, or periodic threshold selects bootstrap; divergence also abandons the old pooled agent before rebuilding from the selected OMP branch.
+
+The send fingerprint and resume handle are committed only after a finished SDK outcome in `src/cursor-provider-run-finalizer.ts`. Failed, cancelled, aborted, or pre-send paths abandon or retain the prior committed state; they never make an unsent OMP context authoritative.
 
 ### Session identity and lifecycle
 
@@ -211,6 +225,12 @@ The send policy chooses bootstrap or incremental prompts from committed session 
 The installed 1.0.30 SDK exposes `Agent.messages.list` pagination through `limit` and `offset`, returns checkpoint conversation turns in ascending slice order, and exposes no total count. The extension therefore keeps one process-local offset watermark per `SDKAgent` handle: new handles start at zero without listing, resumed handles start one background count during acquisition, and successful local finalization reads only later pages before advancing by the number consumed. Failed/aborted turns or transcript-list failures invalidate the watermark so the next send recounts and preserves fail-soft replay.
 
 ## 8. Tools, replay, skills, and prompt context
+
+### Builtin execution channel
+
+Local OMP builtin execution is intentionally separate from the MCP bridge. `src/cursor-provider-turn-send.ts` disallows overlapping Cursor native tools and installs SDK `local.customTools` adapters from `src/cursor-omp-exec-adapter.ts` only when OMP supplies `CursorExecHandlers`. Active `context.tools` grants filter that surface. Results preserve OMP text/image/error semantics, await `cursorOnToolResult` rewrites before the SDK call completes, and mark synthesized replay calls with `kCursorExecResolved` so OMP does not execute them twice. A rejecting result rewrite keeps the original result.
+
+Extension/custom tools continue through the run-scoped loopback MCP bridge.
 
 ### Bridge
 
@@ -251,10 +271,13 @@ A contract test loads OMP 18's installed fallback resolver and proves both the e
 
 ### Known Cursor SDK contract gaps
 
-The installed `@cursor/sdk@1.0.30` types leave these integrations deliberately blocked:
+The installed `@cursor/sdk@1.0.30` public types define the safe representation boundary:
 
-- `ModelListItem` exposes catalog metadata but no local/cloud availability field, and there is no maintained account-scoped availability preflight. OMP therefore cannot annotate or filter `/model` safely by runtime; `Agent.create()` remains a best-effort catalog check and backend create/send errors are authoritative. Revisit runtime annotations, compatibility warnings, and catalog-drift tests only when the SDK/API exposes authoritative availability metadata; never infer compatibility from catalog size or model parameters.
-- `SDKCustomToolContext` exposes only `toolCallId`, with no abort signal, deadline, or cancellation channel. The loopback MCP bridge remains the canonical local OMP-tool transport. Revisit `local.customTools` only if the SDK adds that lifecycle contract or the extension explicitly owns aborts, timeouts, child cleanup, diagnostics, permissions, and equivalent platform-smoke coverage.
+- `Agent.create()` / `Agent.resume()` expose no supported initial system, developer, history, tool-call/result, or historical-thinking input. `Agent.send()` accepts one text value plus current images. Bootstrap therefore uses the deterministic `src/context.ts` representation above; it does not claim private-wire parity.
+- Persisted conversation/checkpoint state is opaque. The extension does not decode or mutate private SDK checkpoints and does not import OMP's private AgentService protobuf/HTTP2 implementation.
+- Prior images cannot be attached as structured history, so only active images use `SDKUserMessage.images`; prior images use deterministic MIME-aware text markers. Historical thinking is omitted.
+- `SDKCustomToolContext` exposes `toolCallId` but no abort signal, deadline, or cancellation channel. Builtin OMP exec routing remains narrowly owned by `local.customTools`; extension/custom tools retain the MCP bridge's run cancellation and cleanup.
+- `ModelListItem` exposes catalog metadata but no authoritative local/cloud availability field. OMP therefore cannot annotate or filter `/model` safely by runtime; backend create/send errors remain authoritative.
 
 ## 10. OMP host adaptation boundary
 
@@ -269,11 +292,13 @@ The port imports only `@oh-my-pi/*` host packages. Important host-specific adapt
 | Model roles | native `modelRoles` and `@role` resolution |
 | Fallback | native `retry.fallbackChains` only |
 | System prompt | OMP string-array prompt contract |
+| Context/bootstrap | OMP `Context` via `convertToLlm`, then deterministic public-SDK reconciliation |
 | Skills | `getActiveSkills()` |
 | Project trust | `ctx.isProjectTrusted()`; no extension trust store |
 | Model surface resync | `session_start`, `before_agent_start`, `turn_start` |
 | Compaction/tree | OMP session lifecycle events |
 | Tool schemas | `@oh-my-pi/omptype/typebox` and OMP ToolInfo normalization |
+| Builtin exec | SDK `local.customTools` routed through OMP `CursorExecHandlers` |
 | Native replay | neutral `cursor` tool only; no builtin shadowing |
 | Context markup | OMP `<repo-rules>` parser/dedup path |
 | Runtime | Bun-native OMP packages and tests |
