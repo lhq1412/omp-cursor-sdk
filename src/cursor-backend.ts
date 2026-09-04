@@ -4,8 +4,8 @@ import { acquireSessionCursorAgent, type SessionCursorAgentCreateParams, type Se
 import type { CursorPiToolBridgeRun } from "./cursor-pi-tool-bridge.js";
 import type { CursorProviderTurnSendPayload } from "./cursor-provider-turn-types.js";
 import type { CursorSdkTurnUsage } from "./cursor-usage-accounting.js";
-import type { CursorTranscriptCompletedToolCall } from "./cursor-agent-message-web-tools.js";
-import { invalidateCursorAgentMessageOffset, loadCursorTranscriptWebToolCallsAfterOffset, readCursorAgentMessageOffset } from "./cursor-agent-message-web-tools.js";
+import type { CursorTranscriptReplayResult } from "./cursor-agent-message-web-tools.js";
+import { getCursorAgentMessageOffset, invalidateCursorAgentMessageOffset, loadCursorTranscriptWebToolCallsAfterOffset } from "./cursor-agent-message-web-tools.js";
 import { attachCursorSdkBilledTurnUsage, initializeCursorLocalBilledUsage } from "./cursor-sdk-billed-usage.js";
 import { collectCursorCloudRunReport, type CursorCloudRunReport } from "./cursor-cloud-reporting.js";
 import { getCheckpointContextWindow, saveCachedContextWindow } from "./context-window-cache.js";
@@ -37,12 +37,12 @@ export interface LocalCursorBackendSession extends CursorBackendSession {
 	readonly created: boolean;
 	readonly resumed?: boolean;
 	readonly resumeNotice?: string;
-	commitSend(context: Context, bootstrapped: boolean): void;
+	commitSend(context: Context, bootstrapped: boolean, agentMessageOffset?: number): void;
 	trackRunCompletion(completion: Promise<unknown>): void;
 	initializeBilledUsage(): Promise<boolean>;
-	readMessageOffset(): Promise<number>;
+	getMessageOffset(): number | undefined;
 	invalidateMessageOffset(): void;
-	loadTranscriptWebToolCallsAfterOffset(offset: number | undefined): Promise<CursorTranscriptCompletedToolCall[]>;
+	loadTranscriptWebToolCallsAfterOffset(offset: number | undefined): Promise<CursorTranscriptReplayResult>;
 	cacheContextWindow(modelId: string): Promise<void>;
 }
 
@@ -78,7 +78,7 @@ function wrapAgent(
 	};
 }
 
-async function cacheSdkContextWindow(agentId: string, modelId: string, cwd: string, store: Parameters<typeof readCursorAgentMessageOffset>[2]): Promise<void> {
+async function cacheSdkContextWindow(agentId: string, modelId: string, cwd: string, store: import("@cursor/sdk").LocalAgentStore | undefined): Promise<void> {
 	try {
 		const { createAgentPlatform } = await loadCursorSdk();
 		const platform = await createAgentPlatform({ workspaceRef: cwd, scopedWorkspaceRef: cwd, localStore: store });
@@ -111,10 +111,10 @@ class SdkCursorBackend implements CursorBackend {
 				created: lease.created,
 				resumed: lease.resumed,
 				resumeNotice: lease.resumeNotice,
-				commitSend: (context, bootstrapped) => lease.commitSend(context, bootstrapped),
+				commitSend: (context, bootstrapped, agentMessageOffset) => lease.commitSend(context, bootstrapped, agentMessageOffset),
 				trackRunCompletion: (completion) => lease.trackRunCompletion(completion),
 				initializeBilledUsage: () => initializeCursorLocalBilledUsage(agent, agent.agentId),
-				readMessageOffset: () => readCursorAgentMessageOffset(agent, input.sessionAgent.cwd, store),
+				getMessageOffset: () => getCursorAgentMessageOffset(agent),
 				invalidateMessageOffset: () => invalidateCursorAgentMessageOffset(agent),
 				loadTranscriptWebToolCallsAfterOffset: (offset) => loadCursorTranscriptWebToolCallsAfterOffset({ agent, cwd: input.sessionAgent.cwd, offset, store }),
 				cacheContextWindow: (modelId) => cacheSdkContextWindow(agent.agentId, modelId, input.sessionAgent.cwd, store),

@@ -71,6 +71,19 @@ describe("cursor-session-agent-resume", () => {
 			storeIdentity: { version: 1, stateRoot: "/tmp/session-store" },
 		});
 		expect(parseCursorSessionAgentResumeEntryData({ ...current, storeIdentity: undefined })).toBeUndefined();
+		const withWatermark = {
+			...current,
+			version: 3,
+			agentMessageOffset: 128,
+		};
+		expect(parseCursorSessionAgentResumeEntryData(withWatermark)).toMatchObject({
+			version: 3,
+			agentMessageOffset: 128,
+		});
+		expect(parseCursorSessionAgentResumeEntryData({ ...withWatermark, agentMessageOffset: -1 })).toMatchObject({
+			version: 3,
+		});
+		expect(parseCursorSessionAgentResumeEntryData({ ...withWatermark, agentMessageOffset: -1 })?.agentMessageOffset).toBeUndefined();
 		expect(parseCursorSessionAgentResumeEntryData({ ...valid, agentId: `agent-${"a".repeat(250)}` })?.agentId).toHaveLength(256);
 		for (const agentId of [
 			"bc-cloud-1",
@@ -455,7 +468,7 @@ describe("cursor-session-agent-resume", () => {
 		await pi.runTurnEnd({}, { sessionManager: { getBranch: vi.fn(() => branch) } });
 
 		expect(pi.appendEntry).toHaveBeenCalledWith(CURSOR_SESSION_AGENT_RESUME_ENTRY_TYPE, expect.objectContaining({
-			version: 2,
+			version: 3,
 			agentId: "agent-new",
 			storeIdentity: { version: 1, stateRoot: "/tmp/store-new" },
 			cleanupCandidates: [{ agentId: "agent-old" }],

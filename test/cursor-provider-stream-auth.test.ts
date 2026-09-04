@@ -1,6 +1,5 @@
 import { AuthenticationError } from "@cursor/sdk";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Type } from "@oh-my-pi/omptype/typebox"
 import {
 	resetCursorProviderTestState,
 	mockedCreate,
@@ -12,13 +11,10 @@ import {
 	getDoneEvent,
 	getEventsOfType,
 	hasEventType,
-	registerBridgeForProviderTest,
-	createTestToolInfo,
 	mockCreatedAgent,
 	asMockSdkAgent,
 	asMockCursorRun,
 } from "./helpers/cursor-provider-harness.js";
-import { CursorPiToolBridgeRunImpl } from "../src/cursor-pi-tool-bridge-run.js";
 import { __testUtils as cursorSdkProcessGuardTestUtils } from "../src/cursor-sdk-process-error-guard.js";
 import { streamCursor } from "../src/cursor-provider.js";
 import { MISSING_CURSOR_API_KEY_MESSAGE } from "../src/cursor-provider-errors.js";
@@ -299,21 +295,7 @@ describe("streamCursor auth and abort", () => {
 		expect(mockedMessagesList).toHaveBeenCalledTimes(2);
 	});
 
-	it("cancels bridge runs and removes the abort listener when aborted during recovery message recount", async () => {
-		registerBridgeForProviderTest({
-			active: ["sem_reindex"],
-			tools: [createTestToolInfo("sem_reindex", Type.Object({ target: Type.String() }), "Reindex semantic cache")],
-		});
-		const bridgeCancelled = Promise.withResolvers<void>();
-		const originalBridgeCancel = CursorPiToolBridgeRunImpl.prototype.cancel;
-		const bridgeCancelSpy = vi.spyOn(CursorPiToolBridgeRunImpl.prototype, "cancel").mockImplementation(function (
-			this: CursorPiToolBridgeRunImpl,
-			reason: string,
-		) {
-			originalBridgeCancel.call(this, reason);
-			bridgeCancelled.resolve();
-		});
-		const removeListenerSpy = vi.spyOn(AbortSignal.prototype, "removeEventListener");
+	it("defers legacy watermark recovery to post-send finalize without blocking send", async () => {
 		const messagesListGate = Promise.withResolvers<void>();
 		const recoveryCountStarted = Promise.withResolvers<void>();
 		let messagesListCalls = 0;
@@ -325,13 +307,15 @@ describe("streamCursor auth and abort", () => {
 			return [];
 		});
 
-		const mockSend = vi.fn().mockImplementationOnce(async () => {
-			expect(mockedMessagesList).not.toHaveBeenCalled();
+		const mockSend = vi.fn().mockImplementation(async () => {
+			const sendIndex = mockSend.mock.calls.length;
+			expect(mockedMessagesList).toHaveBeenCalledTimes(sendIndex - 1);
+			const runId = `run-${sendIndex}`;
 			return asMockCursorRun({
-				id: "run-before-recovery",
+				id: runId,
 				agentId: "agent-1",
 				status: "running",
-				wait: vi.fn().mockResolvedValue({ id: "run-before-recovery", status: "finished", result: "first" }),
+				wait: vi.fn().mockResolvedValue({ id: runId, status: "finished", result: `turn-${sendIndex}` }),
 			});
 		});
 		mockCreatedAgent({ send: mockSend });
@@ -346,25 +330,15 @@ describe("streamCursor auth and abort", () => {
 			firstDone.message,
 			{ role: "user", content: "Follow up", timestamp: 3 },
 		]);
-		const controller = new AbortController();
-		const eventsPromise = collectEvents(streamCursor(makeModel("composer-2"), secondContext, {
-			apiKey: "test-key",
-			signal: controller.signal,
-		}));
+		const eventsPromise = collectEvents(streamCursor(makeModel("composer-2"), secondContext, { apiKey: "test-key" }));
 
 		await recoveryCountStarted.promise;
-		controller.abort();
-		await bridgeCancelled.promise;
-		expect(bridgeCancelSpy).toHaveBeenCalledWith("Cursor SDK run aborted");
-
 		messagesListGate.resolve();
 		const events = await eventsPromise;
 
-		expect(getErrorEvent(events).reason).toBe("aborted");
-		expect(mockSend).toHaveBeenCalledTimes(1);
-		expect(removeListenerSpy).toHaveBeenCalledWith("abort", expect.any(Function));
-		bridgeCancelSpy.mockRestore();
-		removeListenerSpy.mockRestore();
+		expect(getDoneEvent(events).reason).toBe("stop");
+		expect(mockSend).toHaveBeenCalledTimes(2);
+		expect(mockedMessagesList.mock.calls.length).toBeGreaterThan(1);
 	});
 
 	it.each([

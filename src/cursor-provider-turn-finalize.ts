@@ -52,19 +52,30 @@ async function replayCursorTranscriptWebToolCalls(
 	messageOffset: number | undefined,
 	turnCoordinator: CursorSdkTurnCoordinator,
 	sdkEventDebug: CursorSdkEventDebugSink | undefined,
-): Promise<void> {
+): Promise<number | undefined> {
 	try {
-		const transcriptToolCalls = await backendSession.loadTranscriptWebToolCallsAfterOffset(messageOffset);
-		if (transcriptToolCalls.length === 0) return;
-		sdkEventDebug?.recordCoordinatorEvent("cursor-transcript-web-tools", {
-			agentId: backendSession.id,
-			messageOffset,
-			count: transcriptToolCalls.length,
-		});
-		turnCoordinator.handleTranscriptCompletedToolCalls(transcriptToolCalls);
+		const replay = await backendSession.loadTranscriptWebToolCallsAfterOffset(messageOffset);
+		if (replay.toolCalls.length > 0) {
+			sdkEventDebug?.recordCoordinatorEvent("cursor-transcript-web-tools", {
+				agentId: backendSession.id,
+				messageOffset,
+				count: replay.toolCalls.length,
+				...(replay.replaySkipped ? { replaySkipped: replay.replaySkipped } : {}),
+			});
+			turnCoordinator.handleTranscriptCompletedToolCalls(replay.toolCalls);
+		} else if (replay.replaySkipped) {
+			sdkEventDebug?.recordCoordinatorEvent("cursor-transcript-web-tools", {
+				agentId: backendSession.id,
+				messageOffset,
+				count: 0,
+				replaySkipped: replay.replaySkipped,
+			});
+		}
+		return replay.nextOffset;
 	} catch (error) {
 		backendSession.invalidateMessageOffset();
 		sdkEventDebug?.recordError("cursor_transcript_web_tools", error);
+		return undefined;
 	}
 }
 
@@ -102,6 +113,7 @@ export interface AwaitFinalizeCursorRunOutcomeParams {
 export interface FinalizedCursorRunOutcome {
 	outcome: CursorRunOutcome;
 	displayOnlyTraceBlock?: string;
+	nextAgentMessageOffset?: number;
 }
 
 /** Single wait/finalize path for SDK runs: wait, debug capture, transcript replay, incomplete tools, artifacts, context cache. */
@@ -167,8 +179,9 @@ export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorR
 	} catch {
 		// Debug reporting must never affect provider execution.
 	}
+	let nextAgentMessageOffset: number | undefined;
 	if (params.prepared.runtimeTarget === "local" && isCursorRunFinishedSuccessfully(outcome)) {
-		await replayCursorTranscriptWebToolCalls(
+		nextAgentMessageOffset = await replayCursorTranscriptWebToolCalls(
 			params.prepared.backendSession,
 			params.cursorAgentMessageOffset,
 			params.prepared.runtime.turnCoordinator,
@@ -186,5 +199,5 @@ export async function awaitFinalizeCursorRunOutcome(params: AwaitFinalizeCursorR
 			getCursorContextWindowCacheKey(params.modelId, params.prepared.meta.modelSelection),
 		);
 	}
-	return { outcome, displayOnlyTraceBlock };
+	return { outcome, displayOnlyTraceBlock, nextAgentMessageOffset };
 }

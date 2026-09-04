@@ -41,7 +41,7 @@ export interface SessionCursorAgentLease {
 	created: boolean;
 	resumed?: boolean;
 	resumeNotice?: string;
-	commitSend(context: Context, bootstrapped: boolean): void;
+	commitSend(context: Context, bootstrapped: boolean, agentMessageOffset?: number): void;
 	trackRunCompletion(completion: Promise<unknown>): void;
 }
 
@@ -312,6 +312,7 @@ function commitSessionAgentSendForLease(
 	instanceId: number,
 	context: Context,
 	bootstrapped: boolean,
+	agentMessageOffset?: number,
 ): void {
 	const entry = sessionAgentsByScope.get(scopeKey);
 	if (!isActivePoolEntry(entry)) return;
@@ -330,6 +331,7 @@ function commitSessionAgentSendForLease(
 			poolKey: entry.poolKey,
 			sendState: entry.sendState,
 			storeIdentity: entry.sessionStore.identity,
+			...(agentMessageOffset !== undefined ? { agentMessageOffset } : {}),
 		});
 	}
 }
@@ -420,8 +422,8 @@ function leaseFromEntry(
 		created,
 		resumed: entry.resumed,
 		...(resumeNotice ? { resumeNotice } : {}),
-		commitSend: (context, bootstrapped) => {
-			commitSessionAgentSendForLease(scopeKey, entry.poolKey, entry.instanceId, context, bootstrapped);
+		commitSend: (context, bootstrapped, agentMessageOffset) => {
+			commitSessionAgentSendForLease(scopeKey, entry.poolKey, entry.instanceId, context, bootstrapped, agentMessageOffset);
 		},
 		trackRunCompletion: (completion) => {
 			trackSessionAgentRunCompletionForLease(scopeKey, entry.poolKey, entry.instanceId, completion);
@@ -541,6 +543,7 @@ async function createSessionAgentEntry(
 			cwd: params.cwd,
 			store: sessionStore.store,
 			resumed,
+			persistedOffset: resumeHandle?.agentMessageOffset,
 		});
 
 		return {
