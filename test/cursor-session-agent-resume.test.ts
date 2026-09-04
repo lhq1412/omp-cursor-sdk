@@ -84,6 +84,8 @@ describe("cursor-session-agent-resume", () => {
 			version: 3,
 		});
 		expect(parseCursorSessionAgentResumeEntryData({ ...withWatermark, agentMessageOffset: -1 })?.agentMessageOffset).toBeUndefined();
+		expect(parseCursorSessionAgentResumeEntryData({ ...current, agentMessageOffset: 128 })?.agentMessageOffset).toBeUndefined();
+		expect(parseCursorSessionAgentResumeEntryData({ ...valid, agentMessageOffset: 128 })?.agentMessageOffset).toBeUndefined();
 		expect(parseCursorSessionAgentResumeEntryData({ ...valid, agentId: `agent-${"a".repeat(250)}` })?.agentId).toHaveLength(256);
 		for (const agentId of [
 			"bc-cloud-1",
@@ -257,6 +259,7 @@ describe("cursor-session-agent-resume", () => {
 			poolKey: "pool-1",
 			sendState: { bootstrapped: true, contextFingerprint: "fp", incrementalSendCount: 0 },
 			storeIdentity: { version: 1, stateRoot: "/tmp/store" },
+			agentMessageOffset: 42,
 		});
 
 		expect(pi.appendEntry).not.toHaveBeenCalled();
@@ -278,7 +281,11 @@ describe("cursor-session-agent-resume", () => {
 		);
 		expect(pi.appendEntry).toHaveBeenCalledWith(
 			CURSOR_SESSION_AGENT_RESUME_ENTRY_TYPE,
-			expect.objectContaining({ branchPathHash: expectedHash }),
+			expect.objectContaining({
+				version: 3,
+				branchPathHash: expectedHash,
+				agentMessageOffset: 42,
+			}),
 		);
 	});
 

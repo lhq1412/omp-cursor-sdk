@@ -180,7 +180,9 @@ export function parseCursorSessionAgentResumeEntryData(value: unknown): CursorSe
 	if ((record.version === RESUME_ENTRY_VERSION || record.version === WATERMARK_RESUME_ENTRY_VERSION) && !storeIdentity) {
 		return undefined;
 	}
-	const agentMessageOffset = parseCursorAgentMessageOffsetWatermark(record.agentMessageOffset);
+	const agentMessageOffset = record.version === WATERMARK_RESUME_ENTRY_VERSION
+		? parseCursorAgentMessageOffsetWatermark(record.agentMessageOffset)
+		: undefined;
 	const cleanupCandidateAgentIds = Array.isArray(record.cleanupCandidateAgentIds)
 		? record.cleanupCandidateAgentIds.filter(isCursorLocalAgentId)
 		: undefined;

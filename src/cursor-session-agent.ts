@@ -540,8 +540,6 @@ async function createSessionAgentEntry(
 		if (!agent) throw new Error("Cursor SDK agent creation returned no agent");
 		if (!sessionStore) throw new Error("Cursor SDK session store was not opened");
 		initializeCursorAgentMessageOffset(agent, {
-			cwd: params.cwd,
-			store: sessionStore.store,
 			resumed,
 			persistedOffset: resumeHandle?.agentMessageOffset,
 		});

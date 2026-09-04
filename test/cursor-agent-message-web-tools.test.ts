@@ -65,7 +65,7 @@ describe("Cursor agent message offset watermark", () => {
 		const list = vi.spyOn(Agent.messages, "list");
 		const agent = fakeAgent();
 
-		initializeCursorAgentMessageOffset(agent, { cwd: "/repo", resumed: false });
+		initializeCursorAgentMessageOffset(agent, { resumed: false });
 
 		expect(getCursorAgentMessageOffset(agent)).toBe(0);
 		expect(list).not.toHaveBeenCalled();
@@ -75,7 +75,7 @@ describe("Cursor agent message offset watermark", () => {
 		const list = vi.spyOn(Agent.messages, "list");
 		const agent = fakeAgent();
 
-		initializeCursorAgentMessageOffset(agent, { cwd: "/repo", resumed: true, persistedOffset: 42 });
+		initializeCursorAgentMessageOffset(agent, { resumed: true, persistedOffset: 42 });
 
 		expect(getCursorAgentMessageOffset(agent)).toBe(42);
 		expect(list).not.toHaveBeenCalled();
@@ -85,7 +85,7 @@ describe("Cursor agent message offset watermark", () => {
 		const list = vi.spyOn(Agent.messages, "list");
 		const agent = fakeAgent();
 
-		initializeCursorAgentMessageOffset(agent, { cwd: "/repo", resumed: true });
+		initializeCursorAgentMessageOffset(agent, { resumed: true });
 
 		expect(getCursorAgentMessageOffset(agent)).toBeUndefined();
 		expect(list).not.toHaveBeenCalled();
@@ -103,7 +103,7 @@ describe("Cursor agent message offset watermark", () => {
 			return messages.slice(offset, offset + limit);
 		});
 		const agent = fakeAgent();
-		initializeCursorAgentMessageOffset(agent, { cwd: "/repo", resumed: false });
+		initializeCursorAgentMessageOffset(agent, { resumed: false });
 		const offset = getCursorAgentMessageOffset(agent);
 
 		const replay = await loadCursorTranscriptWebToolCallsAfterOffset({ agent, cwd: "/repo", offset });
@@ -118,12 +118,28 @@ describe("Cursor agent message offset watermark", () => {
 		expect(list).toHaveBeenCalledTimes(2);
 	});
 
+	it("rebases a known watermark when the transcript is shorter than the baseline", async () => {
+		const messages = Array.from({ length: 8 }, (_, index) => ({ ...fakeAgentMessage, uuid: `agent-1:${index}` }));
+		vi.spyOn(Agent.messages, "list").mockImplementation(async (_agentId, options) => {
+			const offset = options?.offset ?? 0;
+			const limit = options?.limit ?? messages.length;
+			return messages.slice(offset, offset + limit);
+		});
+		const agent = fakeAgent();
+		initializeCursorAgentMessageOffset(agent, { resumed: true, persistedOffset: 10 });
+
+		const replay = await loadCursorTranscriptWebToolCallsAfterOffset({ agent, cwd: "/repo", offset: 10 });
+
+		expect(replay).toEqual({ toolCalls: [], nextOffset: 8 });
+		expect(getCursorAgentMessageOffset(agent)).toBe(8);
+	});
+
 	it("recounts once for unknown baseline without replaying transcript tools", async () => {
 		const list = vi.spyOn(Agent.messages, "list").mockImplementation(async (_agentId, options) =>
 			(options?.offset ?? 0) < 2 ? [fakeAgentMessage] : []
 		);
 		const agent = fakeAgent();
-		initializeCursorAgentMessageOffset(agent, { cwd: "/repo", resumed: true });
+		initializeCursorAgentMessageOffset(agent, { resumed: true });
 
 		const replay = await loadCursorTranscriptWebToolCallsAfterOffset({ agent, cwd: "/repo", offset: undefined });
 
@@ -135,7 +151,7 @@ describe("Cursor agent message offset watermark", () => {
 	it("marks invalidation as unknown without forcing a pre-send recount", () => {
 		const list = vi.spyOn(Agent.messages, "list");
 		const agent = fakeAgent();
-		initializeCursorAgentMessageOffset(agent, { cwd: "/repo", resumed: false });
+		initializeCursorAgentMessageOffset(agent, { resumed: false });
 
 		invalidateCursorAgentMessageOffset(agent);
 
@@ -146,7 +162,7 @@ describe("Cursor agent message offset watermark", () => {
 	it("invalidates on transcript-list failure", async () => {
 		const list = vi.spyOn(Agent.messages, "list").mockRejectedValueOnce(new Error("transcript unavailable"));
 		const agent = fakeAgent();
-		initializeCursorAgentMessageOffset(agent, { cwd: "/repo", resumed: false });
+		initializeCursorAgentMessageOffset(agent, { resumed: false });
 
 		await expect(loadCursorTranscriptWebToolCallsAfterOffset({ agent, cwd: "/repo", offset: 0 }))
 			.rejects.toThrow("transcript unavailable");
@@ -158,8 +174,8 @@ describe("Cursor agent message offset watermark", () => {
 		const created = fakeAgent("shared-agent-id");
 		const resumed = fakeAgent("shared-agent-id");
 
-		initializeCursorAgentMessageOffset(created, { cwd: "/repo", resumed: false });
-		initializeCursorAgentMessageOffset(resumed, { cwd: "/repo", resumed: true, persistedOffset: 1 });
+		initializeCursorAgentMessageOffset(created, { resumed: false });
+		initializeCursorAgentMessageOffset(resumed, { resumed: true, persistedOffset: 1 });
 
 		expect(getCursorAgentMessageOffset(created)).toBe(0);
 		expect(getCursorAgentMessageOffset(resumed)).toBe(1);

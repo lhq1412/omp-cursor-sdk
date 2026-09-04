@@ -79,12 +79,11 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 	try {
 		abortRegistration?.signal.addEventListener("abort", abortListener, { once: true });
 		throwIfAborted();
-		const cursorAgentMessageOffset = prepared.runtimeTarget === "local"
-			? (() => {
-				void prepared.backendSession.initializeBilledUsage();
-				return prepared.backendSession.getMessageOffset();
-			})()
-			: undefined;
+		let cursorAgentMessageOffset: number | undefined;
+		if (prepared.runtimeTarget === "local") {
+			void prepared.backendSession.initializeBilledUsage();
+			cursorAgentMessageOffset = prepared.backendSession.getMessageOffset();
+		}
 		throwIfAborted();
 		recordDebug(() => sdkEventDebug?.recordSendMeta({
 			mode: meta.sendPlan.mode,
