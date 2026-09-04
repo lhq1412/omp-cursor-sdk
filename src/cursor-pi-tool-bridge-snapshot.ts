@@ -1,10 +1,13 @@
+import type { Tool } from "@oh-my-pi/pi-ai";
+import { normalizeSchemaForMCP, toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
 import type {
 	CursorPiBridgeToolDefinition,
+	CursorPiMcpInputSchema,
 	CursorPiToolBridgeSnapshot,
 	CursorPiToolBridgeSnapshotApi,
 	CursorPiToolBridgeSnapshotOptions,
 } from "./cursor-pi-tool-bridge-types.js";
-import { createMcpToolName, normalizeMcpInputSchema, stableNameHash } from "./cursor-pi-tool-bridge-mcp.js";
+import { createMcpToolName, stableNameHash } from "./cursor-pi-tool-bridge-mcp.js";
 export {
 	CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV,
 	CURSOR_PI_TOOL_BRIDGE_ENV,
@@ -13,6 +16,21 @@ export {
 } from "./cursor-pi-tool-bridge-env.js";
 import { isRegisteredCursorNativeToolName } from "./cursor-native-tool-display-state.js";
 import { isExcludedFromCursorBridgeExposure } from "./cursor-tool-presentation-registry.js";
+import { asRecord } from "./cursor-record-utils.js";
+
+const EMPTY_MCP_OBJECT_SCHEMA: CursorPiMcpInputSchema = { type: "object", properties: {} };
+
+/** Project a pi ToolInfo-like tool onto MCP inputSchema via OMP wire + MCP normalization. */
+export function normalizeMcpInputSchema(tool: Pick<Tool, "name" | "description" | "parameters">): CursorPiMcpInputSchema {
+	try {
+		const normalized = asRecord(normalizeSchemaForMCP(toolWireSchema(tool)));
+		return normalized?.type === "object" ? (normalized as CursorPiMcpInputSchema) : EMPTY_MCP_OBJECT_SCHEMA;
+	} catch {
+		// Invalid extension schemas must not break bridge snapshot / provider startup.
+		return EMPTY_MCP_OBJECT_SCHEMA;
+	}
+}
+
 
 const OVERLAPPING_CURSOR_NATIVE_PI_BUILTIN_TOOL_NAMES = new Set(["read", "bash", "write", "edit", "grep", "find", "ls"]);
 
@@ -75,7 +93,7 @@ export function buildCursorPiToolBridgeSnapshot(
 			mcpToolName,
 			description,
 			promptGuidelines: tool.promptGuidelines,
-			inputSchema: normalizeMcpInputSchema(tool.parameters),
+			inputSchema: normalizeMcpInputSchema(tool),
 			sourceInfo: tool.sourceInfo,
 		});
 	}

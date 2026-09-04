@@ -5,27 +5,6 @@ import { buildCursorPiBridgeMcpToolDescription, CURSOR_PI_BRIDGE_MCP_TOOL_PREFIX
 import type { CursorPiBridgeToolDefinition, CursorPiMcpInputSchema } from "./cursor-pi-tool-bridge-types.js";
 import { asRecord, stringifyUnknown } from "./cursor-record-utils.js";
 
-export function normalizeMcpInputSchema(schema: unknown): CursorPiMcpInputSchema {
-	const record = asRecord(schema);
-	if (record?.type === "object") return record as CursorPiMcpInputSchema;
-
-	if (
-		(typeof schema === "function" || (typeof schema === "object" && schema !== null))
-		&& "toJsonSchema" in schema
-		&& typeof schema.toJsonSchema === "function"
-	) {
-		try {
-			const emitted = Reflect.apply(schema.toJsonSchema, schema, [{ target: "draft-2020-12" }]);
-			const emittedRecord = asRecord(emitted);
-			if (emittedRecord?.type === "object") return emittedRecord as CursorPiMcpInputSchema;
-		} catch {
-			// An invalid extension schema must not break provider startup.
-		}
-	}
-
-	return { type: "object", properties: {} };
-}
-
 export function normalizeMcpArgs(args: unknown): Record<string, unknown> {
 	const record = asRecord(args);
 	return record ? { ...record } : {};

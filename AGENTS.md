@@ -64,12 +64,12 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 - `src/cursor-env-boolean.ts` owns canonical env boolean parsing (default and tri-state optional) for bridge diagnostics, flags, and native replay gating.
 - `src/cursor-live-run-coordinator.ts` owns live Cursor run registry/scope matching, queued events, drain leases, idle disposal timers, and release cleanup.
 - `src/cursor-pi-tool-bridge.ts` re-exports bridge registration and snapshot helpers; exposes active pi tools to local Cursor agents through a per-run loopback MCP bridge.
-- `src/cursor-pi-tool-bridge-snapshot.ts` owns bridge snapshot building, env gating, and surface signatures.
+- `src/cursor-pi-tool-bridge-snapshot.ts` owns bridge snapshot building, env gating, surface signatures, and pi tool → MCP `inputSchema` projection via OMP `toolWireSchema` + `normalizeSchemaForMCP` (kept off the run dynamic-import graph so native loaders stay away from that Pi host-peer path).
 - `src/cursor-pi-tool-bridge-server.ts` owns loopback HTTP routing and run endpoint registry for bridge runs.
 - `src/cursor-pi-tool-bridge-run.ts` owns MCP transport setup, pending bridge calls, pi tool dispatch, cancellation, and run lifecycle.
 - `src/cursor-pi-tool-bridge-abort.ts` owns bridge pi tool execution abort tracking and process signal handling.
 - `src/cursor-pi-tool-bridge-diagnostics.ts` owns bridge debug diagnostics serialization and stderr logging.
-- `src/cursor-pi-tool-bridge-mcp.ts` owns MCP name/schema conversion and pi-to-MCP content helpers for the bridge.
+- `src/cursor-pi-tool-bridge-mcp.ts` owns MCP tool-name helpers and pi-to-MCP content/result helpers for the bridge (no schema conversion; that lives in the snapshot module).
 - `src/cursor-model-lifecycle.ts` owns the canonical effective Cursor model lifecycle/sync helper for `session_start`, `before_agent_start`, `model_select` with event-model override, and `turn_start`; callers keep Cursor-only filtering explicit.
 - `src/cursor-question-tool.ts` owns the bridge-exposed `cursor_ask_question` pi UI tool and the `pi-cursor-sdk:ask-question:blocked` wait-state event.
 - `src/cursor-native-tool-display-registration.ts` owns native replay tool registration and model-scoped activation.
