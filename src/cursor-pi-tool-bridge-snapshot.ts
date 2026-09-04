@@ -25,13 +25,6 @@ export type NormalizeMcpInputSchemaOptions = {
 	requiresCursorToolSchemaProjection?: boolean;
 };
 
-/**
- * Mirrors OMP pi-catalog policy: only the Cursor `fable` family sets
- * `requiresCursorToolSchemaProjection` (combiners rejected by that catalog path).
- */
-export function modelRequiresCursorToolSchemaProjection(modelId: string): boolean {
-	return modelId.toLowerCase().includes("fable");
-}
 
 /** Project a pi ToolInfo-like tool onto MCP inputSchema via OMP wire (+ optional Cursor sanitize) + MCP normalization. */
 export function normalizeMcpInputSchema(

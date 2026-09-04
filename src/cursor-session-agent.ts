@@ -6,7 +6,6 @@ import {
 	type CursorPiBridgeToolRequest,
 	type CursorPiToolBridgeRun,
 } from "./cursor-pi-tool-bridge.js";
-import { modelRequiresCursorToolSchemaProjection } from "./cursor-pi-tool-bridge-snapshot.js";
 import { computeCursorContextFingerprint } from "./context.js";
 import { getCursorSessionFile, getCursorSessionScopeGeneration, getCursorSessionScopeKey } from "./cursor-session-scope.js";
 import {
@@ -472,7 +471,10 @@ async function createSessionAgentEntry(
 			bridgeRun = await registeredBridge.createRun({
 				onToolRequest: params.onBridgeToolRequest,
 				debugRecorder: params.debugRecorder,
-				requiresCursorToolSchemaProjection: modelRequiresCursorToolSchemaProjection(params.modelSelection.id),
+				// Production auto-enable deferred: need live @cursor/sdk Fable MCP combiner
+				// reject/accept evidence before applying OMP catalog projection by default.
+				// Plumbing: createRun({ requiresCursorToolSchemaProjection: true }) +
+				// modelRequiresCursorToolSchemaProjection() via OMP resolveModelPolicy.
 			});
 			if (!bridgeRun.enabled || !bridgeRun.mcpServers) {
 				await bridgeRun.dispose();

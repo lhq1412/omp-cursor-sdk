@@ -44,7 +44,6 @@ export {
 export {
 	buildCursorPiToolBridgeSnapshot,
 	buildCursorPiToolBridgeSurfaceSignature,
-	modelRequiresCursorToolSchemaProjection,
 	normalizeMcpInputSchema,
 } from "./cursor-pi-tool-bridge-snapshot.js";
 

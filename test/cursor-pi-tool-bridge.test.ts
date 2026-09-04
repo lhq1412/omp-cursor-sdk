@@ -22,10 +22,8 @@ import {
 	resolveCursorPiToolBridgeEnabled,
 	type CursorPiToolBridgeRun,
 } from "../src/cursor-pi-tool-bridge.js";
-import {
-	modelRequiresCursorToolSchemaProjection,
-	normalizeMcpInputSchema,
-} from "../src/cursor-pi-tool-bridge-snapshot.js";
+import { normalizeMcpInputSchema } from "../src/cursor-pi-tool-bridge-snapshot.js";
+import { modelRequiresCursorToolSchemaProjection } from "../src/model-discovery.js";
 
 
 function createToolInfo(name: string, description = `${name} description`, parameters: TSchema = Type.Object({})): ToolInfo {
@@ -179,10 +177,13 @@ describe("cursor pi tool bridge flags and snapshots", () => {
 	});
 
 	it("conditionally reuses OMP sanitizeSchemaForCursor for combiner-heavy schemas", () => {
-		// OMP pi-catalog: only Cursor family fable sets requiresCursorToolSchemaProjection.
+		// OMP resolveModelPolicy(provider:cursor) catalog axis — not model-id string heuristics.
 		expect(modelRequiresCursorToolSchemaProjection("claude-5-fable-high")).toBe(true);
+		expect(modelRequiresCursorToolSchemaProjection("claude-5-fable-low")).toBe(true);
 		expect(modelRequiresCursorToolSchemaProjection("composer-2.5")).toBe(false);
 		expect(modelRequiresCursorToolSchemaProjection("gpt-5.3-codex")).toBe(false);
+		// bare token is not the catalog family assignment
+		expect(modelRequiresCursorToolSchemaProjection("fable")).toBe(false);
 
 		const combinerTool = {
 			name: "union_tool",

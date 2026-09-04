@@ -1,3 +1,5 @@
+import { resolveModelPolicy } from "@oh-my-pi/pi-catalog/compat/resolve";
+
 import type {
 	ModelListItem,
 	ModelParameterDefinition,
@@ -76,6 +78,33 @@ export interface CursorModelMetadata {
 		fast: boolean;
 	};
 }
+
+/**
+ * OMP catalog authority for Cursor tool-schema combiner projection.
+ * Uses resolveModelPolicy(provider: "cursor") — never request-path model-id heuristics.
+ */
+export function modelRequiresCursorToolSchemaProjection(modelId: string): boolean {
+	const trimmed = modelId.trim();
+	if (!trimmed) return false;
+	try {
+		const policy = resolveModelPolicy({
+			id: trimmed,
+			name: trimmed,
+			provider: "cursor",
+			api: "cursor",
+			baseUrl: "https://cursor.com",
+			reasoning: false,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 1,
+			maxTokens: 1,
+		});
+		return policy.catalog.requiresCursorToolSchemaProjection === true;
+	} catch {
+		return false;
+	}
+}
+
 
 const metadataByPiModelId = new Map<string, CursorModelMetadata>();
 
