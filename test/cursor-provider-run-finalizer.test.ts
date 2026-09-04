@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createAssistantMessageEventStream } from "@oh-my-pi/pi-ai";
 import { buildIncompleteCursorToolRunOutcome } from "../src/cursor-incomplete-tool-visibility.js";
 import { CursorRunFinalizer } from "../src/cursor-provider-run-finalizer.js";
+import type { CursorRunOutcome } from "../src/cursor-provider-run-outcome.js";
 import { CursorSdkTurnCoordinator } from "../src/cursor-provider-turn-coordinator.js";
 import type { CursorProviderTurnPrepareResult, LiveCursorProviderTurnRuntime, LocalCursorProviderTurnPrepareResult } from "../src/cursor-provider-turn-types.js";
 import { installCursorSdkProcessErrorGuard } from "../src/cursor-sdk-process-error-guard.js";
@@ -42,63 +43,69 @@ function makeLocalBackendSession(trackRunCompletion: (completion: Promise<unknow
 	};
 }
 
+function makeLivePrepared(
+	trackRunCompletion: (completion: Promise<unknown>) => void = () => {},
+	commitSend: () => void = () => {},
+): LocalCursorProviderTurnPrepareResult & { runtime: LiveCursorProviderTurnRuntime } {
+	return {
+		runtimeTarget: "local",
+		backendSession: makeLocalBackendSession(trackRunCompletion),
+		cwd: process.cwd(),
+		payload: { text: "hello" },
+		meta: {
+			sendPlan: { mode: "incremental", reason: "incremental", resetAgent: false },
+			prompt: { text: "hello", images: [] },
+			bootstrap: false,
+			promptInputTokens: 0,
+			useNativeToolReplay: true,
+			bridgeEnabled: false,
+			nativeReplayId: "replay-1",
+			agentMode: "agent",
+			modelSelection: { id: "composer-2.5" },
+		},
+		localForce: { value: false, source: "builtin", trustLevel: "builtin" },
+		textDeltas: [],
+		sessionAgentScopeKey: "scope-1",
+		restoreCursorSdkOutputFilter: () => {},
+		lifecycle: {
+			commitSend,
+			trackRunCompletion,
+			abandon: async () => {},
+			dispose: async () => {},
+		},
+		runtime: {
+			kind: "live",
+			liveRun: {
+				id: "replay-1",
+				agentId: "agent-1",
+				sessionAgentScopeKey: "scope-1",
+				accounting: createCursorLiveRunAccountingState(0),
+				pendingEvents: [],
+				textDeltas: [],
+				emittedText: "",
+				recordedToolDisplayIds: [],
+				done: false,
+				cancelled: false,
+				disposed: false,
+				chainUserInputAfterCompletion: false,
+			},
+			turnCoordinator: new CursorSdkTurnCoordinator({
+				stream: createAssistantMessageEventStream(),
+				partial: makeAssistantMessage(""),
+				cwd: process.cwd(),
+				useNativeToolReplay: true,
+				nativeReplayId: "replay-1",
+				textDeltas: [],
+			}),
+		},
+	};
+}
 
 describe("CursorRunFinalizer", () => {
 	it("settles live-run ownership before best-effort debug writes after wait failure", async () => {
 		const trackRunCompletion = vi.fn();
 		mockAwaitFinalizeCursorRunOutcome.mockRejectedValueOnce(new Error("run wait failed"));
-		const prepared: LocalCursorProviderTurnPrepareResult & { runtime: LiveCursorProviderTurnRuntime } = {
-			runtimeTarget: "local",
-			backendSession: makeLocalBackendSession(trackRunCompletion),
-			cwd: process.cwd(),
-			payload: { text: "hello" },
-			meta: {
-				sendPlan: { mode: "incremental", reason: "incremental", resetAgent: false },
-				prompt: { text: "hello", images: [] },
-				bootstrap: false,
-				promptInputTokens: 0,
-				useNativeToolReplay: true,
-				bridgeEnabled: false,
-				nativeReplayId: "replay-1",
-				agentMode: "agent",
-				modelSelection: { id: "composer-2.5" },
-			},
-			localForce: { value: false, source: "builtin", trustLevel: "builtin" },
-			textDeltas: [],
-			sessionAgentScopeKey: "scope-1",
-			restoreCursorSdkOutputFilter: () => {},
-			lifecycle: {
-				commitSend: () => {},
-				trackRunCompletion,
-				abandon: async () => {},
-				dispose: async () => {},
-			},
-			runtime: {
-				kind: "live",
-				liveRun: {
-					id: "replay-1",
-					agentId: "agent-1",
-					sessionAgentScopeKey: "scope-1",
-					accounting: createCursorLiveRunAccountingState(0),
-					pendingEvents: [],
-					textDeltas: [],
-					emittedText: "",
-					recordedToolDisplayIds: [],
-					done: false,
-					cancelled: false,
-					disposed: false,
-					chainUserInputAfterCompletion: false,
-				},
-				turnCoordinator: new CursorSdkTurnCoordinator({
-					stream: createAssistantMessageEventStream(),
-					partial: makeAssistantMessage(""),
-					cwd: process.cwd(),
-					useNativeToolReplay: true,
-					nativeReplayId: "replay-1",
-					textDeltas: [],
-				}),
-			},
-		};
+		const prepared = makeLivePrepared(trackRunCompletion);
 		const captureRunArtifacts = vi.fn(() => new Promise<void>(() => {}));
 		const debugSink = {
 			recordWaitResult: () => { throw new Error("debug wait write failed"); },
@@ -141,6 +148,163 @@ describe("CursorRunFinalizer", () => {
 		expect(prepared.runtime.liveRun).toMatchObject({ done: true, errorMessage: "run wait failed" });
 		expect(captureRunArtifacts).not.toHaveBeenCalled();
 		sdkProcessErrorGuard.dispose();
+	});
+
+	it("does not commit failed or cancelled live-run outcomes", async () => {
+		const outcomes: CursorRunOutcome[] = [
+			{
+				kind: "error",
+				waitResult: { id: "run-error", status: "error" },
+				incompleteTools: buildIncompleteCursorToolRunOutcome({ status: "error" }),
+				errorMessage: "failed",
+			},
+			{
+				kind: "cancelled",
+				waitResult: { id: "run-cancelled", status: "cancelled" },
+				incompleteTools: buildIncompleteCursorToolRunOutcome({ status: "cancelled" }),
+				abortMessage: "cancelled",
+			},
+		];
+
+		for (const outcome of outcomes) {
+			const commitSend = vi.fn();
+			const trackRunCompletion = vi.fn();
+			const prepared = makeLivePrepared(trackRunCompletion, commitSend);
+			mockAwaitFinalizeCursorRunOutcome.mockResolvedValueOnce({ outcome } as never);
+			const sdkProcessErrorGuard = installCursorSdkProcessErrorGuard();
+			const finalizer = new CursorRunFinalizer({
+				runnerParams: {
+					model: makeModel(),
+					context: makeContext(),
+					stream: createAssistantMessageEventStream(),
+					partial: makeAssistantMessage(""),
+					sdkEventDebugRef: {},
+				},
+				sdkEventDebug: () => undefined,
+				sdkProcessErrorGuard,
+				resolvedApiKey: () => undefined,
+				runtimeTarget: () => prepared.runtimeTarget,
+			});
+
+			const completion = finalizer.startLiveRunCompletion({
+				send: {
+					run: asMockCursorRun({
+						id: outcome.waitResult.id,
+						agentId: "agent-1",
+						status: "running",
+						wait: vi.fn(),
+					}),
+					cursorAgentMessageOffset: 0,
+				},
+				prepared,
+				modelId: "composer-2.5",
+				discardIncompleteTools: () => {},
+			});
+			await completion.waitCompletion;
+
+			expect(commitSend).not.toHaveBeenCalled();
+			expect(prepared.runtime.liveRun).toMatchObject(
+				outcome.kind === "cancelled"
+					? { done: true, cancelled: true }
+					: { done: true, errorMessage: "failed" },
+			);
+			sdkProcessErrorGuard.dispose();
+		}
+	});
+
+	it("abandons failed and cancelled turns without committing send state", async () => {
+		const outcomes: CursorRunOutcome[] = [
+			{
+				kind: "error",
+				waitResult: {
+					id: "run-error",
+					status: "error",
+					result: "failed",
+					durationMs: 1,
+					model: { id: "composer-2.5" },
+				},
+				incompleteTools: buildIncompleteCursorToolRunOutcome({ status: "error" }),
+				errorMessage: "failed",
+			},
+			{
+				kind: "cancelled",
+				waitResult: {
+					id: "run-cancelled",
+					status: "cancelled",
+					result: "",
+					durationMs: 1,
+					model: { id: "composer-2.5" },
+				},
+				incompleteTools: buildIncompleteCursorToolRunOutcome({ status: "cancelled" }),
+				abortMessage: "cancelled",
+			},
+		];
+
+		for (const outcome of outcomes) {
+			const stream = createAssistantMessageEventStream();
+			const partial = makeAssistantMessage("");
+			const commitSend = vi.fn();
+			const abandon = vi.fn(async () => {});
+			const sdkProcessErrorGuard = installCursorSdkProcessErrorGuard();
+			const prepared: CursorProviderTurnPrepareResult = {
+				runtimeTarget: "local",
+				backendSession: makeLocalBackendSession(),
+				cwd: process.cwd(),
+				payload: { text: "hello" },
+				meta: {
+					sendPlan: { mode: "incremental", reason: "incremental", resetAgent: false },
+					prompt: { text: "hello", images: [] },
+					bootstrap: false,
+					promptInputTokens: 0,
+					useNativeToolReplay: false,
+					bridgeEnabled: false,
+					nativeReplayId: "replay-1",
+					agentMode: "agent",
+					modelSelection: { id: "composer-2.5" },
+				},
+				localForce: { value: false, source: "builtin", trustLevel: "builtin" },
+				textDeltas: [],
+				sessionAgentScopeKey: "scope-1",
+				restoreCursorSdkOutputFilter: () => {},
+				lifecycle: {
+					commitSend,
+					trackRunCompletion: () => {},
+					abandon,
+					dispose: async () => {},
+				},
+				runtime: {
+					kind: "direct",
+					turnCoordinator: new CursorSdkTurnCoordinator({
+						stream,
+						partial,
+						cwd: process.cwd(),
+						useNativeToolReplay: false,
+						nativeReplayId: "replay-1",
+						textDeltas: [],
+					}),
+				},
+			};
+			const finalizer = new CursorRunFinalizer({
+				runnerParams: {
+					model: makeModel(),
+					context: makeContext(),
+					stream,
+					partial,
+					sdkEventDebugRef: {},
+				},
+				sdkEventDebug: () => undefined,
+				sdkProcessErrorGuard,
+				resolvedApiKey: () => undefined,
+				runtimeTarget: () => prepared.runtimeTarget,
+			});
+
+			await finalizer.applyTerminalEvent({ kind: "direct", prepared, outcome });
+
+			expect(commitSend).not.toHaveBeenCalled();
+			expect(abandon).toHaveBeenCalledTimes(1);
+			stream.end();
+			sdkProcessErrorGuard.dispose();
+		}
 	});
 
 	it("allows the error terminal path after direct terminal handling throws before emitting", async () => {

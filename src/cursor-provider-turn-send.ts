@@ -125,8 +125,13 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 				local.customTools = createCursorOmpExecCustomTools(
 					execHandlers,
 					getActiveContextToolNames(params.context),
-					(toolResult, args) => {
-						turnCoordinator.emitResolvedOmpExecTool(toolResult, args, options?.cursorOnToolResult);
+					async (toolResult, args) => {
+						let resolvedToolResult = toolResult;
+						try {
+							resolvedToolResult = (await options?.cursorOnToolResult?.(toolResult)) ?? toolResult;
+						} catch {}
+						turnCoordinator.emitResolvedOmpExecTool(resolvedToolResult, args);
+						return resolvedToolResult;
 					},
 				);
 			}
