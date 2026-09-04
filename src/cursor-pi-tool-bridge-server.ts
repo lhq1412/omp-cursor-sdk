@@ -52,6 +52,7 @@ export class CursorPiToolBridgeRegistry implements CursorPiToolBridge {
 		const snapshot = bridgeEnabled
 			? buildCursorPiToolBridgeSnapshot(this.pi, {
 				exposeOverlappingBuiltins: resolveCursorPiToolBridgeBuiltinsEnabled(this.env),
+				requiresCursorToolSchemaProjection: options.requiresCursorToolSchemaProjection === true,
 			})
 			: createEmptySnapshot();
 		const { CursorPiToolBridgeRunImpl } = await import("./cursor-pi-tool-bridge-run.js");

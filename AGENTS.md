@@ -64,7 +64,7 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 - `src/cursor-env-boolean.ts` owns canonical env boolean parsing (default and tri-state optional) for bridge diagnostics, flags, and native replay gating.
 - `src/cursor-live-run-coordinator.ts` owns live Cursor run registry/scope matching, queued events, drain leases, idle disposal timers, and release cleanup.
 - `src/cursor-pi-tool-bridge.ts` re-exports bridge registration and snapshot helpers; exposes active pi tools to local Cursor agents through a per-run loopback MCP bridge.
-- `src/cursor-pi-tool-bridge-snapshot.ts` owns bridge snapshot building, env gating, surface signatures, and pi tool → MCP `inputSchema` projection via OMP `toolWireSchema` + `normalizeSchemaForMCP` (kept off the run dynamic-import graph so native loaders stay away from that Pi host-peer path).
+- `src/cursor-pi-tool-bridge-snapshot.ts` owns bridge snapshot building, env gating, surface signatures, and pi tool → MCP `inputSchema` projection via OMP `toolWireSchema` + optional `sanitizeSchemaForCursor` (when the model needs Cursor combiner projection) + `normalizeSchemaForMCP` (kept off the run dynamic-import graph so native loaders stay away from that Pi host-peer path).
 - `src/cursor-pi-tool-bridge-server.ts` owns loopback HTTP routing and run endpoint registry for bridge runs.
 - `src/cursor-pi-tool-bridge-run.ts` owns MCP transport setup, pending bridge calls, pi tool dispatch, cancellation, and run lifecycle.
 - `src/cursor-pi-tool-bridge-abort.ts` owns bridge pi tool execution abort tracking and process signal handling.

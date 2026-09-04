@@ -6,6 +6,7 @@ import {
 	type CursorPiBridgeToolRequest,
 	type CursorPiToolBridgeRun,
 } from "./cursor-pi-tool-bridge.js";
+import { modelRequiresCursorToolSchemaProjection } from "./cursor-pi-tool-bridge-snapshot.js";
 import { computeCursorContextFingerprint } from "./context.js";
 import { getCursorSessionFile, getCursorSessionScopeGeneration, getCursorSessionScopeKey } from "./cursor-session-scope.js";
 import {
@@ -471,6 +472,7 @@ async function createSessionAgentEntry(
 			bridgeRun = await registeredBridge.createRun({
 				onToolRequest: params.onBridgeToolRequest,
 				debugRecorder: params.debugRecorder,
+				requiresCursorToolSchemaProjection: modelRequiresCursorToolSchemaProjection(params.modelSelection.id),
 			});
 			if (!bridgeRun.enabled || !bridgeRun.mcpServers) {
 				await bridgeRun.dispose();

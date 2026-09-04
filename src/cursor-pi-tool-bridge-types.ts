@@ -45,6 +45,8 @@ export interface CursorPiToolBridgeSnapshot {
 
 export interface CursorPiToolBridgeSnapshotOptions {
 	exposeOverlappingBuiltins?: boolean;
+	/** Match OMP Model.requiresCursorToolSchemaProjection for advertised MCP schemas. */
+	requiresCursorToolSchemaProjection?: boolean;
 }
 
 export interface CursorPiBridgeToolRequest {
@@ -83,4 +85,6 @@ export interface CursorPiToolBridge {
 export interface CursorPiToolBridgeRunOptions {
 	onToolRequest?: (request: CursorPiBridgeToolRequest) => void;
 	debugRecorder?: CursorSdkEventDebugRecorder;
+	/** Match OMP Model.requiresCursorToolSchemaProjection for this run's MCP tool catalog. */
+	requiresCursorToolSchemaProjection?: boolean;
 }
