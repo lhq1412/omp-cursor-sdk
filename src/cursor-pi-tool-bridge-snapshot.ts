@@ -1,5 +1,5 @@
 import type { Tool } from "@oh-my-pi/pi-ai";
-import { normalizeSchemaForMCP, toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
+import { normalizeSchemaForMCP, sanitizeSchemaForCursor, toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
 import type {
 	CursorPiBridgeToolDefinition,
 	CursorPiMcpInputSchema,
@@ -20,16 +20,31 @@ import { asRecord } from "./cursor-record-utils.js";
 
 const EMPTY_MCP_OBJECT_SCHEMA: CursorPiMcpInputSchema = { type: "object", properties: {} };
 
-/** Project a pi ToolInfo-like tool onto MCP inputSchema via OMP wire + MCP normalization. */
-export function normalizeMcpInputSchema(tool: Pick<Tool, "name" | "description" | "parameters">): CursorPiMcpInputSchema {
+export type NormalizeMcpInputSchemaOptions = {
+	/** When true, reuse OMP Cursor combiner projection before MCP normalization. */
+	requiresCursorToolSchemaProjection?: boolean;
+};
+
+
+/** Project a pi ToolInfo-like tool onto MCP inputSchema via OMP wire (+ optional Cursor sanitize) + MCP normalization. */
+export function normalizeMcpInputSchema(
+	tool: Pick<Tool, "name" | "description" | "parameters">,
+	options: NormalizeMcpInputSchemaOptions = {},
+): CursorPiMcpInputSchema {
 	try {
-		const normalized = asRecord(normalizeSchemaForMCP(toolWireSchema(tool)));
+		let wire: Record<string, unknown> = toolWireSchema(tool);
+		if (options.requiresCursorToolSchemaProjection === true) {
+			// OMP buildMcpToolDefinitions: toolWireSchema → sanitizeSchemaForCursor when required.
+			wire = sanitizeSchemaForCursor(wire);
+		}
+		const normalized = asRecord(normalizeSchemaForMCP(wire));
 		return normalized?.type === "object" ? (normalized as CursorPiMcpInputSchema) : EMPTY_MCP_OBJECT_SCHEMA;
 	} catch {
 		// Invalid extension schemas must not break bridge snapshot / provider startup.
 		return EMPTY_MCP_OBJECT_SCHEMA;
 	}
 }
+
 
 
 const OVERLAPPING_CURSOR_NATIVE_PI_BUILTIN_TOOL_NAMES = new Set(["read", "bash", "write", "edit", "grep", "find", "ls"]);
@@ -78,6 +93,9 @@ export function buildCursorPiToolBridgeSnapshot(
 	const tools: CursorPiBridgeToolDefinition[] = [];
 
 	const exposeOverlappingBuiltins = options.exposeOverlappingBuiltins === true;
+	const schemaOptions: NormalizeMcpInputSchemaOptions = {
+		requiresCursorToolSchemaProjection: options.requiresCursorToolSchemaProjection === true,
+	};
 
 	for (const tool of allTools) {
 		if (!activeToolNames.has(tool.name)) continue;
@@ -93,7 +111,7 @@ export function buildCursorPiToolBridgeSnapshot(
 			mcpToolName,
 			description,
 			promptGuidelines: tool.promptGuidelines,
-			inputSchema: normalizeMcpInputSchema(tool),
+			inputSchema: normalizeMcpInputSchema(tool, schemaOptions),
 			sourceInfo: tool.sourceInfo,
 		});
 	}

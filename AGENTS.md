@@ -7,7 +7,7 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 ## Repository map
 
 - `src/index.ts` registers the OMP extension, independent provider, Cursor runtime controls, native replay wrappers, question tool, and OMP tool bridge hooks.
-- `src/model-discovery.ts` discovers Cursor models, builds OMP model metadata, hydrates per-model selection metadata, and defines fallback models.
+- `src/model-discovery.ts` discovers Cursor models, builds OMP model metadata, hydrates per-model selection metadata, defines fallback models, and resolves OMP catalog `requiresCursorToolSchemaProjection` via `resolveModelPolicy` (no model-id heuristics).
 - `shared/cursor-model-selection-identities.mjs` owns canonical selectable model/context identities, exactly-two-tier native `extendedContext` convergence, and context-window evidence-key normalization shared by runtime discovery and the snapshot generator; its `.d.mts` file owns the TypeScript contract.
 - `src/cursor-provider.ts` is a thin `streamCursor()` wrapper that delegates turn execution to the turn runner.
 - `src/cursor-provider-turn-runner.ts` orchestrates provider turns (pre-send drain, prepare, send, finalize, emit, cleanup).
@@ -64,7 +64,7 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 - `src/cursor-env-boolean.ts` owns canonical env boolean parsing (default and tri-state optional) for bridge diagnostics, flags, and native replay gating.
 - `src/cursor-live-run-coordinator.ts` owns live Cursor run registry/scope matching, queued events, drain leases, idle disposal timers, and release cleanup.
 - `src/cursor-pi-tool-bridge.ts` re-exports bridge registration and snapshot helpers; exposes active pi tools to local Cursor agents through a per-run loopback MCP bridge.
-- `src/cursor-pi-tool-bridge-snapshot.ts` owns bridge snapshot building, env gating, surface signatures, and pi tool → MCP `inputSchema` projection via OMP `toolWireSchema` + `normalizeSchemaForMCP` (kept off the run dynamic-import graph so native loaders stay away from that Pi host-peer path).
+- `src/cursor-pi-tool-bridge-snapshot.ts` owns bridge snapshot building, env gating, surface signatures, and pi tool → MCP `inputSchema` projection via OMP `toolWireSchema` + optional `sanitizeSchemaForCursor` (caller-supplied `requiresCursorToolSchemaProjection`) + `normalizeSchemaForMCP` (kept off the run dynamic-import graph so native loaders stay away from that Pi host-peer path). Production auto-enable of the Cursor combiner projection stays off until live `@cursor/sdk` Fable MCP evidence exists; OMP catalog policy is resolved via `modelRequiresCursorToolSchemaProjection` in model-discovery.
 - `src/cursor-pi-tool-bridge-server.ts` owns loopback HTTP routing and run endpoint registry for bridge runs.
 - `src/cursor-pi-tool-bridge-run.ts` owns MCP transport setup, pending bridge calls, pi tool dispatch, cancellation, and run lifecycle.
 - `src/cursor-pi-tool-bridge-abort.ts` owns bridge pi tool execution abort tracking and process signal handling.

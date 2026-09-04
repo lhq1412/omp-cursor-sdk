@@ -471,6 +471,10 @@ async function createSessionAgentEntry(
 			bridgeRun = await registeredBridge.createRun({
 				onToolRequest: params.onBridgeToolRequest,
 				debugRecorder: params.debugRecorder,
+				// Production auto-enable deferred: need live @cursor/sdk Fable MCP combiner
+				// reject/accept evidence before applying OMP catalog projection by default.
+				// Plumbing: createRun({ requiresCursorToolSchemaProjection: true }) +
+				// modelRequiresCursorToolSchemaProjection() via OMP resolveModelPolicy.
 			});
 			if (!bridgeRun.enabled || !bridgeRun.mcpServers) {
 				await bridgeRun.dispose();

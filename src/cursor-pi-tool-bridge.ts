@@ -44,6 +44,7 @@ export {
 export {
 	buildCursorPiToolBridgeSnapshot,
 	buildCursorPiToolBridgeSurfaceSignature,
+	normalizeMcpInputSchema,
 } from "./cursor-pi-tool-bridge-snapshot.js";
 
 let registeredCursorPiToolBridge: CursorPiToolBridgeRegistry | undefined;

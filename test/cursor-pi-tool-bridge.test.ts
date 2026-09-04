@@ -23,6 +23,7 @@ import {
 	type CursorPiToolBridgeRun,
 } from "../src/cursor-pi-tool-bridge.js";
 import { normalizeMcpInputSchema } from "../src/cursor-pi-tool-bridge-snapshot.js";
+import { modelRequiresCursorToolSchemaProjection } from "../src/model-discovery.js";
 
 
 function createToolInfo(name: string, description = `${name} description`, parameters: TSchema = Type.Object({})): ToolInfo {
@@ -174,6 +175,55 @@ describe("cursor pi tool bridge flags and snapshots", () => {
 			normalizeMcpInputSchema({ name: "boom", description: "boom", parameters: boomArk as never }),
 		).toEqual({ type: "object", properties: {} });
 	});
+
+	it("conditionally reuses OMP sanitizeSchemaForCursor for combiner-heavy schemas", () => {
+		// OMP resolveModelPolicy(provider:cursor) catalog axis — not model-id string heuristics.
+		expect(modelRequiresCursorToolSchemaProjection("claude-5-fable-high")).toBe(true);
+		expect(modelRequiresCursorToolSchemaProjection("claude-5-fable-low")).toBe(true);
+		expect(modelRequiresCursorToolSchemaProjection("composer-2.5")).toBe(false);
+		expect(modelRequiresCursorToolSchemaProjection("gpt-5.3-codex")).toBe(false);
+		// bare token is not the catalog family assignment
+		expect(modelRequiresCursorToolSchemaProjection("fable")).toBe(false);
+
+		const combinerTool = {
+			name: "union_tool",
+			description: "union",
+			parameters: {
+				type: "object",
+				properties: {
+					mode: {
+						anyOf: [{ type: "string", enum: ["a"] }, { type: "string", enum: ["b"] }],
+					},
+					value: {
+						oneOf: [{ type: "string" }, { type: "number" }],
+					},
+				},
+				required: ["mode"],
+			},
+		};
+
+		// Default MCP path keeps composition keywords (Cursor catalog may reject these).
+		const plain = normalizeMcpInputSchema(combinerTool);
+		expect(plain.properties?.mode).toMatchObject({
+			anyOf: [{ type: "string", enum: ["a"] }, { type: "string", enum: ["b"] }],
+		});
+		expect(plain.properties?.value).toMatchObject({
+			oneOf: [{ type: "string" }, { type: "number" }],
+		});
+
+		// OMP buildMcpToolDefinitions order: wire → sanitizeSchemaForCursor → (we then MCP-normalize).
+		const projected = normalizeMcpInputSchema(combinerTool, { requiresCursorToolSchemaProjection: true });
+		expect(JSON.stringify(projected)).not.toMatch(/"anyOf"|"oneOf"|"allOf"/);
+		expect(projected).toMatchObject({
+			type: "object",
+			properties: {
+				mode: expect.any(Object),
+				value: expect.any(Object),
+			},
+			required: ["mode"],
+		});
+	});
+
 
 
 	it("maps only active pi tools, includes dynamic tools, and excludes only registered internal Cursor replay names", () => {
@@ -643,6 +693,45 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 		expect(registry.getEndpointCount()).toBe(0);
 		expect(registry.getHttpServerAddress()).toBeUndefined();
 	});
+
+	it("listTools advertises OMP Cursor-sanitized schemas when projection is required", async () => {
+		const combinerParameters = {
+			type: "object",
+			properties: {
+				mode: {
+					anyOf: [{ type: "string", enum: ["a"] }, { type: "string", enum: ["b"] }],
+				},
+			},
+			required: ["mode"],
+		};
+		const registry = __testUtils.createRegistry(
+			createBridgePiHarness({
+				active: ["union_tool"],
+				tools: [createToolInfo("union_tool", "Union tool", combinerParameters as never)],
+			}),
+		);
+		const plainRun = await registry.createRun();
+		const projectedRun = await registry.createRun({ requiresCursorToolSchemaProjection: true });
+		try {
+			const plain = await connectClient(getCursorPiBridgeMcpUrl(plainRun));
+			const projected = await connectClient(getCursorPiBridgeMcpUrl(projectedRun));
+			try {
+				const plainListed = await plain.client.listTools();
+				const projectedListed = await projected.client.listTools();
+				expect(JSON.stringify(plainListed.tools[0].inputSchema)).toMatch(/"anyOf"/);
+				expect(JSON.stringify(projectedListed.tools[0].inputSchema)).not.toMatch(/"anyOf"|"oneOf"|"allOf"/);
+			} finally {
+				await plain.client.close();
+				await plain.transport.close();
+				await projected.client.close();
+				await projected.transport.close();
+			}
+		} finally {
+			await plainRun.dispose();
+			await projectedRun.dispose();
+		}
+	});
+
 
 	it("queues MCP calls, maps them back to real OMP tool names, and resolves from OMP tool results", async () => {
 		const registry = __testUtils.createRegistry(
