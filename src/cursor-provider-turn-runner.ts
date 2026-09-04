@@ -153,6 +153,7 @@ export class CursorProviderTurnRunner {
 				prepared,
 				outcome: finalized.outcome,
 				displayOnlyTraceBlock: finalized.displayOnlyTraceBlock,
+				nextAgentMessageOffset: finalized.nextAgentMessageOffset,
 			});
 		} catch (error) {
 			await runFinalizer.applyTerminalEvent({ kind: "error", prepared, error });

@@ -36,9 +36,9 @@ function makeLocalBackendSession(trackRunCompletion: (completion: Promise<unknow
 		commitSend: () => {},
 		trackRunCompletion,
 		initializeBilledUsage: async () => true,
-		readMessageOffset: async () => 0,
+		getMessageOffset: () => 0,
 		invalidateMessageOffset: () => {},
-		loadTranscriptWebToolCallsAfterOffset: async () => [],
+		loadTranscriptWebToolCallsAfterOffset: async () => ({ toolCalls: [] }),
 		cacheContextWindow: async () => {},
 	};
 }

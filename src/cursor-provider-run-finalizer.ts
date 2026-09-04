@@ -38,6 +38,7 @@ export type CursorTurnTerminalEvent =
 			prepared: CursorProviderTurnPrepareResult;
 			outcome: CursorRunOutcome;
 			displayOnlyTraceBlock?: string;
+			nextAgentMessageOffset?: number;
 	  }
 	| { kind: "error"; prepared: CursorProviderTurnPrepareResult | undefined; error: unknown };
 
@@ -45,12 +46,13 @@ function applyLiveRunOutcome(
 	outcome: CursorRunOutcome,
 	prepared: LocalCursorProviderTurnPrepareResult & { runtime: LiveCursorProviderTurnRuntime },
 	context: CursorProviderTurnRunnerParams["context"],
+	nextAgentMessageOffset?: number,
 ): void {
 	if (prepared.runtime.liveRun.disposed) return;
 	const { liveRun } = prepared.runtime;
 	switch (classifyCursorRunEmission(outcome)) {
 		case "finished":
-			prepared.lifecycle.commitSend(context, prepared.meta.bootstrap);
+			prepared.lifecycle.commitSend(context, prepared.meta.bootstrap, nextAgentMessageOffset);
 			if (prepared.meta.resumeNotice) liveRun.resumeNotice = prepared.meta.resumeNotice;
 			cursorLiveRuns.markFinished(liveRun, outcome.kind === "finished" ? outcome.finalText : "");
 			break;
@@ -107,7 +109,7 @@ export class CursorRunFinalizer {
 			sdkEventDebug,
 		})
 			.then(async (finalized) => {
-				applyLiveRunOutcome(finalized.outcome, prepared, runnerParams.context);
+				applyLiveRunOutcome(finalized.outcome, prepared, runnerParams.context, finalized.nextAgentMessageOffset);
 			})
 			.catch((error: unknown) => {
 				this.safeCleanup(() => discardIncompleteTools({ status: "error" }));
@@ -129,7 +131,7 @@ export class CursorRunFinalizer {
 	async applyTerminalEvent(event: CursorTurnTerminalEvent): Promise<void> {
 		if (this.terminalApplied) return;
 		if (event.kind === "direct") {
-			await this.applyDirectOutcome(event.prepared, event.outcome, event.displayOnlyTraceBlock);
+			await this.applyDirectOutcome(event.prepared, event.outcome, event.displayOnlyTraceBlock, event.nextAgentMessageOffset);
 			this.terminalApplied = true;
 			return;
 		}
@@ -166,6 +168,7 @@ export class CursorRunFinalizer {
 		prepared: CursorProviderTurnPrepareResult,
 		outcome: CursorRunOutcome,
 		displayOnlyTraceBlock: string | undefined,
+		nextAgentMessageOffset?: number,
 	): Promise<void> {
 		const { stream, partial, model, context } = this.params.runnerParams;
 		prepared.runtime.turnCoordinator.closeTraceBlock();
@@ -179,7 +182,7 @@ export class CursorRunFinalizer {
 				this.pushTerminalError(partial, "error", outcome.kind === "error" ? outcome.errorMessage : "Cursor SDK run failed.");
 				break;
 			case "finished":
-				prepared.lifecycle.commitSend(context, prepared.meta.bootstrap);
+				prepared.lifecycle.commitSend(context, prepared.meta.bootstrap, nextAgentMessageOffset);
 				prepared.runtime.turnCoordinator.flushText(
 					outcome.kind === "finished" && hasUsableText(outcome.finalText) ? [outcome.finalText] : [],
 				);

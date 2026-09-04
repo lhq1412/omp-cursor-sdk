@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import type { ExtensionAPI, SessionEntry } from "@oh-my-pi/pi-coding-agent";
 import type { SessionCursorAgentSendState } from "./cursor-session-agent.js";
 import { asRecord } from "./cursor-record-utils.js";
+import { parseCursorAgentMessageOffsetWatermark } from "./cursor-agent-message-web-tools.js";
 import { getCursorSessionScopeKey } from "./cursor-session-scope.js";
 import type { CursorSessionStoreIdentity } from "./cursor-session-store.js";
 
@@ -10,6 +11,7 @@ export const CURSOR_SESSION_AGENT_RESUME_ENTRY_TYPE = "cursor-sdk-agent-resume";
 
 const LEGACY_RESUME_ENTRY_VERSION = 1;
 const RESUME_ENTRY_VERSION = 2;
+const WATERMARK_RESUME_ENTRY_VERSION = 3;
 const MAX_LOCAL_AGENT_ID_LENGTH = 256;
 const EMPTY_BRANCH_HASH = hashParts(["cursor-sdk-agent-resume-branch", "v1"]);
 
@@ -32,7 +34,7 @@ export interface CursorSessionAgentCleanupCandidate {
 }
 
 export interface CursorSessionAgentResumeEntryData {
-	version: 1 | 2;
+	version: 1 | 2 | 3;
 	runtime: "local";
 	agentId: string;
 	scopeKey: string;
@@ -46,6 +48,7 @@ export interface CursorSessionAgentResumeEntryData {
 	sendState: SessionCursorAgentSendState;
 	createdAt: string;
 	storeIdentity?: CursorSessionStoreIdentity;
+	agentMessageOffset?: number;
 	cleanupCandidateAgentIds?: string[];
 	cleanupCandidates?: CursorSessionAgentCleanupCandidate[];
 }
@@ -56,6 +59,7 @@ interface PendingCursorSessionAgentResumeHandle {
 	poolKey: string;
 	sendState: SessionCursorAgentSendState;
 	storeIdentity: CursorSessionStoreIdentity;
+	agentMessageOffset?: number;
 }
 
 interface CursorSessionResumeState {
@@ -154,7 +158,9 @@ export function parseCursorSessionAgentResumeEntryData(value: unknown): CursorSe
 	const record = asRecord(value);
 	if (!record) return undefined;
 	if (
-		(record.version !== LEGACY_RESUME_ENTRY_VERSION && record.version !== RESUME_ENTRY_VERSION) ||
+		(record.version !== LEGACY_RESUME_ENTRY_VERSION &&
+			record.version !== RESUME_ENTRY_VERSION &&
+			record.version !== WATERMARK_RESUME_ENTRY_VERSION) ||
 		record.runtime !== "local"
 	) return undefined;
 	if (
@@ -171,7 +177,12 @@ export function parseCursorSessionAgentResumeEntryData(value: unknown): CursorSe
 	if (record.sessionId !== undefined && typeof record.sessionId !== "string") return undefined;
 	if (record.repoRoot !== undefined && typeof record.repoRoot !== "string") return undefined;
 	const storeIdentity = parseStoreIdentity(record.storeIdentity);
-	if (record.version === RESUME_ENTRY_VERSION && !storeIdentity) return undefined;
+	if ((record.version === RESUME_ENTRY_VERSION || record.version === WATERMARK_RESUME_ENTRY_VERSION) && !storeIdentity) {
+		return undefined;
+	}
+	const agentMessageOffset = record.version === WATERMARK_RESUME_ENTRY_VERSION
+		? parseCursorAgentMessageOffsetWatermark(record.agentMessageOffset)
+		: undefined;
 	const cleanupCandidateAgentIds = Array.isArray(record.cleanupCandidateAgentIds)
 		? record.cleanupCandidateAgentIds.filter(isCursorLocalAgentId)
 		: undefined;
@@ -195,6 +206,7 @@ export function parseCursorSessionAgentResumeEntryData(value: unknown): CursorSe
 		},
 		createdAt: record.createdAt,
 		...(storeIdentity ? { storeIdentity } : {}),
+		...(agentMessageOffset !== undefined ? { agentMessageOffset } : {}),
 		...(cleanupCandidateAgentIds?.length ? { cleanupCandidateAgentIds: [...new Set(cleanupCandidateAgentIds)] } : {}),
 		...(cleanupCandidates ? { cleanupCandidates } : {}),
 	};
@@ -381,6 +393,7 @@ export function persistCursorSessionAgentResumeHandle(input: PendingCursorSessio
 		poolKey: input.poolKey,
 		sendState: { ...input.sendState },
 		storeIdentity: { ...input.storeIdentity },
+		...(input.agentMessageOffset !== undefined ? { agentMessageOffset: input.agentMessageOffset } : {}),
 	};
 }
 
@@ -402,7 +415,7 @@ function flushPendingCursorSessionAgentResumeHandle(branch: readonly SessionEntr
 			}]
 		: undefined;
 	const data: CursorSessionAgentResumeEntryData = {
-		version: RESUME_ENTRY_VERSION,
+		version: WATERMARK_RESUME_ENTRY_VERSION,
 		runtime: pending.runtime,
 		agentId: pending.agentId,
 		scopeKey: state.scopeKey,
@@ -416,6 +429,7 @@ function flushPendingCursorSessionAgentResumeHandle(branch: readonly SessionEntr
 		sendState: { ...pending.sendState },
 		createdAt: new Date().toISOString(),
 		storeIdentity: { ...pending.storeIdentity },
+		...(pending.agentMessageOffset !== undefined ? { agentMessageOffset: pending.agentMessageOffset } : {}),
 		...(cleanupCandidates ? { cleanupCandidates } : {}),
 	};
 	try {

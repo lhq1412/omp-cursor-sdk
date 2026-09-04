@@ -128,7 +128,7 @@ function buildLocalCursorProviderTurnLifecycle(
 ): CursorProviderTurnLifecycle {
 	return {
 		trackRunCompletion: (completion) => backendSession.trackRunCompletion(completion),
-		commitSend: (context, bootstrapped) => backendSession.commitSend(context, bootstrapped),
+		commitSend: (context, bootstrapped, agentMessageOffset) => backendSession.commitSend(context, bootstrapped, agentMessageOffset),
 		abandon: () => abandonSessionCursorAgent(backendSession.scopeKey),
 		dispose: async () => {},
 	};

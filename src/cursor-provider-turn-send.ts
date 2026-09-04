@@ -82,11 +82,7 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 		let cursorAgentMessageOffset: number | undefined;
 		if (prepared.runtimeTarget === "local") {
 			void prepared.backendSession.initializeBilledUsage();
-			try {
-				cursorAgentMessageOffset = await prepared.backendSession.readMessageOffset();
-			} catch (error) {
-				recordDebug(() => sdkEventDebug?.recordError("cursor_agent_message_count", error));
-			}
+			cursorAgentMessageOffset = prepared.backendSession.getMessageOffset();
 		}
 		throwIfAborted();
 		recordDebug(() => sdkEventDebug?.recordSendMeta({

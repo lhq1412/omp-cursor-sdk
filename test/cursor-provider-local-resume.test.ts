@@ -12,6 +12,7 @@ import {
 	makeModel,
 	mockCreatedAgent,
 	mockedCreate,
+	mockedMessagesList,
 	mockedResume,
 	registerBridgeForProviderTest,
 	registerNativeToolDisplayForTest,
@@ -32,6 +33,7 @@ describe("streamCursor local resume", () => {
 		contextFingerprint = "{}",
 		agentId = "agent-old",
 		incrementalSendCount = 0,
+		agentMessageOffset?: number,
 	): void {
 		cursorSessionScopeTestUtils.set(process.cwd(), scopeKey);
 		const modelSelection = buildCursorModelSelection("gpt-5.5", "off", {
@@ -54,7 +56,7 @@ describe("streamCursor local resume", () => {
 			branchPathHash: resumeTestUtils.EMPTY_BRANCH_HASH,
 			compactionGeneration: 0,
 			activeHandle: {
-				version: 1,
+				version: agentMessageOffset === undefined ? 1 : 3,
 				runtime: "local",
 				agentId,
 				scopeKey,
@@ -65,9 +67,53 @@ describe("streamCursor local resume", () => {
 				compactionGeneration: 0,
 				sendState: { bootstrapped: true, contextFingerprint, incrementalSendCount },
 				createdAt: "2026-07-07T00:00:00.000Z",
+				...(agentMessageOffset === undefined ? {} : { agentMessageOffset }),
 			},
 		});
 	}
+
+	it("restores a v3 watermark and lists messages only after send", async () => {
+		process.env.PI_CURSOR_LOCAL_RESUME = "1";
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "0";
+		process.env.PI_CURSOR_PI_TOOL_BRIDGE = "0";
+		const priorContext = makeContext();
+		const resumedContext = makeContext([
+			...priorContext.messages,
+			makeAssistantMessage("Prior answer"),
+			{ role: "user", content: "Follow up", timestamp: 3 },
+		]);
+		mockedMessagesList.mockImplementation(async (_agentId, options) => {
+			const offset = options?.offset ?? 0;
+			return offset === 42
+				? [{ type: "assistant", uuid: "agent-old:42", agent_id: "agent-old", message: {} }]
+				: [];
+		});
+		const mockSend = vi.fn().mockImplementation(async (message: { text?: string }) => {
+			expect(mockedMessagesList).not.toHaveBeenCalled();
+			return asMockCursorRun({
+				id: "run-watermark",
+				agentId: "agent-old",
+				status: "finished",
+				wait: vi.fn().mockResolvedValue({ id: "run-watermark", status: "finished", result: message.text ?? "" }),
+			});
+		});
+		mockedResume.mockResolvedValueOnce(asMockSdkAgent({ agentId: "agent-old", send: mockSend }));
+		seedResumeHandle(
+			"/tmp/resume-watermark-session.jsonl",
+			computeCursorContextFingerprint(priorContext),
+			"agent-old",
+			0,
+			42,
+		);
+
+		await collectEvents(streamCursor(makeModel("gpt-5.5"), resumedContext, { apiKey: "test-key" }));
+
+		expect(mockedCreate).not.toHaveBeenCalled();
+		expect(mockedResume).toHaveBeenCalledTimes(1);
+		expect(mockSend).toHaveBeenCalledTimes(1);
+		expect(mockedMessagesList.mock.calls.every(([, options]) => (options?.offset ?? 0) >= 42)).toBe(true);
+		expect(resumeTestUtils.state.pendingHandle?.agentMessageOffset).toBe(43);
+	});
 
 	it("resumes with current bridge MCP and sends only the current OMP delta", async () => {
 		process.env.PI_CURSOR_LOCAL_RESUME = "1";

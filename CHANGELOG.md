@@ -5,6 +5,7 @@
 ### Changed
 
 - Route local `cursor-sdk` built-in Cursor tools through OMP `CursorExecHandlers` behind a thin `CursorBackend` session/send boundary; extension tools stay on the existing loopback MCP bridge. Cloud runtime create/send options are unchanged.
+- Persist local SDK transcript message offsets in v3 resume handles and read them synchronously before `Agent.send()`, so resumed turns no longer block on `Agent.messages.list()` recounts; v1/v2 records ignore `agentMessageOffset`, legacy handles without a watermark skip one turn of transcript WebSearch/WebFetch replay, and a known baseline that pages empty rebases after `run.wait()` if the transcript shrank.
 
 ### Fixed
 
