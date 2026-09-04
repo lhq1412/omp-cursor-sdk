@@ -22,6 +22,8 @@ import {
 	resolveCursorPiToolBridgeEnabled,
 	type CursorPiToolBridgeRun,
 } from "../src/cursor-pi-tool-bridge.js";
+import { normalizeMcpInputSchema } from "../src/cursor-pi-tool-bridge-snapshot.js";
+
 
 function createToolInfo(name: string, description = `${name} description`, parameters: TSchema = Type.Object({})): ToolInfo {
 	return createTestToolInfo(name, parameters, description);
@@ -123,6 +125,57 @@ describe("cursor pi tool bridge flags and snapshots", () => {
 		expect(resolveCursorPiToolBridgeDebugEnabled({ PI_CURSOR_PI_TOOL_BRIDGE_DEBUG: "true" })).toBe(true);
 	});
 
+	it("projects extension tool schemas through OMP toolWireSchema + MCP normalization", () => {
+		const ark = Type.Object({ path: Type.String({ description: "Path to read" }) });
+		expect(normalizeMcpInputSchema({ name: "custom_read", description: "Custom read files", parameters: ark })).toEqual({
+			type: "object",
+			properties: { path: { type: "string", description: "Path to read" } },
+			required: ["path"],
+			additionalProperties: false,
+		});
+
+		expect(
+			normalizeMcpInputSchema({
+				name: "nullable_tool",
+				description: "nullable",
+				parameters: {
+					type: "object",
+					properties: { x: { type: "string", nullable: true } },
+					$schema: "https://json-schema.org/draft/2020-12/schema",
+				},
+			}),
+		).toEqual({
+			type: "object",
+			properties: { x: { type: ["string", "null"] } },
+		});
+
+		expect(
+			normalizeMcpInputSchema({
+				name: "bad",
+				description: "bad",
+				parameters: {
+					toJsonSchema() {
+						throw new Error("bad schema");
+					},
+				} as never,
+			}),
+		).toEqual({ type: "object", properties: {} });
+
+		// toolWireSchema Ark path: function + toJsonSchema + assert must still fail soft.
+		const boomArk = Object.assign(function boomArk() {}, {
+			toJsonSchema() {
+				throw new Error("ark wire boom");
+			},
+			assert() {
+				return undefined;
+			},
+		});
+		expect(
+			normalizeMcpInputSchema({ name: "boom", description: "boom", parameters: boomArk as never }),
+		).toEqual({ type: "object", properties: {} });
+	});
+
+
 	it("maps only active pi tools, includes dynamic tools, and excludes only registered internal Cursor replay names", () => {
 		const readParameters = Type.Object({ path: Type.String({ description: "Path to read" }) });
 		const dynamicParameters = Type.Object({ target: Type.String() });
@@ -148,10 +201,21 @@ describe("cursor pi tool bridge flags and snapshots", () => {
 		expect(snapshot.mcpToolNameToPiToolName.get("pi__custom_read")).toBe("custom_read");
 		expect(snapshot.piToolNameToMcpToolName.get("sem_reindex")).toBe("pi__sem_reindex");
 		expect(snapshot.tools[0].description).toBe("Custom read files");
-		expect(snapshot.tools[0].inputSchema).toEqual(readParameters.toJsonSchema({ target: "draft-2020-12" }));
-		expect(snapshot.tools[1].inputSchema).toEqual(dynamicParameters.toJsonSchema({ target: "draft-2020-12" }));
+		expect(snapshot.tools[0].inputSchema).toEqual(
+			normalizeMcpInputSchema({ name: "custom_read", description: "Custom read files", parameters: readParameters }),
+		);
+		expect(snapshot.tools[1].inputSchema).toEqual(
+			normalizeMcpInputSchema({ name: "sem_reindex", description: "Reindex semantic cache", parameters: dynamicParameters }),
+		);
+		expect(snapshot.tools[0].inputSchema).toEqual({
+			type: "object",
+			properties: { path: { type: "string", description: "Path to read" } },
+			required: ["path"],
+			additionalProperties: false,
+		});
 		expect(pi.setActiveTools).not.toHaveBeenCalled();
 	});
+
 
 	it("hides overlapping pi tool names by default while keeping non-overlapping tools", () => {
 		const tools = [
@@ -563,6 +627,13 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 			expect(listed.tools[0].description).toContain("Call MCP name pi__read (OMP tool: read)");
 			expect(listed.tools[0].description).toContain("Full tool-surface rules are in the session bootstrap prompt.");
 			expect(listed.tools[0].description).not.toContain("OMP bridge contract:");
+			expect(listed.tools[0].inputSchema).toEqual({
+				type: "object",
+				properties: {},
+				additionalProperties: false,
+			});
+			expect(listed.tools[0].inputSchema).not.toHaveProperty("$schema");
+
 		} finally {
 			await client.close();
 			await transport.close();
