@@ -7,7 +7,7 @@ import type {
 	CursorPiToolBridgeSnapshotApi,
 	CursorPiToolBridgeSnapshotOptions,
 } from "./cursor-pi-tool-bridge-types.js";
-import { createMcpToolName, stableNameHash } from "./cursor-pi-tool-bridge-mcp.js";
+import { createMcpToolName, snapshotToolToMcpTool, stableNameHash } from "./cursor-pi-tool-bridge-mcp.js";
 export {
 	CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV,
 	CURSOR_PI_TOOL_BRIDGE_ENV,
@@ -16,7 +16,7 @@ export {
 } from "./cursor-pi-tool-bridge-env.js";
 import { isRegisteredCursorNativeToolName } from "./cursor-native-tool-display-state.js";
 import { isExcludedFromCursorBridgeExposure } from "./cursor-tool-presentation-registry.js";
-import { asRecord } from "./cursor-record-utils.js";
+import { asRecord, stableJson } from "./cursor-record-utils.js";
 
 const EMPTY_MCP_OBJECT_SCHEMA: CursorPiMcpInputSchema = { type: "object", properties: {} };
 
@@ -64,18 +64,14 @@ function isOverlappingCursorNativePiToolName(toolName: string): boolean {
 export function buildCursorPiToolBridgeSurfaceSignature(snapshot: CursorPiToolBridgeSnapshot): string {
 	if (snapshot.tools.length === 0) return "bridge:empty";
 	const serializedTools = snapshot.tools
-		.map((tool) =>
-			JSON.stringify({
-				piToolName: tool.piToolName,
-				mcpToolName: tool.mcpToolName,
-				description: tool.description,
-				promptGuidelines: tool.promptGuidelines,
-				inputSchema: tool.inputSchema,
-				source: tool.sourceInfo?.source,
-				path: tool.sourceInfo?.path,
-				scope: tool.sourceInfo?.scope,
-			}),
-		)
+		.map((tool) => {
+			const mcpTool = snapshotToolToMcpTool(tool);
+			return stableJson({
+				name: mcpTool.name,
+				description: mcpTool.description,
+				inputSchema: mcpTool.inputSchema,
+			});
+		})
 		.sort()
 		.join("\0");
 	return `bridge:on:${stableNameHash(serializedTools)}`;

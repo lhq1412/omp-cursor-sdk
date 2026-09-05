@@ -1044,4 +1044,64 @@ describe("cursor-session-agent", () => {
 		await expect(sessionAgentTestUtils.refreshSessionCursorAgentConfig("/tmp/sessions/test.jsonl")).resolves.toBe("busy");
 		expect(createAgent).toHaveBeenCalledTimes(1);
 	});
+
+	it("canonicalizes model params, setting sources, and disallowed tools in the pool key", () => {
+		const base = {
+			apiKey: "test-key",
+			agentMode: "agent" as const,
+			cwd: "/tmp/project",
+			modelSelection: { id: "composer-2.5" },
+		};
+		expect(
+			sessionAgentTestUtils.buildSessionAgentPoolKey("scope", {
+				...base,
+				modelSelection: {
+					id: "composer-2.5",
+					params: [
+						{ id: "b", value: "2" },
+						{ id: "a", value: "1" },
+					],
+				},
+			}),
+		).toBe(
+			sessionAgentTestUtils.buildSessionAgentPoolKey("scope", {
+				...base,
+				modelSelection: {
+					id: "composer-2.5",
+					params: [
+						{ id: "a", value: "1" },
+						{ id: "b", value: "2" },
+					],
+				},
+			}),
+		);
+		expect(
+			sessionAgentTestUtils.buildSessionAgentPoolKey("scope", {
+				...base,
+				settingSources: ["project", "user"],
+			}),
+		).toBe(
+			sessionAgentTestUtils.buildSessionAgentPoolKey("scope", {
+				...base,
+				settingSources: ["user", "project", "user"],
+			}),
+		);
+		expect(
+			sessionAgentTestUtils.buildSessionAgentPoolKey("scope", {
+				...base,
+				disallowedTools: ["edit", "read"],
+			}),
+		).toBe(
+			sessionAgentTestUtils.buildSessionAgentPoolKey("scope", {
+				...base,
+				disallowedTools: ["read", "edit", "read"],
+			}),
+		);
+		expect(
+			sessionAgentTestUtils.buildSessionAgentPoolKey("scope", {
+				...base,
+				modelSelection: { id: "composer-2.5", params: [{ id: "a", value: "1" }] },
+			}),
+		).not.toBe(sessionAgentTestUtils.buildSessionAgentPoolKey("scope", base));
+	});
 });

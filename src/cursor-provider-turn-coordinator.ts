@@ -68,6 +68,7 @@ export class CursorSdkTurnCoordinator {
 	private readonly lifecycleEmitter: CursorToolLifecycleEmitter;
 	private readonly contentEmitter;
 	private sdkTurnUsage?: CursorSdkTurnUsage;
+	private readonly ttftPhases = new Set<string>();
 
 	constructor(options: CursorSdkTurnCoordinatorOptions) {
 		this.stream = options.stream;
@@ -166,13 +167,21 @@ export class CursorSdkTurnCoordinator {
 		return this.contentEmitter.flushText(deltas);
 	}
 
+	private recordTtftPhase(phase: string, payload: unknown = {}): void {
+		if (this.ttftPhases.has(phase)) return;
+		this.ttftPhases.add(phase);
+		this.debugRecorder?.recordProviderEvent?.(phase, payload);
+	}
+
 	handleDelta(update: InteractionUpdate): void {
+		this.recordTtftPhase("first_sdk_event", { type: update.type });
 		const sdkTurnUsage = readCursorSdkTurnUsageFromUpdate(update);
 		if (sdkTurnUsage) this.sdkTurnUsage = sdkTurnUsage;
 		if (this.liveRun && (update.type === "turn-ended" || sdkTurnUsage)) {
 			cursorLiveRuns.recordSdkTurnEnded(this.liveRun, sdkTurnUsage);
 		}
 		if (update.type === "text-delta") {
+			this.recordTtftPhase("first_text_delta", {});
 			this.textDeltas.push(update.text);
 			if (this.liveRun) {
 				cursorLiveRuns.queueEvent(this.liveRun, { type: "text-delta", text: update.text });
@@ -182,6 +191,7 @@ export class CursorSdkTurnCoordinator {
 			return;
 		}
 		if (update.type === "thinking-delta") {
+			this.recordTtftPhase("first_thinking_delta", {});
 			if (this.liveRun) {
 				cursorLiveRuns.queueEvent(this.liveRun, { type: "thinking-delta", text: update.text });
 			} else {
@@ -267,6 +277,7 @@ export class CursorSdkTurnCoordinator {
 	}
 
 	handleStep(stepEnvelope: unknown): void {
+		this.recordTtftPhase("first_sdk_event", { type: "step" });
 		const stepType = getField(stepEnvelope, "type");
 		const step = getField(stepEnvelope, "message") ? stepEnvelope : undefined;
 		const rawStepToolCall = getField(step, "message");

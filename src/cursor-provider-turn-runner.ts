@@ -75,6 +75,7 @@ export class CursorProviderTurnRunner {
 			});
 			sdkEventDebugRef.current = this.sdkEventDebug;
 			this.sdkEventDebug?.recordContextSnapshot(context);
+			this.sdkEventDebug?.recordProviderEvent("turn_start", { modelId: model.id });
 			// Resolved once here, before any drain await, so the drain decision and the
 			// prepare dispatch below always act on the same config snapshot.
 			const resolvedConfig = resolveCursorProviderTurnConfig(cwd);
@@ -95,9 +96,13 @@ export class CursorProviderTurnRunner {
 					return;
 				}
 			}
+			this.sdkEventDebug?.recordProviderEvent("previous_run_drained", {
+				runtime: resolvedConfig.runtime.value,
+			});
 			this.throwIfAborted();
 
 			this.resolvedApiKey = await requireCursorApiKey(options);
+			this.sdkEventDebug?.recordProviderEvent("auth_resolved", {});
 			prepared = await prepareCursorProviderTurn({
 				params: this.params,
 				cwd,

@@ -15,6 +15,7 @@ import {
 import type { CursorSdkEventDebugRecorder } from "./cursor-sdk-event-debug.js";
 import { loadCursorSdk, type CursorSdkModule } from "./cursor-sdk-runtime.js";
 import { initializeCursorAgentMessageOffset } from "./cursor-agent-message-web-tools.js";
+import { stableJson } from "./cursor-record-utils.js";
 import {
 	cursorSessionStoreIdentitiesEqual,
 	openCursorSessionStore,
@@ -206,12 +207,25 @@ function invalidateScopeCreations(scopeKey: string): void {
 	scopeCreationGenerations.set(scopeKey, getScopeCreationGeneration(scopeKey) + 1);
 }
 
+function canonicalStrings(values: readonly string[] | undefined): string[] {
+	return [...new Set(values ?? [])].sort();
+}
+
 function buildModelPoolKey(modelSelection: ModelSelection): string {
-	return JSON.stringify(modelSelection);
+	return stableJson({
+		id: modelSelection.id,
+		...(modelSelection.params?.length
+			? {
+				params: [...modelSelection.params].sort(
+					(left, right) => left.id.localeCompare(right.id) || left.value.localeCompare(right.value),
+				),
+			}
+			: {}),
+	});
 }
 
 function buildSettingSourcesPoolKey(settingSources?: SettingSource[]): string {
-	return settingSources?.join(",") ?? "";
+	return canonicalStrings(settingSources).join(",");
 }
 
 function buildLocalSafetyPoolKey(localSafety?: CursorLocalSafetyOptions): string {
@@ -245,7 +259,7 @@ function buildSessionAgentPoolKey(scopeKey: string, params: SessionCursorAgentCr
 				: "http1:off",
 		buildApiKeyPoolKeyFingerprint(params.apiKey),
 		buildBridgePoolKeySuffix(),
-		`omp-exec:${params.disallowedTools?.join(",") || "off"}`,
+		`omp-exec:${canonicalStrings(params.disallowedTools).join(",") || "off"}`,
 	].join("\0");
 }
 

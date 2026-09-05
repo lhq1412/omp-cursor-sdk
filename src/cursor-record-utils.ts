@@ -42,6 +42,22 @@ export function firstNonEmptyString(...values: Array<string | undefined>): strin
 	return undefined;
 }
 
+export function canonicalizeUnknown(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(canonicalizeUnknown);
+	if (value && typeof value === "object") {
+		return Object.fromEntries(
+			Object.entries(value as Record<string, unknown>)
+				.sort(([left], [right]) => left.localeCompare(right))
+				.map(([key, item]) => [key, canonicalizeUnknown(item)]),
+		);
+	}
+	return value;
+}
+
+export function stableJson(value: unknown): string {
+	return JSON.stringify(canonicalizeUnknown(value));
+}
+
 export function stringifyUnknown(value: unknown, options: { pretty?: boolean } = {}): string {
 	if (value === undefined) return "";
 	if (typeof value === "string") return value;

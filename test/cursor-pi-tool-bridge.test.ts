@@ -1082,4 +1082,39 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 
 		expect(buildCursorPiToolBridgeSurfaceSignature(snapshotA)).not.toBe(buildCursorPiToolBridgeSurfaceSignature(snapshotB));
 	});
+
+	it("keeps the bridge execution signature stable across provenance-only metadata", () => {
+		const schema = Type.Object({ target: Type.String() });
+		const snapshotA = buildCursorPiToolBridgeSnapshot(createBridgePiHarness({
+			active: ["sem_reindex"],
+			tools: [{
+				...createToolInfo("sem_reindex", "Reindex", schema),
+				promptGuidelines: ["same"],
+				sourceInfo: { source: "extension", path: "a.ts", scope: "temporary", origin: "top-level" },
+			}],
+		}));
+		const snapshotB = buildCursorPiToolBridgeSnapshot(createBridgePiHarness({
+			active: ["sem_reindex"],
+			tools: [{
+				...createToolInfo("sem_reindex", "Reindex", schema),
+				promptGuidelines: ["same"],
+				sourceInfo: { source: "builtin", path: "b.ts", scope: "temporary", origin: "top-level" },
+			}],
+		}));
+		const snapshotC = buildCursorPiToolBridgeSnapshot(createBridgePiHarness({
+			active: ["sem_reindex"],
+			tools: [createToolInfo("sem_reindex", "Reindex now", schema)],
+		}));
+		const snapshotD = buildCursorPiToolBridgeSnapshot(createBridgePiHarness({
+			active: ["sem_reindex"],
+			tools: [{
+				...createToolInfo("sem_reindex", "Reindex", schema),
+				promptGuidelines: ["different"],
+			}],
+		}));
+
+		expect(buildCursorPiToolBridgeSurfaceSignature(snapshotA)).toBe(buildCursorPiToolBridgeSurfaceSignature(snapshotB));
+		expect(buildCursorPiToolBridgeSurfaceSignature(snapshotA)).not.toBe(buildCursorPiToolBridgeSurfaceSignature(snapshotC));
+		expect(buildCursorPiToolBridgeSurfaceSignature(snapshotA)).not.toBe(buildCursorPiToolBridgeSurfaceSignature(snapshotD));
+	});
 });
