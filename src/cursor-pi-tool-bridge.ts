@@ -22,6 +22,7 @@ import type {
 export type {
 	CursorPiBridgeToolDefinition,
 	CursorPiBridgeToolRequest,
+	CursorPiHostToolResult,
 	CursorPiMcpInputSchema,
 	CursorPiToolBridge,
 	CursorPiToolBridgeExtensionApi,

@@ -342,6 +342,26 @@ describe("createCursorOmpExecCustomTools routing", () => {
 			isError: true,
 		});
 	});
+
+	it("parks read through the host callback and leaves other tools nested", async () => {
+		const piRead = vi.fn(async () => okResult("file"));
+		const piBash = vi.fn(async () => okResult("sh"));
+		const onResolved = vi.fn();
+		const park = vi.fn(async () => ({ content: [{ type: "text" as const, text: "parked" }], isError: false }));
+		const tools = createCursorOmpExecCustomTools({ piRead, piBash }, undefined, onResolved, park);
+		await expect(tools.read!.execute({ path: "a.ts" }, { toolCallId: "tc" })).resolves.toEqual({
+			content: [{ type: "text", text: "parked" }],
+			isError: false,
+		});
+		expect(piRead).not.toHaveBeenCalled();
+		expect(onResolved).not.toHaveBeenCalled();
+		expect(park).toHaveBeenCalledWith("read", { path: "a.ts" }, "tc");
+		await expect(tools.shell!.execute({ command: "pwd" }, { toolCallId: "sh" })).resolves.toEqual({
+			content: [{ type: "text", text: "sh" }],
+			isError: false,
+		});
+		expect(piBash).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe("resolveCursorProviderExecHandlers", () => {

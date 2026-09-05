@@ -158,10 +158,17 @@ export type CursorOmpExecResolvedSink = (
 	args: Record<string, unknown>,
 ) => ToolResultMessage | undefined | Promise<ToolResultMessage | undefined>;
 
+export type CursorOmpExecHostPark = (
+	name: CursorOmpExecCustomToolName,
+	args: Record<string, unknown>,
+	toolCallId: string,
+) => Promise<SDKCustomToolResult>;
+
 export function createCursorOmpExecCustomTools(
 	handlers: CursorExecHandlers,
 	activeToolNames?: ReadonlySet<string>,
 	onResolved?: CursorOmpExecResolvedSink,
+	park?: CursorOmpExecHostPark,
 ): Record<string, SDKCustomTool> {
 	const tools: Record<string, SDKCustomTool> = {};
 	for (const name of CURSOR_OMP_EXEC_CUSTOM_TOOL_NAMES) {
@@ -169,7 +176,7 @@ export function createCursorOmpExecCustomTools(
 		if (activeToolNames && ompName !== undefined && !activeToolNames.has(ompName)) continue;
 		tools[name] = {
 			inputSchema: INPUT_SCHEMAS[name],
-			execute: (args, context) => executeCursorOmpExecTool(name, args, context, handlers, onResolved),
+			execute: (args, context) => executeCursorOmpExecTool(name, args, context, handlers, onResolved, park),
 		};
 	}
 	return tools;
@@ -194,8 +201,19 @@ async function executeCursorOmpExecTool(
 	context: SDKCustomToolContext,
 	handlers: CursorExecHandlers,
 	onResolved?: CursorOmpExecResolvedSink,
+	park?: CursorOmpExecHostPark,
 ): Promise<SDKCustomToolResult> {
 	const toolCallId = context.toolCallId ?? "cursor-omp-exec";
+	if (name === "read" && park) {
+		try {
+			return await park(name, args, toolCallId);
+		} catch (error) {
+			return {
+				content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+				isError: true,
+			};
+		}
+	}
 	try {
 		const invoked = await invokeCursorOmpExecHandler(name, args, toolCallId, handlers);
 		const toolResult = invoked === undefined

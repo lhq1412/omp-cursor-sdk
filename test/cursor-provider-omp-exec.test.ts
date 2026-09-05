@@ -6,11 +6,13 @@ import { isCursorExecResolved } from "@oh-my-pi/pi-ai/utils/block-symbols";
 import {
 	resetCursorProviderTestState,
 	mockCreatedAgent,
+	asMockCursorRun,
 	makeModel,
 	makeContext,
 	collectEvents,
 	getCreatedAgentOptions,
 	getDoneEvent,
+	isToolCallBlock,
 	registerBridgeForProviderTest,
 	createTestToolInfo,
 } from "./helpers/cursor-provider-harness.js";
@@ -259,5 +261,81 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 			name: "read",
 			arguments: { path: "a.ts" },
 		});
+	});
+
+	it("parks customTool read as an unresolved OMP read and resumes the same SDK run", async () => {
+		registerBridgeForProviderTest({
+			active: ["read"],
+			tools: [createTestToolInfo("read", Type.Object({ path: Type.String() }), "Read files")],
+		});
+		const piRead = vi.fn(async () => toolResult("nested"));
+		let readExecute: ((args: object, context: object) => Promise<unknown>) | undefined;
+		const runOutcome = Promise.withResolvers<{ id: string; status: "finished"; result: string }>();
+		const sendStarted = Promise.withResolvers<void>();
+		const mockSend = vi.fn().mockImplementation(async (_payload: unknown, sendOptions: unknown) => {
+			const options = sendOptions as { local?: { customTools?: Record<string, { execute: (args: object, context: object) => Promise<unknown> }> } };
+			readExecute = options.local?.customTools?.read?.execute;
+			sendStarted.resolve();
+			return asMockCursorRun({
+				id: "run-1",
+				agentId: "agent-1",
+				status: "running",
+				wait: vi.fn(() => runOutcome.promise),
+			});
+		});
+		mockCreatedAgent({
+			agentId: "agent-1",
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+
+		const firstEventsPromise = collectEvents(streamCursor(makeModel("composer-2"), makeContext(), {
+			apiKey: "test-key",
+			execHandlers: { piRead },
+		}));
+		await sendStarted.promise;
+		expect(readExecute).toBeTypeOf("function");
+		expect(getCreatedAgentOptions().mcpServers).toBeUndefined();
+		const executePromise = readExecute!({ path: "a.ts" }, { toolCallId: "sdk-read" });
+		const firstEvents = await firstEventsPromise;
+		const firstDone = getDoneEvent(firstEvents);
+		const toolCalls = firstDone.message.content.filter(isToolCallBlock);
+		expect(firstDone.reason).toBe("toolUse");
+		expect(toolCalls).toHaveLength(1);
+		expect(toolCalls[0]).toMatchObject({
+			type: "toolCall",
+			name: "read",
+			arguments: { path: "a.ts" },
+		});
+		expect(isCursorExecResolved(toolCalls[0])).toBe(false);
+		expect(toolCalls[0]?.id).not.toMatch(/^cursor-replay-/);
+		expect(piRead).not.toHaveBeenCalled();
+
+		const replayContext = makeContext();
+		replayContext.messages = [
+			...replayContext.messages,
+			firstDone.message,
+			{
+				role: "toolResult",
+				toolCallId: toolCalls[0]!.id,
+				toolName: "read",
+				content: [{ type: "text", text: "file" }],
+				isError: false,
+				timestamp: 2,
+			},
+		];
+		const replayEventsPromise = collectEvents(streamCursor(makeModel("composer-2"), replayContext, {
+			apiKey: "test-key",
+			execHandlers: { piRead },
+		}));
+		await expect(executePromise).resolves.toEqual({
+			content: [{ type: "text", text: "file" }],
+			isError: false,
+		});
+		runOutcome.resolve({ id: "run-1", status: "finished", result: "done" });
+		const replayEvents = await replayEventsPromise;
+		expect(getDoneEvent(replayEvents).reason).toBe("stop");
+		expect(mockSend).toHaveBeenCalledTimes(1);
+		expect(piRead).not.toHaveBeenCalled();
 	});
 });

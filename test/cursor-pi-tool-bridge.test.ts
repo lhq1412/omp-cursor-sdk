@@ -428,6 +428,55 @@ describe("cursor pi tool bridge loopback MCP lifecycle", () => {
 		expect(emptyRun.snapshot.tools).toEqual([]);
 		expect(emptyRun.mcpServers).toBeUndefined();
 		expect(emptyRegistry.getEndpointCount()).toBe(0);
+		await emptyRun.dispose();
+	});
+
+	it("parks host customTool requests without MCP snapshot mapping", async () => {
+		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor");
+		const requests: Array<{ piToolCallId: string; piToolName: string; args: Record<string, unknown> }> = [];
+		const registry = __testUtils.createRegistry(
+			createBridgePiHarness({ active: ["cursor"], tools: [createToolInfo("cursor")] }),
+		);
+		const run = await registry.createRun({
+			onToolRequest: (request) => {
+				requests.push(request);
+			},
+		});
+		expect(run.enabled).toBe(false);
+		const pending = run.enqueueHostToolRequest("read", { path: "a.ts", offset: 2 }, "sdk-read");
+		expect(requests).toEqual([
+			expect.objectContaining({
+				piToolName: "read",
+				mcpToolName: "host:read",
+				args: { path: "a.ts", offset: 2 },
+			}),
+		]);
+		await run.resolveToolResults([
+			{
+				role: "toolResult",
+				toolCallId: requests[0]!.piToolCallId,
+				toolName: "read",
+				content: [{ type: "text", text: "file" }],
+				isError: false,
+				timestamp: 1,
+			},
+		]);
+		await expect(pending).resolves.toMatchObject({
+			content: [{ type: "text", text: "file" }],
+		});
+		await run.dispose();
+	});
+
+	it("rejects parked host customTool requests when the run is cancelled", async () => {
+		nativeToolDisplayTestUtils.registerNativeToolNameForTests("cursor");
+		const registry = __testUtils.createRegistry(
+			createBridgePiHarness({ active: ["cursor"], tools: [createToolInfo("cursor")] }),
+		);
+		const run = await registry.createRun();
+		const pending = run.enqueueHostToolRequest("read", { path: "a.ts" }, "sdk-read");
+		run.cancel("Cursor OMP tool bridge run cancelled");
+		await expect(pending).rejects.toThrow("Cursor OMP tool bridge run cancelled");
+		await run.dispose();
 	});
 
 	it("does not emit bridge diagnostics unless explicitly enabled", async () => {
