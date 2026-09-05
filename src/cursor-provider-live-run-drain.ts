@@ -319,7 +319,7 @@ export async function drainCursorLiveRunTurn(
 	context: Context,
 	run: CursorLiveRun,
 	toolResultInputTokens: number,
-	options: { mode: CursorLiveRunDrainMode; signal?: AbortSignal; debugRecorder?: CursorSdkEventDebugRecorder; recordTtftOmp?: boolean },
+	options: { mode: CursorLiveRunDrainMode; signal?: AbortSignal; debugRecorder?: CursorSdkEventDebugRecorder },
 ): Promise<CursorLiveRunDrainOutcome> {
 	const debugRecorder = options.debugRecorder ?? run.debugRecorder;
 	debugRecorder?.recordDrainEvent("turn_start", {
@@ -334,11 +334,6 @@ export async function drainCursorLiveRunTurn(
 		emitter: new CursorPartialContentEmitter(stream, partial, -1, true),
 		emittedText: "",
 	};
-	if (options.recordTtftOmp) {
-		turn.emitter.onFirstStreamEvent = (type) => {
-			debugRecorder?.recordProviderEvent?.("first_omp_stream_event", { type });
-		};
-	}
 
 	try {
 		while (true) {

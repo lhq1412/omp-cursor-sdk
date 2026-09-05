@@ -50,7 +50,7 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 - `src/cursor-sdk-output-filter.ts` suppresses Cursor SDK integrator bootstrap noise from pi's TUI.
 - `src/cursor-edit-diff.ts` owns canonical edit diff fallback resolution for replay/display paths.
 - `src/cursor-record-utils.ts` owns shared record/string-key parsing, canonical/stable JSON, and neutral unknown-value stringification helpers used across bridge and transcript layers.
-- `src/cursor-partial-content-emitter.ts` owns shared thinking/text block emission for live-run drain and turn coordinator paths, including the first OMP stream-event hook used by TTFT markers.
+- `src/cursor-partial-content-emitter.ts` owns shared thinking/text block emission for live-run drain and turn coordinator paths.
 - `shared/cursor-cloud-lifecycle-constants.mjs` owns the canonical Cursor Cloud agent ID pattern, lifecycle entry type, and journal prefix; `src/cursor-cloud-lifecycle.ts` and `scripts/cloud-runtime-smoke.mjs` consume it for provider runtime and maintainer scripts.
 - `shared/cursor-sensitive-text.mjs` owns canonical secret scrubbing; `src/cursor-sensitive-text.ts` and maintainer scripts import it directly.
 - `shared/cursor-setting-sources.mjs` owns canonical `PI_CURSOR_SETTING_SOURCES` parsing/serialization; `src/cursor-setting-sources.ts` and maintainer scripts import it directly.

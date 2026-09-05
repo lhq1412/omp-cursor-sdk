@@ -349,8 +349,6 @@ async function prepareCursorLocalProviderTurn(
 			includePiBridgeGuidance = bridgeToolNames.size > 0;
 			sendPlan = planCursorSessionSend(backendSession.sendState, context);
 		}
-		sdkEventDebug?.recordProviderEvent("store_ready", {});
-		sdkEventDebug?.recordProviderEvent("bridge_ready", { enabled: backendSession.bridgeRun !== undefined });
 		sdkEventDebug?.recordProviderEvent("agent_acquired", {
 			kind: backendSession.created ? (backendSession.resumed === true ? "resumed" : "created") : "reused",
 			created: backendSession.created,

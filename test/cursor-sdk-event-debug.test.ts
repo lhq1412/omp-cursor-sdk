@@ -204,6 +204,28 @@ describe("cursor sdk event debug sink", () => {
 		}
 	});
 
+	it("records the first pi stream event once as first_omp_stream_event", () => {
+		const originalDebug = process.env.PI_CURSOR_SDK_EVENT_DEBUG;
+		process.env.PI_CURSOR_SDK_EVENT_DEBUG = "1";
+		try {
+			const originalPush = vi.fn();
+			const stream = { push: originalPush };
+			const recordProviderEvent = vi.fn();
+			attachCursorSdkEventDebugPiStreamTap(stream as never, {
+				current: { recordPiStreamEvent: vi.fn(), recordProviderEvent } as never,
+			});
+
+			stream.push({ type: "toolcall_start" });
+			stream.push({ type: "text_delta", delta: "hello" });
+
+			expect(recordProviderEvent).toHaveBeenCalledTimes(1);
+			expect(recordProviderEvent).toHaveBeenCalledWith("first_omp_stream_event", { type: "toolcall_start" });
+		} finally {
+			if (originalDebug === undefined) delete process.env.PI_CURSOR_SDK_EVENT_DEBUG;
+			else process.env.PI_CURSOR_SDK_EVENT_DEBUG = originalDebug;
+		}
+	});
+
 	it("bounds cumulative JSONL debug artifacts", async () => {
 		const artifactDir = mkdtempSync(join(tmpdir(), "pi-cursor-sdk-event-debug-bounded-"));
 

@@ -218,9 +218,15 @@ export function attachCursorSdkEventDebugPiStreamTap(
 ): void {
 	if (!resolveCursorSdkEventDebugEnabled()) return;
 	const originalPush = stream.push.bind(stream);
+	let firstOmpStreamEventRecorded = false;
 	stream.push = (event) => {
 		try {
-			sinkRef.current?.recordPiStreamEvent(event);
+			const sink = sinkRef.current;
+			sink?.recordPiStreamEvent(event);
+			if (sink && !firstOmpStreamEventRecorded) {
+				firstOmpStreamEventRecorded = true;
+				sink.recordProviderEvent("first_omp_stream_event", { type: event.type });
+			}
 		} catch {
 			// Debug capture must never block the underlying stream.
 		}

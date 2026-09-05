@@ -83,9 +83,6 @@ export class CursorSdkTurnCoordinator {
 		this.debugRecorder = options.debugRecorder;
 		this.ompExecEnabled = options.ompExecEnabled === true;
 		this.contentEmitter = createTurnCoordinatorContentEmitter(options.stream, options.partial);
-		this.contentEmitter.onFirstStreamEvent = (type) => {
-			this.recordTtftPhase("first_omp_stream_event", { type });
-		};
 		this.displayRouter = new CursorTurnDisplayRouter({
 			cwd: options.cwd,
 			resolvedApiKey: options.resolvedApiKey,
