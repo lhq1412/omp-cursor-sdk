@@ -252,7 +252,7 @@ The installed 1.0.30 public `onDelta` / `onStep` schemas still do not expose Cur
 
 OMP 18 active skills come from `getActiveSkills()` and hidden skills are excluded from Cursor invocation.
 
-For local SDK runs with all Cursor setting sources enabled, the SDK also loads project instruction files. The extension removes only confidently matched OMP `<repo-rules>` entries for the same `AGENTS.md`/`CLAUDE.md` sources. Ambiguous markup is preserved unchanged. Cloud runs preserve the full prompt because the remote environment cannot be assumed to load local files.
+For local SDK runs, unset `PI_CURSOR_SETTING_SOURCES` omits SDK `settingSources` and keeps OMP `<repo-rules>`. When Cursor setting sources are explicitly enabled (`all`, or `user`/`project`), the SDK also loads matching instruction files. The extension then removes only confidently matched OMP `<repo-rules>` entries for the same `AGENTS.md`/`CLAUDE.md` sources. Ambiguous markup is preserved unchanged. Cloud runs preserve the full prompt because the remote environment cannot be assumed to load local files.
 
 ## 9. Roles, subagents, and fallback
 

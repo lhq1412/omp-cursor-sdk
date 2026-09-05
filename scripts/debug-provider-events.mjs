@@ -66,7 +66,7 @@ Options:
   --prompt-file <path>         Read prompt text from a file instead of --prompt.
   --out <dir>                  Artifact directory. Default: ${DEFAULT_OUT_BASE}/<timestamp> under --cwd.
   --setting-sources <value>    Cursor setting sources (comma-separated, all, or none).
-                               Default: PI_CURSOR_SETTING_SOURCES env, otherwise all.
+                               Default: PI_CURSOR_SETTING_SOURCES env, otherwise none.
   --session-dir <path>         OMP session directory. Default: <out>/session.
   --api-key <key>              Cursor API key. Prefer CURSOR_API_KEY to avoid shell history.
   -h, --help                   Show this help.

@@ -70,7 +70,7 @@ Options:
   --prompt <text>              Required user prompt for the run.
   --out <dir>                  Artifact directory. Default: /tmp/omp-cursor-sdk-sdk-events-<timestamp>.
   --setting-sources <value>    Comma-separated Cursor setting sources, or all/none.
-                               Default: PI_CURSOR_SETTING_SOURCES env, otherwise all.
+                               Default: PI_CURSOR_SETTING_SOURCES env, otherwise none.
   --include-conversation       Also capture run.conversation() when supported.
   --api-key <key>              Cursor API key. Prefer CURSOR_API_KEY to avoid shell history.
   -h, --help                   Show this help.

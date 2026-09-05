@@ -139,6 +139,7 @@ describe("resolveCursorFacingSystemPromptParts", () => {
 	it("leaves prompts unchanged when no Cursor layer replaces them", () => {
 		const prompt = [buildOmpSystemPromptWithContextFiles([PROJECT_FILE])];
 
+		expect(resolveCursorFacingSystemPromptParts(prompt, cursorSdkModel, undefined, DEFAULT_AGENT_DIR)).toBe(prompt);
 		expect(resolveCursorFacingSystemPromptParts(prompt, cursorSdkModel, "none", DEFAULT_AGENT_DIR)).toBe(prompt);
 		expect(resolveCursorFacingSystemPromptParts(prompt, cursorSdkModel, "plugins,user", DEFAULT_AGENT_DIR)).toBe(prompt);
 		expect(resolveCursorFacingSystemPromptParts(prompt, cursorSdkModel, "all", DEFAULT_AGENT_DIR, "cloud")).toBe(prompt);
@@ -153,6 +154,18 @@ describe("resolveCursorFacingSystemPromptParts", () => {
 });
 
 describe("registerCursorAgentsContextDedup", () => {
+	it("preserves OMP repo-rules when setting sources are unset", async () => {
+		const projectPart = buildOmpSystemPromptWithContextFiles([PROJECT_FILE]);
+		const pi = createEventHarness();
+		registerCursorAgentsContextDedup(pi);
+
+		expect(await pi.invokeEvent(
+			"before_agent_start",
+			{ type: "before_agent_start", prompt: "hello", systemPrompt: [projectPart] },
+			{ model: makeModel("composer-2.5") },
+		)).toBeUndefined();
+	});
+
 	it("rewrites OMP system-prompt blocks in place for cursor-sdk", async () => {
 		process.env[CURSOR_SETTING_SOURCES_ENV] = "all";
 		const pi = createEventHarness();

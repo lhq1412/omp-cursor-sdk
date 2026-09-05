@@ -48,7 +48,7 @@ import { join } from "node:path";
 describe("streamCursor bridge settings", () => {
 	beforeEach(resetCursorProviderTestState);
 
-	it("loads all Cursor setting sources by default for ambient MCP/tools", async () => {
+	it("omits Cursor settingSources by default", async () => {
 		const mockSend = vi.fn().mockResolvedValue({
 			id: "run-1",
 			agentId: "agent-1",
@@ -66,11 +66,9 @@ describe("streamCursor bridge settings", () => {
 		const stream = streamCursor(makeModel("composer-2"), makeContext(), { apiKey: "test-key" });
 		await collectEvents(stream);
 
-		expect(mockedCreate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				local: expect.objectContaining({ cwd: process.cwd(), settingSources: ["all"], store: expect.any(Object) }),
-			}),
-		);
+		const local = mockedCreate.mock.calls[0][0].local;
+		expect(local).toMatchObject({ cwd: process.cwd(), store: expect.any(Object) });
+		expect(local).not.toHaveProperty("settingSources");
 	});
 
 	it("allows Cursor setting sources to be disabled", async () => {
@@ -92,11 +90,9 @@ describe("streamCursor bridge settings", () => {
 		const stream = streamCursor(makeModel("composer-2"), makeContext(), { apiKey: "test-key" });
 		await collectEvents(stream);
 
-		expect(mockedCreate).toHaveBeenCalledWith(
-			expect.objectContaining({
-				local: expect.objectContaining({ cwd: process.cwd(), store: expect.any(Object) }),
-			}),
-		);
+		const local = mockedCreate.mock.calls[0][0].local;
+		expect(local).toMatchObject({ cwd: process.cwd(), store: expect.any(Object) });
+		expect(local).not.toHaveProperty("settingSources");
 	});
 
 	it("allows Cursor setting sources to be explicitly enabled", async () => {

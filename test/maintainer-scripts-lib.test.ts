@@ -178,8 +178,8 @@ describe("maintainer scripts shared lib", () => {
 
 	it("round-trips setting sources through resolve -> serialize -> resolve", () => {
 		const cases: Array<{ raw?: string; expected: ReturnType<typeof resolveCursorSettingSources> }> = [
-			{ raw: undefined, expected: ["all"] },
-			{ raw: "", expected: ["all"] },
+			{ raw: undefined, expected: undefined },
+			{ raw: "", expected: undefined },
 			{ raw: "all", expected: ["all"] },
 			{ raw: "none", expected: undefined },
 			{ raw: "project,user", expected: ["project", "user"] },

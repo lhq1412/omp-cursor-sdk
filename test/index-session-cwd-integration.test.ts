@@ -99,11 +99,11 @@ describe("extension session cwd integration", () => {
 				expect.objectContaining({
 					local: expect.objectContaining({
 						cwd: sessionDir,
-						settingSources: ["all"],
 						store: expect.any(Object),
 					}),
 				}),
 			);
+			expect(mockedAgentCreate.mock.calls[0][0].local).not.toHaveProperty("settingSources");
 			expect(mockedCursorConfigure).not.toHaveBeenCalled();
 		} finally {
 			rmSync(sessionDir, { recursive: true, force: true });

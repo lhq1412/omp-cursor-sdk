@@ -59,14 +59,10 @@ OMP's `--no-tools`, `--tools`, and `--exclude-tools` change the active OMP regis
 
 ## Cursor settings and MCP
 
-`PI_CURSOR_SETTING_SOURCES=all` is the default. It permits the SDK to load Cursor user/project settings, rules, plugins, and MCP configuration.
-
-Use a hermetic surface for debugging:
+Unset `PI_CURSOR_SETTING_SOURCES` omits SDK `settingSources`, so ambient Cursor user/project settings, rules, plugins, and MCP configuration are not loaded. Opt in with `PI_CURSOR_SETTING_SOURCES=all` or a comma list such as `user,project`:
 
 ```bash
-PI_CURSOR_SETTING_SOURCES=none \
-PI_CURSOR_PI_TOOL_BRIDGE=0 \
-omp --model cursor-sdk/grok-4.6
+PI_CURSOR_SETTING_SOURCES=all omp --model cursor-sdk/grok-4.6
 ```
 
 ## Cloud runtime

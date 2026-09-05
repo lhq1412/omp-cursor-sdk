@@ -740,6 +740,7 @@ describe("Cursor runtime state", () => {
 			PI_CURSOR_TOOL_MANIFEST: "0",
 		});
 		expect(report).toContain("PI_CURSOR_TOOL_MANIFEST: disabled");
+		expect(report).toContain("PI_CURSOR_SETTING_SOURCES: (unset → none) (effective: none)");
 	});
 
 	it("logs /cursor-tools to stdout when UI is unavailable", async () => {
