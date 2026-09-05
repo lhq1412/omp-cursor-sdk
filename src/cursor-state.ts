@@ -21,7 +21,6 @@ import {
 } from "./cursor-pi-tool-bridge-snapshot.js";
 import {
 	CURSOR_SETTING_SOURCES_ENV,
-	DEFAULT_CURSOR_SETTING_SOURCES,
 	resolveCursorSettingSources,
 } from "./cursor-setting-sources.js";
 import { isCursorModel } from "./cursor-model.js";
@@ -358,7 +357,7 @@ function notifyInvalidCursorModeIfCursorActive(ctx: Pick<ExtensionContext, "mode
 function formatEffectiveCursorSettingSourcesLabel(raw: string | undefined = process.env[CURSOR_SETTING_SOURCES_ENV]): string {
 	const effective = resolveCursorSettingSources(raw);
 	const effectiveLabel = effective === undefined ? "none" : effective.join(",");
-	const rawLabel = raw?.trim() ? raw.trim() : `(unset → ${DEFAULT_CURSOR_SETTING_SOURCES.join(",")})`;
+	const rawLabel = raw?.trim() ? raw.trim() : "(unset → none)";
 	return `${rawLabel} (effective: ${effectiveLabel})`;
 }
 

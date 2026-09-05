@@ -8,10 +8,10 @@ import {
 } from "../src/cursor-setting-sources.js";
 
 describe("resolveCursorSettingSources", () => {
-	it("defaults to all Cursor setting sources when unset", () => {
-		expect(DEFAULT_CURSOR_SETTING_SOURCES).toEqual(["all"]);
-		expect(resolveCursorSettingSources(undefined)).toEqual(DEFAULT_CURSOR_SETTING_SOURCES);
-		expect(resolveCursorSettingSources("")).toEqual(DEFAULT_CURSOR_SETTING_SOURCES);
+	it("omits Cursor setting sources when unset", () => {
+		expect(DEFAULT_CURSOR_SETTING_SOURCES).toEqual([]);
+		expect(resolveCursorSettingSources(undefined)).toBeUndefined();
+		expect(resolveCursorSettingSources("")).toBeUndefined();
 	});
 
 	it("maps disable aliases to undefined", () => {

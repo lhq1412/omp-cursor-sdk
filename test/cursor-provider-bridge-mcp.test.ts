@@ -224,9 +224,9 @@ describe("streamCursor bridge MCP", () => {
 		const createOptions = getCreatedAgentOptions();
 		expect(createOptions.local).toMatchObject({
 			cwd: process.cwd(),
-			settingSources: ["all"],
 			store: expect.any(Object),
 		});
+		expect(createOptions.local).not.toHaveProperty("settingSources");
 		expect(createOptions.mcpServers?.pi_tools?.type).toBe("http");
 		const url = new URL(getPiToolsMcpUrlFromAgentCreateOptions(createOptions));
 		expect(url.hostname).toBe("127.0.0.1");

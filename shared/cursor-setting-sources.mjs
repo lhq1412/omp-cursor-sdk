@@ -1,10 +1,10 @@
 /** Canonical Cursor settingSources parsing (parity-tested by provider runtime and maintainer scripts). */
 export const CURSOR_SETTING_SOURCES_ENV = "PI_CURSOR_SETTING_SOURCES";
-export const DEFAULT_CURSOR_SETTING_SOURCES = Object.freeze(["all"]);
+export const DEFAULT_CURSOR_SETTING_SOURCES = Object.freeze([]);
 
 export function resolveCursorSettingSources(raw) {
 	const trimmed = raw?.trim();
-	if (!trimmed) return [...DEFAULT_CURSOR_SETTING_SOURCES];
+	if (!trimmed) return undefined;
 	const normalized = trimmed.toLowerCase();
 	if (["0", "false", "off", "none", "omit", "disabled"].includes(normalized)) return undefined;
 	if (["1", "true", "on", "all"].includes(normalized)) return ["all"];

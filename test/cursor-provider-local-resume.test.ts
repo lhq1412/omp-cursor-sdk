@@ -45,7 +45,6 @@ describe("streamCursor local resume", () => {
 			agentMode: "agent",
 			cwd: process.cwd(),
 			modelSelection,
-			settingSources: ["all"],
 			localSafety: { autoReview: false, sandboxEnabled: false },
 			localResume: true,
 		});

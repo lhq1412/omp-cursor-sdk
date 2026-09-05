@@ -70,6 +70,9 @@ describe("debug-sdk-events maintainer probe", () => {
 		expect(parseDebugSdkEventsArgs(["--setting-sources", "none", "--prompt", "x"], {})).toMatchObject({
 			settingSources: undefined,
 		});
+		expect(parseDebugSdkEventsArgs(["--prompt", "x"], {})).toMatchObject({
+			settingSources: undefined,
+		});
 	});
 
 	it("builds stdout-safe summaries without raw SDK payloads", () => {

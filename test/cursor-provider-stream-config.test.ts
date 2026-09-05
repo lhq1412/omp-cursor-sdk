@@ -60,11 +60,12 @@ describe("streamCursor prompt and model config", () => {
 
 		await collectEvents(streamCursor(makeModel("gpt-5.5"), makeContext(), { apiKey: "test-key" }));
 
-		expect(mockedCreate.mock.calls[0][0].local).toMatchObject({
+		const local = mockedCreate.mock.calls[0][0].local;
+		expect(local).toMatchObject({
 			cwd: process.cwd(),
-			settingSources: ["all"],
 			store: expect.any(Object),
 		});
+		expect(local).not.toHaveProperty("settingSources");
 	});
 
 	it("sets absolute CURSOR_RIPGREP_PATH before local Agent.create", async () => {

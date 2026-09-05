@@ -233,7 +233,7 @@ These examples come from the historical checked-in catalog generated from `@curs
 
 Only image bytes from the latest user message are forwarded. Earlier transcript images become an explicit omitted-image placeholder; a later plain-text turn does not silently resend prior bytes. Cursor is instructed to ask for reattachment or description when earlier image data is needed.
 
-Local Cursor agents can load Cursor setting sources. When `PI_CURSOR_SETTING_SOURCES=all`, OMP `<repo-rules>` blocks that confidently duplicate SDK-loaded project/user instruction files are removed before send. Ambiguous markup and cloud runs preserve the original OMP prompt.
+Unset `PI_CURSOR_SETTING_SOURCES` omits SDK setting sources and keeps OMP `<repo-rules>`. Local Cursor agents can load Cursor setting sources when opted in. When `PI_CURSOR_SETTING_SOURCES=all`, OMP `<repo-rules>` blocks that confidently duplicate SDK-loaded project/user instruction files are removed before send. Ambiguous markup and cloud runs preserve the original OMP prompt.
 
 ## Usage and compaction
 
