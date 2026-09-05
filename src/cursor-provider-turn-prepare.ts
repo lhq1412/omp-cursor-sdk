@@ -338,8 +338,6 @@ async function prepareCursorLocalProviderTurn(
 			};
 		};
 		let sendPlan = planCursorSessionSend(backendSession.sendState, context);
-		let promptOptions = buildPromptOptions(sendPlan);
-		let prompt = buildCursorSessionSendPrompt(context, promptOptions, sendPlan);
 		if (sendPlan.resetAgent) {
 			await resetSessionCursorAgent(sessionAgentScopeKey);
 			backendSession = await sdkCursorBackend.acquire({
@@ -350,9 +348,17 @@ async function prepareCursorLocalProviderTurn(
 			bridgeToolNames = new Set(backendSession.bridgeRun?.snapshot.tools.map((tool) => tool.mcpToolName) ?? []);
 			includePiBridgeGuidance = bridgeToolNames.size > 0;
 			sendPlan = planCursorSessionSend(backendSession.sendState, context);
-			promptOptions = buildPromptOptions(sendPlan);
-			prompt = buildCursorSessionSendPrompt(context, promptOptions, sendPlan);
 		}
+		sdkEventDebug?.recordProviderEvent("store_ready", {});
+		sdkEventDebug?.recordProviderEvent("bridge_ready", { enabled: backendSession.bridgeRun !== undefined });
+		sdkEventDebug?.recordProviderEvent("agent_acquired", {
+			kind: backendSession.created ? (backendSession.resumed === true ? "resumed" : "created") : "reused",
+			created: backendSession.created,
+			resumed: backendSession.resumed === true,
+			bridgeEnabled: backendSession.bridgeRun !== undefined,
+		});
+		const promptOptions = buildPromptOptions(sendPlan);
+		const prompt = buildCursorSessionSendPrompt(context, promptOptions, sendPlan);
 		const bootstrap = sendPlan.mode === "bootstrap";
 		const bridgeRun = backendSession.bridgeRun;
 		const sendPayload = {
@@ -363,13 +369,6 @@ async function prepareCursorLocalProviderTurn(
 		const promptInputTokens = estimateCursorPromptTokens(prompt, promptOptions);
 		const useNativeToolReplay = isCursorNativeToolDisplayRuntimeEnabled();
 		const activeToolNames = getActiveContextToolNames(context);
-		sdkEventDebug?.recordProviderEvent("store_ready", {});
-		sdkEventDebug?.recordProviderEvent("bridge_ready", { enabled: bridgeRun !== undefined });
-		sdkEventDebug?.recordProviderEvent("agent_acquired", {
-			kind: backendSession.created ? (backendSession.resumed === true ? "resumed" : "created") : "reused",
-			created: backendSession.created,
-			resumed: backendSession.resumed === true,
-		});
 		sdkEventDebug?.recordProviderMeta({
 			model: {
 				id: model.id,

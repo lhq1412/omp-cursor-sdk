@@ -60,7 +60,6 @@ function registerCursorProvider(pi: Pick<ExtensionAPI, "registerProvider">, mode
 export default async function (pi: CursorExtensionApi) {
 	// Session cwd must register before other session_start listeners that depend on it.
 	registerCursorSessionScope(pi);
-	registerCursorSdkRuntimePrewarm(pi);
 	registerCursorSessionAgentLineage(pi);
 	registerCursorSessionAgentLifecycle(pi);
 	registerCursorSessionAgentResume(pi);
@@ -68,6 +67,7 @@ export default async function (pi: CursorExtensionApi) {
 		await prepareCursorSessionForCompaction();
 	});
 	registerCursorRuntimeControls(pi);
+	registerCursorSdkRuntimePrewarm(pi);
 	registerCursorNativeToolDisplay(pi);
 	registerCursorQuestionTool(pi);
 	registerCursorSkillTool(pi);

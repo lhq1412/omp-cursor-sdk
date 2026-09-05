@@ -1083,7 +1083,7 @@ describe("cursor-session-agent", () => {
 		).toBe(
 			sessionAgentTestUtils.buildSessionAgentPoolKey("scope", {
 				...base,
-				settingSources: ["user", "project"],
+				settingSources: ["user", "project", "user"],
 			}),
 		);
 		expect(

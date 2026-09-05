@@ -91,6 +91,7 @@ export class CursorPartialContentEmitter {
 		const block = new Proxy(toolCall, resolvedToolCallProxyHandler as ProxyHandler<typeof toolCall>);
 		this.partial.content.push(block);
 		this.stream.push({ type: "toolcall_start", contentIndex, partial: this.partial });
+		this.noteFirstStreamEvent("toolcall_start");
 		this.stream.push({ type: "toolcall_end", contentIndex, toolCall: block, partial: this.partial });
 	}
 

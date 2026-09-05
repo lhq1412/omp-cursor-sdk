@@ -7,7 +7,7 @@ import type {
 	CursorPiToolBridgeSnapshotApi,
 	CursorPiToolBridgeSnapshotOptions,
 } from "./cursor-pi-tool-bridge-types.js";
-import { createMcpToolName, stableNameHash } from "./cursor-pi-tool-bridge-mcp.js";
+import { createMcpToolName, snapshotToolToMcpTool, stableNameHash } from "./cursor-pi-tool-bridge-mcp.js";
 export {
 	CURSOR_PI_TOOL_BRIDGE_BUILTINS_ENV,
 	CURSOR_PI_TOOL_BRIDGE_ENV,
@@ -64,14 +64,14 @@ function isOverlappingCursorNativePiToolName(toolName: string): boolean {
 export function buildCursorPiToolBridgeSurfaceSignature(snapshot: CursorPiToolBridgeSnapshot): string {
 	if (snapshot.tools.length === 0) return "bridge:empty";
 	const serializedTools = snapshot.tools
-		.map((tool) =>
-			stableJson({
-				piToolName: tool.piToolName,
-				mcpToolName: tool.mcpToolName,
-				description: tool.description,
-				inputSchema: tool.inputSchema,
-			}),
-		)
+		.map((tool) => {
+			const mcpTool = snapshotToolToMcpTool(tool);
+			return stableJson({
+				name: mcpTool.name,
+				description: mcpTool.description,
+				inputSchema: mcpTool.inputSchema,
+			});
+		})
 		.sort()
 		.join("\0");
 	return `bridge:on:${stableNameHash(serializedTools)}`;
