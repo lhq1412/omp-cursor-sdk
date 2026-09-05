@@ -478,10 +478,6 @@ async function createSessionAgentEntry(
 				// Plumbing: createRun({ requiresCursorToolSchemaProjection: true }) +
 				// modelRequiresCursorToolSchemaProjection() via OMP resolveModelPolicy.
 			});
-			if (!bridgeRun.enabled || !bridgeRun.mcpServers) {
-				await bridgeRun.dispose();
-				bridgeRun = undefined;
-			}
 		}
 
 		const resolvedPoolKey = buildSessionAgentPoolKey(scopeKey, params);

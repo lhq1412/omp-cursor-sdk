@@ -21,6 +21,7 @@ import {
 import { resolveCursorPiToolBridgeCallTimeoutMs } from "./cursor-pi-tool-bridge-env.js";
 import type {
 	CursorPiBridgeToolRequest,
+	CursorPiHostToolResult,
 	CursorPiToolBridgeRun,
 	CursorPiToolBridgeRunOptions,
 	CursorPiToolBridgeSnapshot,
@@ -133,6 +134,33 @@ export class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 
 	takeQueuedToolRequests(): CursorPiBridgeToolRequest[] {
 		return this.queuedRequests.splice(0);
+	}
+
+	enqueueHostToolRequest(
+		piToolName: string,
+		args: Record<string, unknown>,
+		cursorCallId?: string,
+	): Promise<CursorPiHostToolResult> {
+		if (this.disposed) return Promise.reject(new Error("Cursor OMP tool bridge run is disposed"));
+		this.toolCallCounter += 1;
+		const bridgeCallId = `${this.id}-bridge-${this.toolCallCounter}`;
+		const request: CursorPiBridgeToolRequest = {
+			runId: this.id,
+			bridgeCallId,
+			cursorMcpCallId: cursorCallId,
+			piToolCallId: `${this.id}-tool-${this.toolCallCounter}`,
+			piToolName,
+			mcpToolName: `host:${piToolName}`,
+			args: normalizeMcpArgs(args),
+		};
+		return this.parkPendingRequest(request).then((result) => {
+			const content: CursorPiHostToolResult["content"] = [];
+			for (const block of result.content) {
+				if (block.type === "text") content.push({ type: "text", text: block.text });
+				else if (block.type === "image") content.push({ type: "image", data: block.data, mimeType: block.mimeType });
+			}
+			return { content, isError: result.isError === true };
+		});
 	}
 
 	setOnToolRequest(handler?: (request: CursorPiBridgeToolRequest) => void): void {
@@ -286,6 +314,11 @@ export class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 			args: normalizeMcpArgs(argsValue),
 		};
 
+		return this.parkPendingRequest(request, signal);
+	}
+
+	private parkPendingRequest(request: CursorPiBridgeToolRequest, signal?: AbortSignal): Promise<CallToolResult> {
+		const cursorMcpCallId = request.cursorMcpCallId;
 		return new Promise<CallToolResult>((resolve, reject) => {
 			const pending: PendingBridgeCall = {
 				request,
@@ -304,8 +337,10 @@ export class CursorPiToolBridgeRunImpl implements CursorPiToolBridgeRun {
 			signal?.addEventListener("abort", pending.onAbort, { once: true });
 			this.pendingByPiToolCallId.set(request.piToolCallId, pending);
 			this.pendingByBridgeCallId.set(request.bridgeCallId, pending);
-			this.pendingByCursorMcpCallId.set(cursorMcpCallId, pending);
-			this.knownCursorMcpCallIds.add(cursorMcpCallId);
+			if (cursorMcpCallId) {
+				this.pendingByCursorMcpCallId.set(cursorMcpCallId, pending);
+				this.knownCursorMcpCallIds.add(cursorMcpCallId);
+			}
 			pending.timeout = setTimeout(() => {
 				const reason = `Cursor OMP bridge CallTool timed out after ${this.callTimeoutMs} ms`;
 				this.rejectAndAbortPending(pending, new Error(reason));

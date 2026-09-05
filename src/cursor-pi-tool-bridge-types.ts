@@ -59,12 +59,18 @@ export interface CursorPiBridgeToolRequest {
 	args: Record<string, unknown>;
 }
 
+export interface CursorPiHostToolResult {
+	content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType?: string }>;
+	isError?: boolean;
+}
+
 export interface CursorPiToolBridgeRun {
 	id: string;
 	enabled: boolean;
 	mcpServers?: Record<string, McpServerConfig>;
 	snapshot: CursorPiToolBridgeSnapshot;
 	takeQueuedToolRequests(): CursorPiBridgeToolRequest[];
+	enqueueHostToolRequest(piToolName: string, args: Record<string, unknown>, cursorCallId?: string): Promise<CursorPiHostToolResult>;
 	resolveToolResults(toolResults: readonly ToolResultMessage[]): Promise<void>;
 	resolveToolResultsFromContext(context: Context): Promise<void>;
 	hasPendingPiToolCallId(piToolCallId: string): boolean;

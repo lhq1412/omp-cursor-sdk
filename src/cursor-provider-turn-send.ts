@@ -2,6 +2,7 @@ import type { SendOptions } from "@cursor/sdk";
 import {
 	createCursorOmpExecCustomTools,
 	resolveCursorProviderExecHandlers,
+	type CursorOmpExecHostPark,
 } from "./cursor-omp-exec-adapter.js";
 import { getActiveContextToolNames } from "./cursor-context-tools.js";
 import {
@@ -118,6 +119,15 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 			if (consumeCursorLocalForceOverride(prepared.localForce)) local.force = true;
 			const execHandlers = resolveCursorProviderExecHandlers(options);
 			if (execHandlers) {
+				const hostPark: CursorOmpExecHostPark | undefined = liveRun?.bridgeRun
+					? async (_name, args, toolCallId) => {
+						const result = await liveRun.bridgeRun!.enqueueHostToolRequest("read", args, toolCallId);
+						return {
+							content: result.content.length > 0 ? result.content : [{ type: "text" as const, text: "" }],
+							isError: result.isError === true,
+						};
+					}
+					: undefined;
 				local.customTools = createCursorOmpExecCustomTools(
 					execHandlers,
 					getActiveContextToolNames(params.context),
@@ -129,6 +139,7 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 						turnCoordinator.emitResolvedOmpExecTool(resolvedToolResult, args);
 						return resolvedToolResult;
 					},
+					hostPark,
 				);
 			}
 			if (local.force || local.customTools) sendOptions.local = local;

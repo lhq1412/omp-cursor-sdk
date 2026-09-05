@@ -228,7 +228,9 @@ The installed 1.0.30 SDK exposes `Agent.messages.list` pagination through `limit
 
 ### Builtin execution channel
 
-Local OMP builtin execution is intentionally separate from the MCP bridge. `src/cursor-provider-turn-send.ts` disallows overlapping Cursor native tools and installs SDK `local.customTools` adapters from `src/cursor-omp-exec-adapter.ts` only when OMP supplies `CursorExecHandlers`. Active `context.tools` grants filter that surface. Results preserve OMP text/image/error semantics, await `cursorOnToolResult` rewrites before the SDK call completes, and mark synthesized replay calls with `kCursorExecResolved` so OMP does not execute them twice. A rejecting result rewrite keeps the original result.
+Local OMP builtin execution is intentionally separate from advertising overlapping builtins on the MCP bridge (`PI_CURSOR_EXPOSE_BUILTIN_TOOLS`). `src/cursor-provider-turn-send.ts` disallows overlapping Cursor native tools and installs SDK `local.customTools` adapters from `src/cursor-omp-exec-adapter.ts` only when OMP supplies `CursorExecHandlers`. Active `context.tools` grants filter that surface. Cloud never installs this path.
+
+For `read`, a live local run parks the SDK customTool promise on the existing bridge pending map, emits an unresolved OMP `ToolCall(name="read")` with `stopReason=toolUse`, and resolves the SDK promise from the OMP `ToolResultMessage`. That path does not call `CursorExecHandlers` and does not stamp `kCursorExecResolved`. Other builtins still execute nested inside the SDK callback, await `cursorOnToolResult` rewrites before the SDK call completes, and mark synthesized replay calls with `kCursorExecResolved` so OMP does not execute them twice. A rejecting result rewrite keeps the original result. Missing live-run/bridge falls back to the nested path for `read` as well.
 
 Extension/custom tools continue through the run-scoped loopback MCP bridge.
 
@@ -276,7 +278,7 @@ The installed `@cursor/sdk@1.0.30` public types define the safe representation b
 - `Agent.create()` / `Agent.resume()` expose no supported initial system, developer, history, tool-call/result, or historical-thinking input. `Agent.send()` accepts one text value plus current images. Bootstrap therefore uses the deterministic `src/context.ts` representation above; it does not claim private-wire parity.
 - Persisted conversation/checkpoint state is opaque. The extension does not decode or mutate private SDK checkpoints and does not import OMP's private AgentService protobuf/HTTP2 implementation.
 - Prior images cannot be attached as structured history, so only active images use `SDKUserMessage.images`; prior images use deterministic MIME-aware text markers. Historical thinking is omitted.
-- `SDKCustomToolContext` exposes `toolCallId` but no abort signal, deadline, or cancellation channel. Builtin OMP exec routing remains narrowly owned by `local.customTools`; extension/custom tools retain the MCP bridge's run cancellation and cleanup.
+- `SDKCustomToolContext` exposes `toolCallId` but no abort signal, deadline, or cancellation channel. Builtin OMP exec routing remains narrowly owned by `local.customTools`. Parked `read` shares the existing bridge pending-map cancel/timeout/cleanup; other builtins still nested-await inside `execute()`. Extension/custom tools retain the MCP bridge's run cancellation and cleanup.
 - `ModelListItem` exposes catalog metadata but no authoritative local/cloud availability field. OMP therefore cannot annotate or filter `/model` safely by runtime; backend create/send errors remain authoritative.
 
 ## 10. OMP host adaptation boundary

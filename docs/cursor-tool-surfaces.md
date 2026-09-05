@@ -6,7 +6,7 @@
 
 | Surface | Owner | Callable by Cursor | OMP history/display |
 | --- | --- | --- | --- |
-| Cursor SDK host tools | Cursor local agent | Yes | Recorded activity replayed through the neutral `cursor` tool |
+| Cursor SDK host tools | Cursor local agent | Yes | `read` parks into the OMP builtin loop (canonical `read` card). Other host tools replay through the neutral `cursor` tool |
 | Cursor-configured MCP | Cursor settings and plugins | Yes, when loaded | Neutral `cursor` activity |
 | OMP bridge (`pi__*`) | This extension's loopback MCP server | Yes, when exposed | The real OMP tool name and result |
 
@@ -14,7 +14,7 @@ The `pi__` prefix is a stable bridge protocol identity inherited from the Cursor
 
 ## Cursor SDK host tools
 
-Cursor's local agent owns file, shell, search, edit, planning, web, task, and configured MCP execution. OMP does not execute those calls.
+Cursor's local agent owns file, shell, search, edit, planning, web, task, and configured MCP execution. OMP does not execute those calls, except local `read`: that customTool parks into the OMP canonical tool loop so the builtin `read` card and grants apply. Other host tools remain display-only replay.
 
 Completed SDK activity is display-only replay:
 
@@ -71,9 +71,10 @@ Cursor Cloud does not use the local OMP bridge or local replay continuation. Clo
 
 ## Debugging identity
 
-Persisted OMP tool calls have two valid shapes:
+Persisted OMP tool calls have three valid shapes:
 
 - SDK replay: `toolCall.name === "cursor"` and, when available, `toolResult.details.sourceToolName` names the SDK activity.
+- Host `read` park: `toolCall.name === "read"` from a local customTool, executed by OMP's builtin loop (not `pi__read`).
 - OMP bridge: `toolCall.name` and `toolResult.toolName` are the real OMP tool name.
 
 Do not infer execution from assistant prose. Verify `toolCall`/`toolResult` entries in the session JSONL.

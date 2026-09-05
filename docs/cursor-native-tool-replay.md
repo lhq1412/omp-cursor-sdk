@@ -1,6 +1,6 @@
 # Cursor native tool replay
 
-Cursor SDK host tools execute inside Cursor's local agent. `omp-cursor-sdk` mirrors their completed activity into OMP without executing the work a second time.
+Cursor SDK host tools execute inside Cursor's local agent, except local `read`, which parks into OMP's builtin loop. Other completed host activity is mirrored into OMP without executing the work a second time.
 
 User-facing namespace overview: [Cursor tool surfaces in OMP](./cursor-tool-surfaces.md).
 
