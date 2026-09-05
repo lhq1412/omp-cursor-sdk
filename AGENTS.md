@@ -25,7 +25,8 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 - `src/cursor-session-store.ts` owns per-session Cursor SDK SQLite store identity derivation, open/disposal, temporary fileless stores, and guarded removal.
 - `src/cursor-http1.ts` owns branch-scoped local HTTP/1.1 session state, global-preference override tracking, and extension-owned SDK configuration/null reset.
 - `src/cursor-ripgrep-path.ts` owns bundled Cursor SDK platform ripgrep resolution and local-agent environment initialization.
-- `src/cursor-session-agent.ts` owns session-scoped SDK agent pooling, transport-aware pool identity, send-state commits, busy tracking for in-flight SDK `run.wait()` work, and scoped acquire/dispose state.
+- `src/cursor-sdk-runtime.ts` owns the lazy `@cursor/sdk` import and side-effect-free runtime prewarm promise; `src/cursor-sdk-runtime-prewarm.ts` schedules that prewarm on local `cursor-sdk` `session_start` / `before_agent_start` without awaiting it.
+- `src/cursor-session-agent.ts` owns session-scoped SDK agent pooling, canonical transport-aware pool identity, send-state commits, busy tracking for in-flight SDK `run.wait()` work, and scoped acquire/dispose state.
 - `src/cursor-backend.ts` owns CursorBackend acquire/send wrapping session-agent pooling (local) and Agent.create (cloud).
 - `src/cursor-omp-exec-adapter.ts` owns SDK custom-tool routing of built-in Cursor tools through OMP `CursorExecHandlers`; extension tools stay on the loopback MCP bridge.
 - `src/cursor-session-agent-lineage.ts` owns non-resumable per-session local agent lineage custom entries independent of local resume.
@@ -42,14 +43,14 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 - `src/cursor-tool-lifecycle.ts` owns low-noise deferred in-progress lifecycle labels for long-running Cursor tools (coalesced with completed replay cards; bridge excluded).
 - `src/cursor-tool-visibility.ts` owns canonical Cursor tool visibility classification for lifecycle, incomplete-tool, and replay activity titles.
 - `src/cursor-incomplete-tool-visibility.ts` owns bounded user-visible labels/traces for started Cursor SDK tool calls discarded without completion.
-- `src/cursor-sdk-event-debug.ts` owns opt-in provider event artifact capture for Cursor SDK callbacks, stream events, replay/drain/bridge decisions, final partials, and summaries under `.debug/cursor-sdk-events/`, including discarded incomplete started tool calls when `PI_CURSOR_SDK_EVENT_DEBUG=1`.
+- `src/cursor-sdk-event-debug.ts` owns opt-in provider event artifact capture for Cursor SDK callbacks, stream events, TTFT phase markers, replay/drain/bridge decisions, final partials, and summaries under `.debug/cursor-sdk-events/`, including discarded incomplete started tool calls when `PI_CURSOR_SDK_EVENT_DEBUG=1`.
 - `shared/cursor-sdk-event-debug-env.mjs` owns canonical Cursor SDK event-debug env names; `src/cursor-sdk-event-debug-constants.ts` re-exports them and owns debug artifact base-dir resolution.
 - `src/cursor-sdk-event-debug-session.ts` owns debug session grouping, turn artifact directory allocation, and session manifest updates.
 - `src/cursor-agents-context.ts` owns Cursor-model suppression of pi `<project_context>` / `AGENTS.md` duplication and `PI_CURSOR_PRESERVE_PI_AGENTS_MD`; `src/cursor-agents-context-registration.ts` owns the static lifecycle registration for that suppression.
 - `src/cursor-sdk-output-filter.ts` suppresses Cursor SDK integrator bootstrap noise from pi's TUI.
 - `src/cursor-edit-diff.ts` owns canonical edit diff fallback resolution for replay/display paths.
-- `src/cursor-record-utils.ts` owns shared record/string-key parsing and neutral unknown-value stringification helpers used across bridge and transcript layers.
-- `src/cursor-partial-content-emitter.ts` owns shared thinking/text block emission for live-run drain and turn coordinator paths.
+- `src/cursor-record-utils.ts` owns shared record/string-key parsing, canonical/stable JSON, and neutral unknown-value stringification helpers used across bridge and transcript layers.
+- `src/cursor-partial-content-emitter.ts` owns shared thinking/text block emission for live-run drain and turn coordinator paths, including the first OMP stream-event hook used by TTFT markers.
 - `shared/cursor-cloud-lifecycle-constants.mjs` owns the canonical Cursor Cloud agent ID pattern, lifecycle entry type, and journal prefix; `src/cursor-cloud-lifecycle.ts` and `scripts/cloud-runtime-smoke.mjs` consume it for provider runtime and maintainer scripts.
 - `shared/cursor-sensitive-text.mjs` owns canonical secret scrubbing; `src/cursor-sensitive-text.ts` and maintainer scripts import it directly.
 - `shared/cursor-setting-sources.mjs` owns canonical `PI_CURSOR_SETTING_SOURCES` parsing/serialization; `src/cursor-setting-sources.ts` and maintainer scripts import it directly.
@@ -64,7 +65,7 @@ This repository is an OMP provider extension that registers Cursor SDK-backed mo
 - `src/cursor-env-boolean.ts` owns canonical env boolean parsing (default and tri-state optional) for bridge diagnostics, flags, and native replay gating.
 - `src/cursor-live-run-coordinator.ts` owns live Cursor run registry/scope matching, queued events, drain leases, idle disposal timers, and release cleanup.
 - `src/cursor-pi-tool-bridge.ts` re-exports bridge registration and snapshot helpers; exposes active pi tools to local Cursor agents through a per-run loopback MCP bridge.
-- `src/cursor-pi-tool-bridge-snapshot.ts` owns bridge snapshot building, env gating, surface signatures, and pi tool → MCP `inputSchema` projection via OMP `toolWireSchema` + optional `sanitizeSchemaForCursor` (caller-supplied `requiresCursorToolSchemaProjection`) + `normalizeSchemaForMCP` (kept off the run dynamic-import graph so native loaders stay away from that Pi host-peer path). Production auto-enable of the Cursor combiner projection stays off until live `@cursor/sdk` Fable MCP evidence exists; OMP catalog policy is resolved via `modelRequiresCursorToolSchemaProjection` in model-discovery.
+- `src/cursor-pi-tool-bridge-snapshot.ts` owns bridge snapshot building, env gating, execution-contract surface signatures (names, description, schema; not provenance/prompt-display metadata), and pi tool → MCP `inputSchema` projection via OMP `toolWireSchema` + optional `sanitizeSchemaForCursor` (caller-supplied `requiresCursorToolSchemaProjection`) + `normalizeSchemaForMCP` (kept off the run dynamic-import graph so native loaders stay away from that Pi host-peer path). Production auto-enable of the Cursor combiner projection stays off until live `@cursor/sdk` Fable MCP evidence exists; OMP catalog policy is resolved via `modelRequiresCursorToolSchemaProjection` in model-discovery.
 - `src/cursor-pi-tool-bridge-server.ts` owns loopback HTTP routing and run endpoint registry for bridge runs.
 - `src/cursor-pi-tool-bridge-run.ts` owns MCP transport setup, pending bridge calls, pi tool dispatch, cancellation, and run lifecycle.
 - `src/cursor-pi-tool-bridge-abort.ts` owns bridge pi tool execution abort tracking and process signal handling.

@@ -16,7 +16,7 @@ export {
 } from "./cursor-pi-tool-bridge-env.js";
 import { isRegisteredCursorNativeToolName } from "./cursor-native-tool-display-state.js";
 import { isExcludedFromCursorBridgeExposure } from "./cursor-tool-presentation-registry.js";
-import { asRecord } from "./cursor-record-utils.js";
+import { asRecord, stableJson } from "./cursor-record-utils.js";
 
 const EMPTY_MCP_OBJECT_SCHEMA: CursorPiMcpInputSchema = { type: "object", properties: {} };
 
@@ -65,15 +65,11 @@ export function buildCursorPiToolBridgeSurfaceSignature(snapshot: CursorPiToolBr
 	if (snapshot.tools.length === 0) return "bridge:empty";
 	const serializedTools = snapshot.tools
 		.map((tool) =>
-			JSON.stringify({
+			stableJson({
 				piToolName: tool.piToolName,
 				mcpToolName: tool.mcpToolName,
 				description: tool.description,
-				promptGuidelines: tool.promptGuidelines,
 				inputSchema: tool.inputSchema,
-				source: tool.sourceInfo?.source,
-				path: tool.sourceInfo?.path,
-				scope: tool.sourceInfo?.scope,
 			}),
 		)
 		.sort()

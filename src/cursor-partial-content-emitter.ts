@@ -21,10 +21,12 @@ export interface CursorPartialContentEmitterOptions {
 }
 
 export class CursorPartialContentEmitter {
+	onFirstStreamEvent?: (type: string) => void;
 	private thinkingContentIndex = -1;
 	private textContentIndex = -1;
 	private activityTraceChars = 0;
 	private activityTraceTruncated = false;
+	private firstStreamEventRecorded = false;
 
 	constructor(
 		private readonly stream: AssistantMessageEventStream,
@@ -32,6 +34,12 @@ export class CursorPartialContentEmitter {
 		private readonly thinkingMaxChars = DEFAULT_THINKING_TRACE_MAX_CHARS,
 		private readonly mutuallyExclusive = true,
 	) {}
+
+	private noteFirstStreamEvent(type: string): void {
+		if (this.firstStreamEventRecorded) return;
+		this.firstStreamEventRecorded = true;
+		this.onFirstStreamEvent?.(type);
+	}
 
 	closeThinking(): void {
 		if (this.thinkingContentIndex < 0) return;
@@ -103,6 +111,7 @@ export class CursorPartialContentEmitter {
 			this.thinkingContentIndex = this.partial.content.length;
 			this.partial.content.push({ type: "thinking", thinking: "" });
 			this.stream.push({ type: "thinking_start", contentIndex: this.thinkingContentIndex, partial: this.partial });
+			this.noteFirstStreamEvent("thinking_start");
 		}
 		const block = this.partial.content[this.thinkingContentIndex];
 		if (block.type !== "thinking") return;
@@ -114,6 +123,7 @@ export class CursorPartialContentEmitter {
 			delta: text,
 			partial: this.partial,
 		});
+		this.noteFirstStreamEvent("thinking_delta");
 	}
 
 	appendTextDelta(delta: string, options?: { closeThinking?: boolean }): void {
@@ -124,6 +134,7 @@ export class CursorPartialContentEmitter {
 			this.textContentIndex = this.partial.content.length;
 			this.partial.content.push({ type: "text", text: "" });
 			this.stream.push({ type: "text_start", contentIndex: this.textContentIndex, partial: this.partial });
+			this.noteFirstStreamEvent("text_start");
 		}
 		const block = this.partial.content[this.textContentIndex];
 		if (block.type !== "text") return;
@@ -134,6 +145,7 @@ export class CursorPartialContentEmitter {
 			delta,
 			partial: this.partial,
 		});
+		this.noteFirstStreamEvent("text_delta");
 	}
 
 	appendThinkingBlock(text: string, options?: { closeText?: boolean }): void {

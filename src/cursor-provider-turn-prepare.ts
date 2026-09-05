@@ -183,6 +183,12 @@ async function prepareCursorCloudProviderTurn(
 			}),
 		});
 		cloudSessionForCleanup = backendSession;
+		sdkEventDebug?.recordProviderEvent("sdk_runtime_ready", {});
+		sdkEventDebug?.recordProviderEvent("agent_acquired", {
+			kind: "created",
+			created: true,
+			resumed: false,
+		});
 		if (!recordCursorCloudLifecycleSafely({ agentId: backendSession.id }, resolvedApiKey)) {
 			throw createCursorCloudLifecyclePersistenceError(backendSession.id, "intent", undefined, resolvedApiKey);
 		}
@@ -276,6 +282,7 @@ async function prepareCursorLocalProviderTurn(
 			sdk,
 			resolvedConfig.local.useHttp1ForAgent,
 		);
+		sdkEventDebug?.recordProviderEvent("sdk_runtime_ready", {});
 
 		installCursorMcpToolTimeoutOverride();
 		restoreCursorSdkOutputFilter = installCursorSdkOutputFilter();
@@ -356,6 +363,13 @@ async function prepareCursorLocalProviderTurn(
 		const promptInputTokens = estimateCursorPromptTokens(prompt, promptOptions);
 		const useNativeToolReplay = isCursorNativeToolDisplayRuntimeEnabled();
 		const activeToolNames = getActiveContextToolNames(context);
+		sdkEventDebug?.recordProviderEvent("store_ready", {});
+		sdkEventDebug?.recordProviderEvent("bridge_ready", { enabled: bridgeRun !== undefined });
+		sdkEventDebug?.recordProviderEvent("agent_acquired", {
+			kind: backendSession.created ? (backendSession.resumed === true ? "resumed" : "created") : "reused",
+			created: backendSession.created,
+			resumed: backendSession.resumed === true,
+		});
 		sdkEventDebug?.recordProviderMeta({
 			model: {
 				id: model.id,

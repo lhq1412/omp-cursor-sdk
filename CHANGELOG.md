@@ -4,6 +4,9 @@
 
 ### Changed
 
+- Canonicalize local session-agent pool-key inputs and hash the bridge execution contract (tool names, description, schema) so provenance-only metadata no longer recreates the SDK agent.
+- Prewarm `@cursor/sdk` in the background after local `cursor-sdk` session restore without issuing a model request.
+- Record TTFT phase markers on the provider debug sink (`turn_start` through `first_omp_stream_event`) so remaining latency can be attributed to SDK/backend work.
 - Route local `cursor-sdk` built-in Cursor tools through OMP `CursorExecHandlers` behind a thin `CursorBackend` session/send boundary; extension tools stay on the existing loopback MCP bridge. Cloud runtime create/send options are unchanged.
 - Default local Cursor `settingSources` to omitted (unset `PI_CURSOR_SETTING_SOURCES` means none) so ambient Cursor settings/MCP no longer load on cold start; opt in with `PI_CURSOR_SETTING_SOURCES=all` or a comma list such as `user,project`. `/cursor-tools` reports `(unset → none)`.
 - Persist local SDK transcript message offsets in v3 resume handles and read them synchronously before `Agent.send()`, so resumed turns no longer block on `Agent.messages.list()` recounts; v1/v2 records ignore `agentMessageOffset`, legacy handles without a watermark skip one turn of transcript WebSearch/WebFetch replay, and a known baseline that pages empty rebases after `run.wait()` if the transcript shrank.

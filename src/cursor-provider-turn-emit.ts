@@ -37,6 +37,7 @@ export async function emitCursorLiveTurn(emitParams: EmitCursorLiveTurnParams): 
 				mode: "emit",
 				signal: options?.signal,
 				debugRecorder: sdkEventDebug,
+				recordTtftOmp: true,
 			});
 		});
 	} catch (caught) {

@@ -19,6 +19,7 @@ import {
 import { sanitizeCursorProviderError } from "./cursor-provider-errors.js";
 import { CURSOR_SDK_API, CURSOR_SDK_PROVIDER_ID } from "./cursor-model.js";
 import { registerCursorAgentsContextDedup } from "./cursor-agents-context-registration.js";
+import { registerCursorSdkRuntimePrewarm } from "./cursor-sdk-runtime-prewarm.js";
 import { registerCursorSdkSessionProcessErrorGuard } from "./cursor-sdk-process-error-guard.js";
 import { prepareCursorSessionForCompaction } from "./cursor-session-compaction-prep.js";
 
@@ -34,6 +35,7 @@ type CursorExtensionApi =
 	& Parameters<typeof registerCursorSkillTool>[0]
 	& Parameters<typeof registerCursorPiToolBridge>[0]
 	& Parameters<typeof registerCursorAgentsContextDedup>[0]
+	& Parameters<typeof registerCursorSdkRuntimePrewarm>[0]
 	& Parameters<typeof registerCursorSdkSessionProcessErrorGuard>[0];
 
 function createCursorProviderConfig(fallbackModels: ProviderModelConfig[]): ProviderConfig {
@@ -58,6 +60,7 @@ function registerCursorProvider(pi: Pick<ExtensionAPI, "registerProvider">, mode
 export default async function (pi: CursorExtensionApi) {
 	// Session cwd must register before other session_start listeners that depend on it.
 	registerCursorSessionScope(pi);
+	registerCursorSdkRuntimePrewarm(pi);
 	registerCursorSessionAgentLineage(pi);
 	registerCursorSessionAgentLifecycle(pi);
 	registerCursorSessionAgentResume(pi);

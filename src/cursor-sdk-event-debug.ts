@@ -146,6 +146,7 @@ export function resolveCursorSdkEventDebugEnabled(env: Record<string, string | u
 }
 
 export interface CursorSdkEventDebugRecorder {
+	recordProviderEvent?(phase: string, payload: unknown): void;
 	recordLiveRunEvent(event: CursorLiveQueuedEvent): void;
 	recordBridgeDiagnostic(event: CursorPiToolBridgeDiagnosticEvent): void;
 	recordBridgeRaw(payload: {
