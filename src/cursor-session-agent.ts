@@ -147,6 +147,8 @@ export interface SessionCursorAgentCreateParams {
 	localResume?: boolean;
 	forceCreate?: boolean;
 	disallowedTools?: ToolName[];
+	/** Prefer send-time handlers.mcp customTools; do not attach loopback pi_tools MCP. */
+	skipPiToolBridge?: boolean;
 	createAgent?: CursorSdkModule["Agent"]["create"];
 	resumeAgent?: CursorSdkModule["Agent"]["resume"];
 }
@@ -225,7 +227,8 @@ function buildApiKeyPoolKeyFingerprint(apiKey: string): string {
 	return createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
 }
 
-function buildBridgePoolKeySuffix(): string {
+function buildBridgePoolKeySuffix(params: SessionCursorAgentCreateParams): string {
+	if (params.skipPiToolBridge) return "bridge:skipped-omp-mcp";
 	const registeredBridge = getRegisteredCursorPiToolBridge();
 	if (!registeredBridge) return "bridge:absent";
 	return registeredBridge.getToolSurfaceSignature();
@@ -244,7 +247,7 @@ function buildSessionAgentPoolKey(scopeKey: string, params: SessionCursorAgentCr
 				? "http1:on"
 				: "http1:off",
 		buildApiKeyPoolKeyFingerprint(params.apiKey),
-		buildBridgePoolKeySuffix(),
+		buildBridgePoolKeySuffix(params),
 		`omp-exec:${params.disallowedTools?.join(",") || "off"}`,
 	].join("\0");
 }
@@ -469,7 +472,7 @@ async function createSessionAgentEntry(
 	let sessionStore: OpenCursorSessionStore | undefined;
 	try {
 		const registeredBridge = getRegisteredCursorPiToolBridge();
-		if (registeredBridge) {
+		if (registeredBridge && !params.skipPiToolBridge) {
 			bridgeRun = await registeredBridge.createRun({
 				onToolRequest: params.onBridgeToolRequest,
 				debugRecorder: params.debugRecorder,

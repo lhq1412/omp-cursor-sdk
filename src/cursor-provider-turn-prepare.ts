@@ -13,6 +13,8 @@ import {
 import { sdkCursorBackend, type CursorBackendSession, type LocalCursorBackendSession } from "./cursor-backend.js";
 import {
 	CURSOR_OMP_EXEC_DISALLOWED_TOOLS,
+	buildCursorOmpExtensionToolSpecs,
+	prefersCursorOmpExtensionCustomTools,
 	resolveCursorProviderExecHandlers,
 } from "./cursor-omp-exec-adapter.js";
 import type { CursorPiBridgeToolRequest } from "./cursor-pi-tool-bridge.js";
@@ -259,6 +261,7 @@ async function prepareCursorLocalProviderTurn(
 	const { params, cwd, resolvedApiKey, sdkEventDebug, throwIfAborted, resolvedConfig, agentMode, selection, fastEnabled } = prepareParams;
 	const { model, context, options } = params;
 	const execHandlers = resolveCursorProviderExecHandlers(options);
+	const skipPiToolBridge = prefersCursorOmpExtensionCustomTools(execHandlers);
 
 	let restoreCursorSdkOutputFilter: (() => void) | undefined;
 	let sessionAgentScopeKey: string | undefined;
@@ -293,14 +296,19 @@ async function prepareCursorLocalProviderTurn(
 			localResume: resolvedConfig.local.resume.value,
 			useHttp1ForAgent,
 			...(execHandlers ? { disallowedTools: [...CURSOR_OMP_EXEC_DISALLOWED_TOOLS] } : {}),
+			...(skipPiToolBridge ? { skipPiToolBridge: true } : {}),
 			debugRecorder: sdkEventDebug,
-			onBridgeToolRequest: (request: CursorPiBridgeToolRequest) => {
-				if (liveRunForBridgeQueue && !liveRunForBridgeQueue.disposed) {
-					cursorLiveRuns.queueEvent(liveRunForBridgeQueue, { type: "bridge-tool", request });
-				} else {
-					queuedBridgeRequestsBeforeLiveRun.push(request);
-				}
-			},
+			...(skipPiToolBridge
+				? {}
+				: {
+						onBridgeToolRequest: (request: CursorPiBridgeToolRequest) => {
+							if (liveRunForBridgeQueue && !liveRunForBridgeQueue.disposed) {
+								cursorLiveRuns.queueEvent(liveRunForBridgeQueue, { type: "bridge-tool", request });
+							} else {
+								queuedBridgeRequestsBeforeLiveRun.push(request);
+							}
+						},
+					}),
 		};
 		let backendSession = await sdkCursorBackend.acquire({
 			runtimeTarget: "local",
@@ -308,7 +316,11 @@ async function prepareCursorLocalProviderTurn(
 		});
 		sessionAgentScopeKey = backendSession.scopeKey;
 		throwIfAborted();
-
+		const extensionToolSpecs = skipPiToolBridge
+			? buildCursorOmpExtensionToolSpecs(context.tools, {
+					activeNames: getActiveContextToolNames(context),
+				})
+			: [];
 		let bridgeToolNames = new Set(backendSession.bridgeRun?.snapshot.tools.map((tool) => tool.mcpToolName) ?? []);
 		let includePiBridgeGuidance = bridgeToolNames.size > 0;
 		const buildPromptOptions = (plan: ReturnType<typeof planCursorSessionSend>) => {
@@ -316,7 +328,9 @@ async function prepareCursorLocalProviderTurn(
 				...getCursorPromptOptions(model),
 				agentMode,
 				includePiBridgeGuidance,
-				includePiAskQuestionGuidance: bridgeToolNames.has("pi__cursor_ask_question"),
+				includePiAskQuestionGuidance:
+					bridgeToolNames.has("pi__cursor_ask_question") ||
+					extensionToolSpecs.some((tool) => tool.name === "cursor_ask_question"),
 			};
 			if (plan.mode !== "bootstrap" || !resolveCursorToolManifestEnabled()) {
 				return promptOptions;
@@ -325,8 +339,9 @@ async function prepareCursorLocalProviderTurn(
 				...promptOptions,
 				toolManifest: buildCursorToolManifestText({
 					bridgeSnapshot: backendSession.bridgeRun?.snapshot,
-					piBridgeEnabled: resolveCursorPiToolBridgeEnabled(),
+					piBridgeEnabled: resolveCursorPiToolBridgeEnabled() && !skipPiToolBridge,
 					includePiBridgeGuidance,
+					extensionToolNames: extensionToolSpecs.map((tool) => tool.name),
 				}),
 			};
 		};

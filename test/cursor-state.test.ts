@@ -729,7 +729,7 @@ describe("Cursor runtime state", () => {
 			PI_CURSOR_SETTING_SOURCES: "project",
 		});
 		expect(report).toContain("PI_CURSOR_PI_TOOL_BRIDGE: disabled");
-		expect(report).toContain("OMP bridge: disabled (PI_CURSOR_PI_TOOL_BRIDGE=0).");
+		expect(report).toContain("OMP bridge: disabled (PI_CURSOR_PI_TOOL_BRIDGE=0 or handlers.mcp customTools path).");
 		expect(report).toContain("PI_CURSOR_SETTING_SOURCES: project (effective: project)");
 		expect(report).toContain("Callable tool surfaces this run:");
 	});
