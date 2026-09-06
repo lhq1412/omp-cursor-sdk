@@ -133,5 +133,7 @@ Landed as **opt-in** path (advisor PR #25 review remediation):
 | Full bridge file delete | deferred | after default-on + live go |
 
 | Ask guidance decoupled from bridge | landed (main) | `askQuestionCallableName`; ask tool active via `PI_CURSOR_ASK_QUESTION` only |
+| Extension vs bridge schema projection | unit contract | `buildCursorOmpExtensionToolSpecs` ≡ `normalizeMcpInputSchema` (same helper) |
+| Host cancel AbortSignal | **open** (OMP 18.1.11) | `executeTool` still passes `undefined` as signal |
 
 

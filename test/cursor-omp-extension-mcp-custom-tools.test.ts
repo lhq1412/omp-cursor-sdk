@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { Type } from "@oh-my-pi/omptype/typebox";
 import type { CursorExecHandlers, CursorMcpCall, ToolResultMessage } from "@oh-my-pi/pi-ai";
+import { normalizeMcpInputSchema } from "../src/cursor-pi-tool-bridge-snapshot.js";
 import {
 	CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV,
 	buildCursorOmpExtensionToolSpecs,
@@ -197,6 +199,26 @@ describe("buildCursorOmpExtensionToolSpecs / merge / opt-in", () => {
 		);
 		expect(specs.map((s) => s.name)).toEqual(["echo_ext"]);
 		expect(specs[0]?.inputSchema).toMatchObject({ type: "object" });
+	});
+
+	it("extension inputSchema matches bridge normalizeMcpInputSchema projection", () => {
+		const combinerTool = {
+			name: "union_echo",
+			description: "Echo mode from a combiner schema",
+			parameters: Type.Object({
+				mode: Type.Union([Type.Literal("a"), Type.Literal("b")]),
+			}),
+		};
+		const active = new Set([combinerTool.name]);
+		for (const requiresCursorToolSchemaProjection of [false, true] as const) {
+			const bridgeSchema = normalizeMcpInputSchema(combinerTool, { requiresCursorToolSchemaProjection });
+			const specs = buildCursorOmpExtensionToolSpecs([combinerTool], {
+				activeNames: active,
+				requiresCursorToolSchemaProjection,
+			});
+			expect(specs).toHaveLength(1);
+			expect(specs[0]?.inputSchema).toEqual(bridgeSchema);
+		}
 	});
 
 	it("surface signature changes when tool set or schema changes", () => {

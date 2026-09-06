@@ -389,6 +389,7 @@ export async function resetCursorProviderTestState(): Promise<void> {
 	delete process.env.PI_CURSOR_LOCAL_FORCE;
 	delete process.env.PI_CURSOR_LOCAL_RESUME;
 	delete process.env[CURSOR_HTTP1_ENV];
+	delete process.env.PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS;
 	process.env.PI_CURSOR_TOOL_MANIFEST = "0";
 	expect(cursorProviderTestUtils.pendingCursorNativeRunCount()).toBe(0);
 	cursorProviderTestUtils.resetCursorNativeReplayIdleDisposeMs();

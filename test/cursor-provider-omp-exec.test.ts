@@ -18,7 +18,10 @@ import { streamCursor } from "../src/cursor-provider.js";
 import { CursorSdkTurnCoordinator } from "../src/cursor-provider-turn-coordinator.js";
 import { drainCursorLiveRunTurn, cursorLiveRuns } from "../src/cursor-provider-live-run-drain.js";
 import { makeAssistantMessage } from "./helpers/pi-harness.js";
-import { CURSOR_OMP_EXEC_DISALLOWED_TOOLS } from "../src/cursor-omp-exec-adapter.js";
+import {
+	CURSOR_OMP_EXEC_DISALLOWED_TOOLS,
+	CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV,
+} from "../src/cursor-omp-exec-adapter.js";
 import { CursorPartialContentEmitter } from "../src/cursor-partial-content-emitter.js";
 
 function finishedRun() {
@@ -128,6 +131,39 @@ describe("cursor-sdk OMP exec adapter wiring", () => {
 
 		expect(getCreatedAgentOptions().mcpServers?.pi_tools?.type).toBe("http");
 		expect(getCreatedAgentOptions().disallowedTools).toEqual([...CURSOR_OMP_EXEC_DISALLOWED_TOOLS]);
+	});
+
+	it("skips pi_tools MCP and exposes extension customTools when opt-in is enabled", async () => {
+		const semReindex = createTestToolInfo(
+			"sem_reindex",
+			Type.Object({ target: Type.String() }),
+			"Reindex semantic cache",
+		);
+		registerBridgeForProviderTest({ active: ["sem_reindex"], tools: [semReindex] });
+		const mcp = vi.fn(async () => toolResult("reindexed"));
+		const mockSend = vi.fn().mockResolvedValue(finishedRun());
+		mockCreatedAgent({
+			send: mockSend,
+			[Symbol.asyncDispose]: vi.fn().mockResolvedValue(undefined),
+		});
+		process.env[CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV] = "1";
+
+		await collectEvents(streamCursor(makeModel("composer-2"), {
+			...makeContext(),
+			tools: [semReindex],
+		}, {
+			apiKey: "test-key",
+			execHandlers: { mcp, piRead: async () => toolResult("file") },
+		}));
+
+		expect(getCreatedAgentOptions().mcpServers?.pi_tools).toBeUndefined();
+		const customTools = mockSend.mock.calls[0]?.[1]?.local?.customTools ?? {};
+		expect(customTools.sem_reindex).toBeDefined();
+		expect(await customTools.sem_reindex.execute({ target: "x" }, { toolCallId: "tc-ext" })).toEqual({
+			content: [{ type: "text", text: "reindexed" }],
+			isError: false,
+		});
+		expect(mcp).toHaveBeenCalledTimes(1);
 	});
 
 	it("returns async cursorOnToolResult rewrites to the SDK while emitting the resolved call", async () => {
