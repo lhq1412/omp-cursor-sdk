@@ -268,4 +268,99 @@ describe("buildCursorOmpExtensionToolSpecs / merge / opt-in", () => {
 			expect(id).not.toBe("cursor-omp-extension");
 		}
 	});
+
+	it("aborts execution before dispatch when signal is already aborted", async () => {
+		let invoked = false;
+		const controller = new AbortController();
+		controller.abort("user cancelled before send");
+
+		const tools = createCursorOmpExtensionCustomTools(
+			registryHandlers(
+				new Map([
+					[
+						"echo_ext",
+						async () => {
+							invoked = true;
+							return okResult("echo_ext", "ok");
+						},
+					],
+				]),
+			),
+			[echoSpec],
+			undefined,
+			{ signal: controller.signal },
+		);
+
+		const result = (await tools.echo_ext!.execute({ text: "hi" } as never, { toolCallId: "call_aborted_pre" } as never)) as {
+			isError: boolean;
+			content: { type: string; text: string }[];
+		};
+		expect(invoked).toBe(false);
+		expect(result).toMatchObject({
+			isError: true,
+		});
+		expect(result.content?.[0]).toMatchObject({
+			type: "text",
+		});
+		expect(result.content?.[0]?.text).toContain("aborted before start");
+		expect(result.content?.[0]?.text).toContain("user cancelled before send");
+	});
+
+	it("passes signal to handlers.mcp invocation context and allows tool cancellation", async () => {
+		let receivedSignal: AbortSignal | undefined;
+		const controller = new AbortController();
+
+		const handlers = {
+			mcp: async (call: unknown, context?: { signal?: AbortSignal }) => {
+				receivedSignal = context?.signal;
+				if (context?.signal?.aborted) {
+					throw new Error("aborted in tool");
+				}
+				return okResult("echo_ext", "ok");
+			},
+		} as unknown as CursorExecHandlers;
+
+		const tools = createCursorOmpExtensionCustomTools(
+			handlers,
+			[echoSpec],
+			undefined,
+			{ signal: controller.signal },
+		);
+
+		const result = (await tools.echo_ext!.execute({ text: "hi" } as never, { toolCallId: "call_with_signal" } as never)) as {
+			isError: boolean;
+			content: { type: string; text: string }[];
+		};
+		expect(receivedSignal).toBe(controller.signal);
+		expect(result).toMatchObject({ isError: false, content: [{ type: "text", text: "ok" }] });
+
+		// Now trigger abort and execute again
+		controller.abort("cancelled mid-flight");
+		const abortedResult = (await tools.echo_ext!.execute({ text: "hi" } as never, { toolCallId: "call_aborted_post" } as never)) as {
+			isError: boolean;
+		};
+		expect(abortedResult.isError).toBe(true);
+	});
+
+	it("maintains backward compatibility when no signal context is provided", async () => {
+		let receivedContext: unknown;
+		const handlers = {
+			mcp: async (_call: unknown, context?: unknown) => {
+				receivedContext = context;
+				return okResult("echo_ext", "legacy_ok");
+			},
+		} as unknown as CursorExecHandlers;
+
+		const tools = createCursorOmpExtensionCustomTools(
+			handlers,
+			[echoSpec],
+		);
+
+		const result = (await tools.echo_ext!.execute({ text: "hi" } as never, {} as never)) as {
+			isError: boolean;
+			content: { type: string; text: string }[];
+		};
+		expect(receivedContext).toBeUndefined();
+		expect(result).toMatchObject({ isError: false, content: [{ type: "text", text: "legacy_ok" }] });
+	});
 });

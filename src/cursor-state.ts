@@ -17,6 +17,7 @@ import {
 import {
 	buildCursorOmpExtensionToolSpecs,
 	CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV,
+	listActiveCursorOmpExecCustomToolSdkNames,
 	resolveCursorOmpExtensionCustomToolsEnabled,
 } from "./cursor-omp-exec-adapter.js";
 import {
@@ -385,8 +386,10 @@ export function formatCursorToolsDebugReport(
 
 	if (extensionCustomToolsEnabled) {
 		const activeNames = new Set(pi.getActiveTools());
+		const reservedSdkNames = new Set(listActiveCursorOmpExecCustomToolSdkNames(activeNames));
 		const specs = buildCursorOmpExtensionToolSpecs(pi.getAllTools(), {
 			activeNames,
+			reservedSdkNames,
 		});
 		extensionToolNames = specs.map((spec) => spec.name);
 	}

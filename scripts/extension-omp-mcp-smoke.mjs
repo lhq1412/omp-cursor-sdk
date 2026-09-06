@@ -144,6 +144,9 @@ export async function runExtensionOmpMcpSmoke(argv = process.argv.slice(2), base
 async function main() {
 	const evidence = await runExtensionOmpMcpSmoke();
 	process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
+	if (!evidence.runFinishedSuccessfully) {
+		process.exitCode = 1;
+	}
 }
 
 if (isMainModule()) {

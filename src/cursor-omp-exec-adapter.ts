@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { SDKCustomTool, SDKCustomToolContext, SDKCustomToolResult, SDKJsonValue, ToolName } from "@cursor/sdk";
-import type { CursorExecHandlers, SimpleStreamOptions, Tool, ToolResultMessage } from "@oh-my-pi/pi-ai";
+import type { CursorExecHandlers, CursorMcpCall, SimpleStreamOptions, Tool, ToolResultMessage } from "@oh-my-pi/pi-ai";
 import { omitUndefinedArgs, piGrepSkip, piLimit, piLsPath, piTimeout } from "@oh-my-pi/pi-ai/providers/cursor-pi-args";
 import { parseEnvBoolean } from "./cursor-env-boolean.js";
 import { stableNameHash } from "./cursor-pi-tool-bridge-mcp.js";
@@ -184,9 +184,15 @@ export type CursorOmpExtensionToolSpec = {
 	inputSchema?: NonNullable<SDKCustomTool["inputSchema"]>;
 };
 
+export type CursorExecCallContext = {
+	readonly signal?: AbortSignal;
+};
+
 export type CursorOmpExtensionCustomToolsOptions = {
 	/** CursorMcpCall.providerIdentifier; default `omp`. */
 	providerIdentifier?: string;
+	/** Run-scoped abort signal propagated to handlers.mcp invocation context. */
+	signal?: AbortSignal;
 };
 /** Opt-in: extension tools via handlers.mcp customTools (skip loopback bridge). Default off until cancel hard gate closes. */
 export const CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV = "PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS";
@@ -304,6 +310,7 @@ export function createCursorOmpExtensionCustomTools(
 	options?: CursorOmpExtensionCustomToolsOptions,
 ): Record<string, SDKCustomTool> {
 	const providerIdentifier = options?.providerIdentifier ?? "omp";
+	const signal = options?.signal;
 	const out: Record<string, SDKCustomTool> = {};
 	for (const tool of tools) {
 		const name = tool.name;
@@ -312,7 +319,7 @@ export function createCursorOmpExtensionCustomTools(
 			...(tool.description !== undefined ? { description: tool.description } : {}),
 			...(tool.inputSchema !== undefined ? { inputSchema: tool.inputSchema } : {}),
 			execute: (args, context) =>
-				executeCursorOmpExtensionTool(name, args, context, handlers, onResolved, providerIdentifier),
+				executeCursorOmpExtensionTool(name, args, context, handlers, onResolved, providerIdentifier, signal),
 		};
 	}
 	return out;
@@ -325,10 +332,23 @@ async function executeCursorOmpExtensionTool(
 	handlers: CursorExecHandlers,
 	onResolved: CursorOmpExecResolvedSink | undefined,
 	providerIdentifier: string,
+	signal?: AbortSignal,
 ): Promise<SDKCustomToolResult> {
 	const toolCallId = context.toolCallId?.trim() || `cursor-omp-extension-${randomUUID()}`;
 	const rawArgs = args as Record<string, unknown>;
 	try {
+		if (signal?.aborted) {
+			const abortedResult = {
+				role: "toolResult" as const,
+				toolCallId,
+				toolName,
+				content: [{ type: "text" as const, text: `Tool "${toolName}" execution aborted before start: ${signal.reason ?? "operation aborted"}` }],
+				isError: true,
+				timestamp: Date.now(),
+			};
+			const resolved = await applyCursorOmpExecResolvedSink(onResolved, abortedResult, rawArgs);
+			return toolResultMessageToSdkCustomToolResult(resolved);
+		}
 		if (!handlers.mcp) {
 			const missing = {
 				role: "toolResult" as const,
@@ -341,14 +361,21 @@ async function executeCursorOmpExtensionTool(
 			const resolved = await applyCursorOmpExecResolvedSink(onResolved, missing, rawArgs);
 			return toolResultMessageToSdkCustomToolResult(resolved);
 		}
-		const invoked = await handlers.mcp({
-			name: toolName,
-			providerIdentifier,
-			toolName,
-			toolCallId,
-			args: rawArgs,
-			rawArgs: {},
-		});
+		const mcpHandler = handlers.mcp as (
+			call: CursorMcpCall,
+			context?: CursorExecCallContext,
+		) => Promise<unknown>;
+		const invoked = await mcpHandler(
+			{
+				name: toolName,
+				providerIdentifier,
+				toolName,
+				toolCallId,
+				args: rawArgs,
+				rawArgs: {},
+			},
+			signal ? { signal } : undefined,
+		);
 		const toolResult = unwrapCursorExecHandlerResult(invoked, toolCallId, toolName);
 		const resolved = await applyCursorOmpExecResolvedSink(onResolved, toolResult, rawArgs);
 		return toolResultMessageToSdkCustomToolResult(resolved);

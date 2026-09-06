@@ -142,6 +142,7 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 							reservedSdkNames: new Set(listActiveCursorOmpExecCustomToolSdkNames(activeToolNames)),
 						}),
 						onResolved,
+						{ signal: options?.signal },
 					)
 					: undefined;
 				const customTools = mergeCursorOmpCustomTools(builtinTools, extensionTools);
