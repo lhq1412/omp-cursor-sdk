@@ -294,7 +294,7 @@ export function mergeCursorOmpCustomTools(
  * PR0 spike: map active OMP tools onto SDK customTools that execute through
  * `CursorExecHandlers.mcp` (host registry lookup), not the loopback MCP bridge.
  *
- * Cancel: OMP 18.1.6 `executeTool` still passes `undefined` as AbortSignal into
+ * Cancel: OMP 18.1.11 `executeTool` still passes `undefined` as AbortSignal into
  * `tool.execute`. This path cannot claim cancel-safety until the host does.
  */
 export function createCursorOmpExtensionCustomTools(

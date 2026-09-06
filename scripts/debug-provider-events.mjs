@@ -20,6 +20,7 @@ import {
 	parseJsonLines,
 	terminateChild,
 	waitForChildClose,
+	waitForChildCloseWithin,
 } from "./lib/cursor-child-process.mjs";
 import { scrubSensitiveText } from "../shared/cursor-sensitive-text.mjs";
 import { createScriptFail } from "./lib/cursor-script-fail.mjs";
@@ -252,6 +253,18 @@ export async function runDebugProviderEvents(args, envInput = process.env) {
 					resolve(events);
 					return;
 				}
+				const summaryPath = join(artifactDir, SUMMARY_ARTIFACT);
+				if (existsSync(summaryPath)) {
+					try {
+						const summary = JSON.parse(readFileSync(summaryPath, "utf8"));
+						if (summary.waitResultRecorded === true || (summary.counts?.errors ?? 0) > 0) {
+							resolve(events);
+							return;
+						}
+					} catch {
+						// keep polling until timeout
+					}
+				}
 				if (Date.now() - start > timeoutMs) {
 					reject(new Error(`timeout after ${timeoutMs}ms`));
 					return;
@@ -261,17 +274,22 @@ export async function runDebugProviderEvents(args, envInput = process.env) {
 			tick();
 		});
 		child.stdin.end();
-		const exitCode = await waitForChildClose(child);
-		closed = true;
-		if (exitCode !== 0) {
-			fail(`OMP exited ${exitCode}\nstderr=${scrubSensitiveText(stderr.slice(-2000), args.apiKey)}`, [args.apiKey]);
+		const closeTimeoutMs = Number(envInput.PI_PROVIDER_EVENT_DEBUG_CLOSE_MS ?? 30_000);
+		if (!(await waitForChildCloseWithin(child, closeTimeoutMs))) {
+			await terminateChild(child);
 		}
+		closed = true;
+		const exitCode = await waitForChildClose(child);
 
 		const captureSummary = assertCompleteCaptureSummary(
 			backfillPiSessionSnapshot(readCaptureSummary(artifactDir, stderr), artifactDir, sessionDir),
 			artifactDir,
 			args.apiKey,
 		);
+
+		if (exitCode !== 0 && (captureSummary.counts?.errors ?? 0) === 0) {
+			fail(`OMP exited ${exitCode}\nstderr=${scrubSensitiveText(stderr.slice(-2000), args.apiKey)}`, [args.apiKey]);
+		}
 
 		return {
 			artifactDir: captureSummary.artifactDir,

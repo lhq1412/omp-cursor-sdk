@@ -95,7 +95,7 @@ exit 1
 	);
 }
 
-function waitForChildCloseWithin(child, timeoutMs) {
+export function waitForChildCloseWithin(child, timeoutMs) {
 	if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
 	return new Promise((resolve) => {
 		const finish = (closed) => {
