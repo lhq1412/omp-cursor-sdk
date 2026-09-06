@@ -338,13 +338,18 @@ async function prepareCursorLocalProviderTurn(
 		let bridgeToolNames = new Set(backendSession.bridgeRun?.snapshot.tools.map((tool) => tool.mcpToolName) ?? []);
 		let includePiBridgeGuidance = bridgeToolNames.size > 0;
 		const buildPromptOptions = (plan: CursorSessionSendPlan) => {
+			const askOnBridge = bridgeToolNames.has("pi__cursor_ask_question");
+			const askOnExtension = extensionToolSpecs.some((tool) => tool.name === "cursor_ask_question");
+			const askQuestionCallableName = askOnBridge
+				? "pi__cursor_ask_question"
+				: askOnExtension
+					? "cursor_ask_question"
+					: undefined;
 			const promptOptions = {
 				...getCursorPromptOptions(model),
 				agentMode,
 				includePiBridgeGuidance,
-				includePiAskQuestionGuidance:
-					bridgeToolNames.has("pi__cursor_ask_question") ||
-					extensionToolSpecs.some((tool) => tool.name === "cursor_ask_question"),
+				askQuestionCallableName,
 			};
 			if (plan.mode !== "bootstrap" || !resolveCursorToolManifestEnabled()) {
 				return promptOptions;

@@ -19,6 +19,8 @@ export interface CursorPromptOptions {
 	toolManifest?: string;
 	includePiBridgeGuidance?: boolean;
 	includePiAskQuestionGuidance?: boolean;
+	/** Callable ask tool name for boundary guidance (bridge pi__* or extension cursor_ask_question). */
+	askQuestionCallableName?: string;
 }
 
 type CursorPromptMessage = Message;
@@ -55,11 +57,27 @@ export function getCursorToolTailGuardText(
 	].filter((line): line is string => line !== undefined).join("\n");
 }
 
+
+function getAskQuestionGuidanceLine(
+	options: Pick<CursorPromptOptions, "askQuestionCallableName" | "includePiAskQuestionGuidance" | "includePiBridgeGuidance">,
+): string | undefined {
+	if (options.askQuestionCallableName) {
+		return `Use ${options.askQuestionCallableName} for material choices if exposed.`;
+	}
+	// Legacy explicit opt-in only; local prepare uses askQuestionCallableName instead.
+	if (options.includePiAskQuestionGuidance === true) {
+		return "Use pi__cursor_ask_question for material choices if exposed.";
+	}
+	return undefined;
+}
+
 function getCursorToolBoundaryText(
-	options: Pick<CursorPromptOptions, "agentMode" | "includePiAskQuestionGuidance"> & { hasToolManifest?: boolean; includePiBridgeGuidance?: boolean } = {},
+	options: Pick<CursorPromptOptions, "agentMode" | "askQuestionCallableName" | "includePiAskQuestionGuidance"> & {
+		hasToolManifest?: boolean;
+		includePiBridgeGuidance?: boolean;
+	} = {},
 ): string {
 	const includePiBridgeGuidance = options.includePiBridgeGuidance !== false;
-	const includePiAskQuestionGuidance = includePiBridgeGuidance && options.includePiAskQuestionGuidance !== false;
 	const lines = [
 		"Cursor SDK tool boundary:",
 		"Call only Cursor SDK/MCP tools exposed in this run; OMP history names, replay labels, and transcript names are not callable.",
@@ -67,7 +85,7 @@ function getCursorToolBoundaryText(
 			? "For exposed OMP bridge tools, call pi__* MCP names, not OMP card/history names."
 			: undefined,
 		"Do not claim OMP-side or WebSearch/WebFetch tools unless Cursor ran an equivalent tool.",
-		includePiAskQuestionGuidance ? "Use pi__cursor_ask_question for material choices if exposed." : undefined,
+		getAskQuestionGuidanceLine(options),
 		getCursorPlanModeToolGuidanceText(options.agentMode, { includePiBridgeGuidance }),
 		"Images: only active final user/developer images are attached; prior images use deterministic transcript markers.",
 	].filter((line): line is string => line !== undefined);
@@ -453,6 +471,7 @@ export function buildCursorPrompt(context: Context, options: CursorPromptOptions
 		agentMode: options.agentMode,
 		hasToolManifest: Boolean(options.toolManifest),
 		includePiBridgeGuidance: options.includePiBridgeGuidance,
+		askQuestionCallableName: options.askQuestionCallableName,
 		includePiAskQuestionGuidance: options.includePiAskQuestionGuidance,
 	})];
 	if (options.toolManifest) {

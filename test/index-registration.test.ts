@@ -629,6 +629,21 @@ describe("extension registration and discovery", () => {
 		expect(snapshot.piToolNameToMcpToolName.get(bridgeToolName)).toBe(`pi__${bridgeToolName}`);
 	});
 
+
+	it("keeps cursor_ask_question active when PI_CURSOR_PI_TOOL_BRIDGE=0", async () => {
+		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "0";
+		process.env.PI_CURSOR_PI_TOOL_BRIDGE = "0";
+		mockedDiscover.mockResolvedValueOnce([]);
+		const pi = createExtensionPi();
+
+		await extensionFactory(pi);
+		await pi.runSessionStart({ model: makeModel("composer-2.5") });
+		await pi.runTurnStart({ model: makeModel("composer-2.5") });
+
+		expect(cursorPiToolBridgeTestUtils.getRegisteredBridgeForTests()?.isEnabled()).toBe(false);
+		expect(pi._activeToolNames()).toContain(CURSOR_ASK_QUESTION_TOOL_NAME);
+	});
+
 	it("honors PI_CURSOR_PI_TOOL_BRIDGE=0 at the extension registration path", async () => {
 		process.env.PI_CURSOR_NATIVE_TOOL_DISPLAY = "0";
 		process.env.PI_CURSOR_PI_TOOL_BRIDGE = "0";
@@ -636,10 +651,12 @@ describe("extension registration and discovery", () => {
 		const pi = createExtensionPi();
 
 		await extensionFactory(pi);
-		await pi.runSessionStart();
 
-		expect(cursorPiToolBridgeTestUtils.getRegisteredBridgeForTests()?.isEnabled()).toBe(false);
-		expect(pi.setActiveTools).not.toHaveBeenCalled();
+		const bridge = cursorPiToolBridgeTestUtils.getRegisteredBridgeForTests();
+		expect(bridge?.isEnabled()).toBe(false);
+		const run = await bridge!.createRun();
+		expect(run.enabled).toBe(false);
+		await run.dispose();
 	});
 
 	it("registers fallback models through authoritative discovery", async () => {

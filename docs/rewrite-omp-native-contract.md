@@ -132,4 +132,6 @@ Landed as **opt-in** path (advisor PR #25 review remediation):
 | Ask guidance / long-task | no | before default-on |
 | Full bridge file delete | deferred | after default-on + live go |
 
+| Ask guidance decoupled from bridge | landed (main) | `askQuestionCallableName`; ask tool active via `PI_CURSOR_ASK_QUESTION` only |
+
 

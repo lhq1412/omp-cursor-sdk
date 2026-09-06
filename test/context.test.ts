@@ -671,9 +671,9 @@ describe("buildCursorPrompt", () => {
 		const unknownTools = buildCursorPrompt({ messages: [{ role: "user", content: "test", timestamp: 1 }] });
 
 		expect(withTools.text).toContain("For exposed OMP bridge tools");
-		expect(withTools.text).toContain("Use pi__cursor_ask_question");
+		expect(withTools.text).not.toContain("Use pi__cursor_ask_question");
 		expect(unknownTools.text).toContain("For exposed OMP bridge tools");
-		expect(unknownTools.text).toContain("Use pi__cursor_ask_question");
+		expect(unknownTools.text).not.toContain("Use pi__cursor_ask_question");
 
 		const unknownToolsPlan = buildCursorPrompt({ messages: [{ role: "user", content: "test", timestamp: 1 }] }, { agentMode: "plan" });
 		expect(unknownToolsPlan.text).toContain("Exposed pi__* bridge tools");
@@ -684,7 +684,7 @@ describe("buildCursorPrompt", () => {
 			systemPrompt: ["You can use WebSearch and WebFetch."],
 			messages: [{ role: "user", content: "search the web for Cursor SDK best practices", timestamp: 1 }],
 		};
-		const result = buildCursorPrompt(ctx);
+		const result = buildCursorPrompt(ctx, { includePiAskQuestionGuidance: true });
 		expect(result.text.indexOf("Cursor SDK tool boundary:")).toBeLessThan(result.text.indexOf("System instructions from OMP:"));
 		expect(result.text).toContain("OMP history names, replay labels, and transcript names are not callable");
 		expect(result.text).toContain("call pi__* MCP names");
@@ -699,6 +699,20 @@ describe("buildCursorPrompt", () => {
 	it("omits manifest pointer from boundary when tool manifest is disabled", () => {
 		const result = buildCursorPrompt({ messages: [{ role: "user", content: "test", timestamp: 1 }] });
 		expect(result.text).not.toContain("See callable surfaces below.");
+	});
+
+
+	it("uses extension ask name in boundary when bridge guidance is off", () => {
+		const result = buildCursorPrompt(
+			{ messages: [{ role: "user", content: "test", timestamp: 1 }] },
+			{
+				includePiBridgeGuidance: false,
+				askQuestionCallableName: "cursor_ask_question",
+			},
+		);
+		expect(result.text).toContain("Use cursor_ask_question for material choices if exposed.");
+		expect(result.text).not.toContain("pi__cursor_ask_question");
+		expect(result.text).not.toContain("For exposed OMP bridge tools");
 	});
 
 	it("points boundary readers to the manifest when tool manifest is present", () => {
