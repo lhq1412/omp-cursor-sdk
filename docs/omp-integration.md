@@ -299,6 +299,7 @@ The port imports only `@oh-my-pi/*` host packages. Important host-specific adapt
 | Compaction/tree | OMP session lifecycle events |
 | Tool schemas | `@oh-my-pi/omptype/typebox` and OMP ToolInfo normalization |
 | Builtin exec | SDK `local.customTools` routed through OMP `CursorExecHandlers` |
+| Extension MCP cancel | `docs/omp-handlers-mcp-cancel-proposal.md`; gate `npm run smoke:extension-mcp-cancel` |
 | Native replay | neutral `cursor` tool only; no builtin shadowing |
 | Context markup | OMP `<repo-rules>` parser/dedup path |
 | Runtime | Bun-native OMP packages and tests |

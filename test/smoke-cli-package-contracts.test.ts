@@ -25,6 +25,8 @@ describe("smoke CLI and package contracts", () => {
 		expect(run(NODE_EXECUTABLE, ["--check", "scripts/validate-smoke-jsonl.mjs"]).status).toBe(0);
 		expect(run(NODE_EXECUTABLE, ["--check", "scripts/debug-sdk-events.mjs"]).status).toBe(0);
 		expect(run(NODE_EXECUTABLE, ["--check", "scripts/debug-provider-events.mjs"]).status).toBe(0);
+		expect(run(NODE_EXECUTABLE, ["--check", "scripts/extension-omp-mcp-cancel-smoke.mjs"]).status).toBe(0);
+		expect(run(NODE_EXECUTABLE, ["--check", "scripts/extension-omp-mcp-smoke.mjs"]).status).toBe(0);
 		expect(run(NODE_EXECUTABLE, ["--check", "scripts/local-resume-smoke.mjs"]).status).toBe(0);
 		expect(run(NODE_EXECUTABLE, ["--check", "scripts/lib/local-resume-smoke-harness.mjs"]).status).toBe(0);
 		expect(run(NODE_EXECUTABLE, ["--check", "scripts/platform-smoke.mjs"]).status).toBe(0);

@@ -8,6 +8,10 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createScriptFail } from "./lib/cursor-script-fail.mjs";
+import {
+	hostExecuteToolOmitsAbortSignal as probeHostExecuteToolOmitsAbortSignal,
+	resolveInstalledHostPackageVersion,
+} from "./lib/cursor-host-cancel-probe.mjs";
 import { parseDebugProviderEventsArgs, runDebugProviderEvents } from "./debug-provider-events.mjs";
 
 const fail = createScriptFail("extension-omp-mcp-smoke");
@@ -15,22 +19,6 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 function isMainModule() {
 	return process.argv[1]?.endsWith("extension-omp-mcp-smoke.mjs");
-}
-
-function resolvePiCodingAgentCursorSource() {
-	return join(repoRoot, "node_modules/@oh-my-pi/pi-coding-agent/src/cursor.ts");
-}
-
-function resolveInstalledHostPackageVersion() {
-	const packageJsonPath = join(repoRoot, "node_modules/@oh-my-pi/pi-coding-agent/package.json");
-	if (existsSync(packageJsonPath)) {
-		try {
-			return JSON.parse(readFileSync(packageJsonPath, "utf8")).version;
-		} catch {
-			// fall through
-		}
-	}
-	return "unknown";
 }
 
 function resolveSpawnedOmpVersion() {
@@ -44,22 +32,14 @@ function resolveSpawnedOmpVersion() {
 
 /** Contract probe: OMP CursorExecBridge.executeTool still omits AbortSignal. */
 export function hostExecuteToolOmitsAbortSignal() {
-	const sourcePath = resolvePiCodingAgentCursorSource();
-	if (!existsSync(sourcePath)) {
-		return { status: "unknown", gap: null, path: sourcePath };
+	const probe = probeHostExecuteToolOmitsAbortSignal(repoRoot);
+	if (probe.gap === true) {
+		return { ...probe, status: "observed-gap" };
 	}
-	const source = readFileSync(sourcePath, "utf8");
-	const start = source.indexOf("async function executeTool");
-	if (start === -1) {
-		return { status: "unknown", gap: null, path: sourcePath };
+	if (probe.gap === false) {
+		return { ...probe, status: "changed-or-unknown" };
 	}
-	const slice = source.slice(start, start + 2500);
-	const hasUndefinedSignal = /await tool\.execute\([\s\S]{0,240}\bundefined\b/.test(slice);
-	return {
-		status: hasUndefinedSignal ? "observed-gap" : "changed-or-unknown",
-		gap: hasUndefinedSignal,
-		path: sourcePath,
-	};
+	return probe;
 }
 
 export async function runExtensionOmpMcpSmoke(argv = process.argv.slice(2), baseEnv = process.env) {
@@ -126,7 +106,7 @@ export async function runExtensionOmpMcpSmoke(argv = process.argv.slice(2), base
 		hostCancelGap: cancelProbe.status,
 		hostCancelGapOpen: cancelProbe.gap === true,
 		probeSourcePath: cancelProbe.path,
-		installedHostPackageVersion: resolveInstalledHostPackageVersion(),
+		installedHostPackageVersion: resolveInstalledHostPackageVersion(repoRoot),
 		spawnedOmpVersion: resolveSpawnedOmpVersion(),
 		bridgeRunId: bridgeRunId ?? null,
 		bridgeEnabled,

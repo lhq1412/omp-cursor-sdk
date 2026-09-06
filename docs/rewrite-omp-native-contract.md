@@ -134,7 +134,6 @@ Landed as **opt-in** path (advisor PR #25 review remediation):
 
 | Ask guidance decoupled from bridge | landed (main) | `askQuestionCallableName`; ask tool active via `PI_CURSOR_ASK_QUESTION` only |
 | Extension vs bridge schema projection | unit contract | `buildCursorOmpExtensionToolSpecs` ≡ `normalizeMcpInputSchema` (same helper) |
-| Host cancel AbortSignal | **open** (OMP 18.1.11) | `executeTool` still passes `undefined` as signal |
+| Host cancel AbortSignal | **open** (OMP 18.1.11) | see `docs/omp-handlers-mcp-cancel-proposal.md`; `executeTool` still passes no signal |
 | Extension opt-in structural live | `npm run smoke:extension-mcp` | no `bridgeRunId`, `send.bridgeEnabled=false`; not cancel/tool-exec proof |
-
-
+| Extension cancel live gate | `npm run smoke:extension-mcp-cancel` | probe-only until upstream lands; `--live` after host patch |
