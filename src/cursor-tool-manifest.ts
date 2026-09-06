@@ -21,18 +21,26 @@ export function buildCursorToolManifestText(options: {
 	/** When false, bridge is off via PI_CURSOR_PI_TOOL_BRIDGE=0 (not merely empty). */
 	piBridgeEnabled?: boolean;
 	includePiBridgeGuidance?: boolean;
+	/** OMP extension tools exposed via SDK customTools + handlers.mcp (no pi__ bridge). */
+	extensionToolNames?: readonly string[];
 } = {}): string {
 	const piBridgeEnabled = options.piBridgeEnabled ?? true;
 	const includePiBridgeGuidance = options.includePiBridgeGuidance !== false;
+	const extensionNames = [...(options.extensionToolNames ?? [])].filter(Boolean).sort();
 	const lines = [
 		"Callable tool surfaces this run:",
 		`- Cursor host/MCP: ${CURSOR_HOST_TOOL_MANIFEST_SUMMARY}; configured MCP depends on Cursor settings.`,
 		"- OMP tool toggles affect OMP tools/bridge exposure only; they do not disable Cursor host/configured MCP tools.",
 	];
+	if (extensionNames.length > 0) {
+		lines.push(
+			`- OMP extension customTools (handlers.mcp): ${extensionNames.join(", ")} — call these names directly.`,
+		);
+	}
 	const bridgeTools = includePiBridgeGuidance ? options.bridgeSnapshot?.tools ?? [] : [];
 	if (includePiBridgeGuidance) {
 		if (!piBridgeEnabled) {
-			lines.push("- OMP bridge: disabled (PI_CURSOR_PI_TOOL_BRIDGE=0).");
+			lines.push("- OMP bridge: disabled (PI_CURSOR_PI_TOOL_BRIDGE=0 or opt-in handlers.mcp customTools path).");
 		} else if (bridgeTools.length === 0) {
 			lines.push("- OMP bridge: no pi__* tools exposed this run.");
 		} else {

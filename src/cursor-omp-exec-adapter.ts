@@ -1,6 +1,12 @@
+import { randomUUID } from "node:crypto";
 import type { SDKCustomTool, SDKCustomToolContext, SDKCustomToolResult, SDKJsonValue, ToolName } from "@cursor/sdk";
-import type { CursorExecHandlers, SimpleStreamOptions, ToolResultMessage } from "@oh-my-pi/pi-ai";
+import type { CursorExecHandlers, SimpleStreamOptions, Tool, ToolResultMessage } from "@oh-my-pi/pi-ai";
 import { omitUndefinedArgs, piGrepSkip, piLimit, piLsPath, piTimeout } from "@oh-my-pi/pi-ai/providers/cursor-pi-args";
+import { parseEnvBoolean } from "./cursor-env-boolean.js";
+import { stableNameHash } from "./cursor-pi-tool-bridge-mcp.js";
+import { normalizeMcpInputSchema } from "./cursor-pi-tool-bridge-snapshot.js";
+import { isExcludedFromCursorBridgeExposure } from "./cursor-tool-presentation-registry.js";
+import { isRegisteredCursorNativeToolName } from "./cursor-native-tool-display-state.js";
 import {
 	asRecord,
 	getArray,
@@ -9,6 +15,19 @@ import {
 	getString,
 	stringifyUnknown,
 } from "./cursor-record-utils.js";
+
+/** OMP tool names already served by createCursorOmpExecCustomTools (do not dual-expose). */
+const OMP_BUILTIN_EXEC_TOOL_NAMES = new Set([
+	"read",
+	"bash",
+	"write",
+	"edit",
+	"grep",
+	"glob",
+	"find",
+	"ls",
+	"delete",
+]);
 
 export const CURSOR_OMP_EXEC_DISALLOWED_TOOLS = [
 	"read",
@@ -157,6 +176,196 @@ export type CursorOmpExecResolvedSink = (
 	toolResult: ToolResultMessage,
 	args: Record<string, unknown>,
 ) => ToolResultMessage | undefined | Promise<ToolResultMessage | undefined>;
+
+/** Active OMP extension/custom tool exposed to the SDK as a customTool. */
+export type CursorOmpExtensionToolSpec = {
+	name: string;
+	description?: string;
+	inputSchema?: NonNullable<SDKCustomTool["inputSchema"]>;
+};
+
+export type CursorOmpExtensionCustomToolsOptions = {
+	/** CursorMcpCall.providerIdentifier; default `omp`. */
+	providerIdentifier?: string;
+};
+/** Opt-in: extension tools via handlers.mcp customTools (skip loopback bridge). Default off until cancel hard gate closes. */
+export const CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV = "PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS";
+
+export function resolveCursorOmpExtensionCustomToolsEnabled(
+	env: Record<string, string | undefined> = process.env,
+): boolean {
+	return parseEnvBoolean(env[CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV], false);
+}
+
+/** True when mcp exists and PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS is enabled (default off). */
+export function prefersCursorOmpExtensionCustomTools(
+	handlers?: CursorExecHandlers,
+	env: Record<string, string | undefined> = process.env,
+): boolean {
+	return typeof handlers?.mcp === "function" && resolveCursorOmpExtensionCustomToolsEnabled(env);
+}
+
+/** SDK customTool names that createCursorOmpExecCustomTools will install for this active set. */
+export function listActiveCursorOmpExecCustomToolSdkNames(
+	activeToolNames?: ReadonlySet<string>,
+): string[] {
+	const names: string[] = [];
+	for (const name of CURSOR_OMP_EXEC_CUSTOM_TOOL_NAMES) {
+		const ompName = CUSTOM_TOOL_OMP_NAMES[name];
+		if (activeToolNames && ompName !== undefined && !activeToolNames.has(ompName)) continue;
+		names.push(name);
+	}
+	return names;
+}
+
+/**
+ * Build SDK customTool specs for active non-builtin OMP tools.
+ * Schemas reuse the bridge MCP projection helpers without standing up HTTP.
+ * `reservedSdkNames` drops extension names that would collide with builtins (no silent dual routing).
+ */
+export function buildCursorOmpExtensionToolSpecs(
+	tools: readonly Pick<Tool, "name" | "description" | "parameters">[] | undefined,
+	options?: {
+		activeNames?: ReadonlySet<string>;
+		reservedSdkNames?: ReadonlySet<string>;
+		requiresCursorToolSchemaProjection?: boolean;
+	},
+): CursorOmpExtensionToolSpec[] {
+	if (!tools?.length) return [];
+	const active = options?.activeNames;
+	const reserved = options?.reservedSdkNames;
+	const schemaOptions = {
+		requiresCursorToolSchemaProjection: options?.requiresCursorToolSchemaProjection === true,
+	};
+	const out: CursorOmpExtensionToolSpec[] = [];
+	const seen: Record<string, true> = {};
+	for (const tool of tools) {
+		const name = tool.name;
+		if (!name || seen[name]) continue;
+		if (active && !active.has(name)) continue;
+		if (reserved?.has(name)) continue;
+		if (OMP_BUILTIN_EXEC_TOOL_NAMES.has(name)) continue;
+		if (isExcludedFromCursorBridgeExposure(name) && isRegisteredCursorNativeToolName(name)) continue;
+		seen[name] = true;
+		out.push({
+			name,
+			description: tool.description || `Run OMP tool ${name}`,
+			inputSchema: normalizeMcpInputSchema(tool, schemaOptions) as NonNullable<SDKCustomTool["inputSchema"]>,
+		});
+	}
+	return out;
+}
+
+/** Pool-key fingerprint of the extension customTools surface (name/description/schema). */
+export function buildCursorOmpExtensionToolSurfaceSignature(
+	specs: readonly CursorOmpExtensionToolSpec[],
+): string {
+	if (specs.length === 0) return "omp-mcp:empty";
+	const serialized = specs
+		.map((tool) =>
+			JSON.stringify({
+				name: tool.name,
+				description: tool.description ?? "",
+				inputSchema: tool.inputSchema ?? null,
+			}),
+		)
+		.sort()
+		.join("\0");
+	return `omp-mcp:${stableNameHash(serialized)}`;
+}
+
+/** First group wins on name collision (pass builtins before extensions). Prefer filtering reserved names at spec build. */
+export function mergeCursorOmpCustomTools(
+	...groups: Array<Record<string, SDKCustomTool> | undefined>
+): Record<string, SDKCustomTool> | undefined {
+	const merged: Record<string, SDKCustomTool> = {};
+	for (const group of groups) {
+		if (!group) continue;
+		for (const [name, tool] of Object.entries(group)) {
+			if (merged[name]) continue;
+			merged[name] = tool;
+		}
+	}
+	return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+
+/**
+ * PR0 spike: map active OMP tools onto SDK customTools that execute through
+ * `CursorExecHandlers.mcp` (host registry lookup), not the loopback MCP bridge.
+ *
+ * Cancel: OMP 18.1.6 `executeTool` still passes `undefined` as AbortSignal into
+ * `tool.execute`. This path cannot claim cancel-safety until the host does.
+ */
+export function createCursorOmpExtensionCustomTools(
+	handlers: CursorExecHandlers,
+	tools: readonly CursorOmpExtensionToolSpec[],
+	onResolved?: CursorOmpExecResolvedSink,
+	options?: CursorOmpExtensionCustomToolsOptions,
+): Record<string, SDKCustomTool> {
+	const providerIdentifier = options?.providerIdentifier ?? "omp";
+	const out: Record<string, SDKCustomTool> = {};
+	for (const tool of tools) {
+		const name = tool.name;
+		if (!name || out[name]) continue;
+		out[name] = {
+			...(tool.description !== undefined ? { description: tool.description } : {}),
+			...(tool.inputSchema !== undefined ? { inputSchema: tool.inputSchema } : {}),
+			execute: (args, context) =>
+				executeCursorOmpExtensionTool(name, args, context, handlers, onResolved, providerIdentifier),
+		};
+	}
+	return out;
+}
+
+async function executeCursorOmpExtensionTool(
+	toolName: string,
+	args: Record<string, SDKJsonValue>,
+	context: SDKCustomToolContext,
+	handlers: CursorExecHandlers,
+	onResolved: CursorOmpExecResolvedSink | undefined,
+	providerIdentifier: string,
+): Promise<SDKCustomToolResult> {
+	const toolCallId = context.toolCallId?.trim() || `cursor-omp-extension-${randomUUID()}`;
+	const rawArgs = args as Record<string, unknown>;
+	try {
+		if (!handlers.mcp) {
+			const missing = {
+				role: "toolResult" as const,
+				toolCallId,
+				toolName,
+				content: [{ type: "text" as const, text: "CursorExecHandlers.mcp is not available" }],
+				isError: true,
+				timestamp: Date.now(),
+			};
+			const resolved = await applyCursorOmpExecResolvedSink(onResolved, missing, rawArgs);
+			return toolResultMessageToSdkCustomToolResult(resolved);
+		}
+		const invoked = await handlers.mcp({
+			name: toolName,
+			providerIdentifier,
+			toolName,
+			toolCallId,
+			args: rawArgs,
+			rawArgs: {},
+		});
+		const toolResult = unwrapCursorExecHandlerResult(invoked, toolCallId, toolName);
+		const resolved = await applyCursorOmpExecResolvedSink(onResolved, toolResult, rawArgs);
+		return toolResultMessageToSdkCustomToolResult(resolved);
+	} catch (error) {
+		const failed = {
+			role: "toolResult" as const,
+			toolCallId,
+			toolName,
+			content: [{ type: "text" as const, text: error instanceof Error ? error.message : String(error) }],
+			isError: true,
+			timestamp: Date.now(),
+		};
+		const resolved = await applyCursorOmpExecResolvedSink(onResolved, failed, rawArgs);
+		return toolResultMessageToSdkCustomToolResult(resolved);
+	}
+}
+
 
 export function createCursorOmpExecCustomTools(
 	handlers: CursorExecHandlers,

@@ -71,6 +71,17 @@ describe("cursor-tool-manifest", () => {
 		expect(empty).toContain("no pi__* tools exposed");
 	});
 
+	it("lists extension customTools names without pi__ bridge", () => {
+		const text = buildCursorToolManifestText({
+			piBridgeEnabled: false,
+			extensionToolNames: ["cursor_ask_question", "my_ext"],
+		});
+		expect(text).toContain("OMP extension customTools (handlers.mcp): cursor_ask_question, my_ext");
+		expect(text).toContain("call these names directly");
+		expect(text).not.toContain("pi__cursor_ask_question");
+	});
+
+
 	it("defaults manifest env to enabled", () => {
 		expect(resolveCursorToolManifestEnabled({})).toBe(true);
 		expect(resolveCursorToolManifestEnabled({ [CURSOR_TOOL_MANIFEST_ENV]: "0" })).toBe(false);

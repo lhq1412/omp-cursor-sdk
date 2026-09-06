@@ -1,6 +1,12 @@
 import type { SendOptions } from "@cursor/sdk";
+import type { ToolResultMessage } from "@oh-my-pi/pi-ai";
 import {
+	buildCursorOmpExtensionToolSpecs,
 	createCursorOmpExecCustomTools,
+	createCursorOmpExtensionCustomTools,
+	listActiveCursorOmpExecCustomToolSdkNames,
+	mergeCursorOmpCustomTools,
+	prefersCursorOmpExtensionCustomTools,
 	resolveCursorProviderExecHandlers,
 } from "./cursor-omp-exec-adapter.js";
 import { getActiveContextToolNames } from "./cursor-context-tools.js";
@@ -118,18 +124,28 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 			if (consumeCursorLocalForceOverride(prepared.localForce)) local.force = true;
 			const execHandlers = resolveCursorProviderExecHandlers(options);
 			if (execHandlers) {
-				local.customTools = createCursorOmpExecCustomTools(
-					execHandlers,
-					getActiveContextToolNames(params.context),
-					async (toolResult, args) => {
-						let resolvedToolResult = toolResult;
-						try {
-							resolvedToolResult = (await options?.cursorOnToolResult?.(toolResult)) ?? toolResult;
-						} catch {}
-						turnCoordinator.emitResolvedOmpExecTool(resolvedToolResult, args);
-						return resolvedToolResult;
-					},
-				);
+				const activeToolNames = getActiveContextToolNames(params.context);
+				const onResolved = async (toolResult: ToolResultMessage, args: Record<string, unknown>) => {
+					let resolvedToolResult = toolResult;
+					try {
+						resolvedToolResult = (await options?.cursorOnToolResult?.(toolResult)) ?? toolResult;
+					} catch {}
+					turnCoordinator.emitResolvedOmpExecTool(resolvedToolResult, args);
+					return resolvedToolResult;
+				};
+				const builtinTools = createCursorOmpExecCustomTools(execHandlers, activeToolNames, onResolved);
+				const extensionTools = prefersCursorOmpExtensionCustomTools(execHandlers)
+					? createCursorOmpExtensionCustomTools(
+						execHandlers,
+						buildCursorOmpExtensionToolSpecs(params.context.tools, {
+							activeNames: activeToolNames,
+							reservedSdkNames: new Set(listActiveCursorOmpExecCustomToolSdkNames(activeToolNames)),
+						}),
+						onResolved,
+					)
+					: undefined;
+				const customTools = mergeCursorOmpCustomTools(builtinTools, extensionTools);
+				if (customTools) local.customTools = customTools;
 			}
 			if (local.force || local.customTools) sendOptions.local = local;
 		}
