@@ -697,8 +697,10 @@ describe("Cursor runtime state", () => {
 	it("registers /cursor-tools and reports bridge and setting sources", async () => {
 		const originalBridgeEnv = process.env.PI_CURSOR_PI_TOOL_BRIDGE;
 		const originalSettingSourcesEnv = process.env.PI_CURSOR_SETTING_SOURCES;
+		const originalExtensionCustomToolsEnv = process.env.PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS;
 		process.env.PI_CURSOR_PI_TOOL_BRIDGE = "1";
 		process.env.PI_CURSOR_SETTING_SOURCES = "none";
+		delete process.env.PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS;
 		try {
 			const pi = createPiHarness({
 				activeTools: ["custom_bridge_tool"],
@@ -719,6 +721,33 @@ describe("Cursor runtime state", () => {
 			else process.env.PI_CURSOR_PI_TOOL_BRIDGE = originalBridgeEnv;
 			if (originalSettingSourcesEnv === undefined) delete process.env.PI_CURSOR_SETTING_SOURCES;
 			else process.env.PI_CURSOR_SETTING_SOURCES = originalSettingSourcesEnv;
+			if (originalExtensionCustomToolsEnv === undefined) delete process.env.PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS;
+			else process.env.PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS = originalExtensionCustomToolsEnv;
+		}
+	});
+
+	it("registers /cursor-tools and reports extension customTools when opt-in enabled", async () => {
+		const originalBridgeEnv = process.env.PI_CURSOR_PI_TOOL_BRIDGE;
+		const originalExtensionCustomToolsEnv = process.env.PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS;
+		process.env.PI_CURSOR_PI_TOOL_BRIDGE = "1";
+		process.env.PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS = "1";
+		try {
+			const pi = createPiHarness({
+				activeTools: ["my_ext_tool"],
+				initialTools: [createTestToolInfo("my_ext_tool", undefined, "My extension tool")],
+			});
+			registerCursorRuntimeControls(pi);
+			const ctx = createExtensionTestContext();
+			await pi.runCommand("cursor-tools", "", { ui: ctx.ui, hasUI: true });
+
+			expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS: enabled (opt-in)"), "info");
+			expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("OMP extension customTools (handlers.mcp): my_ext_tool — call these names directly."), "info");
+			expect(ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("OMP bridge: disabled"), "info");
+		} finally {
+			if (originalBridgeEnv === undefined) delete process.env.PI_CURSOR_PI_TOOL_BRIDGE;
+			else process.env.PI_CURSOR_PI_TOOL_BRIDGE = originalBridgeEnv;
+			if (originalExtensionCustomToolsEnv === undefined) delete process.env.PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS;
+			else process.env.PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS = originalExtensionCustomToolsEnv;
 		}
 	});
 

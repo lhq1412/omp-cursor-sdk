@@ -3,7 +3,8 @@
  * Live structural smoke: PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS=1 skips loopback
  * pi_tools MCP (no bridgeRunId, send.bridgeEnabled=false). Does not prove cancel.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createScriptFail } from "./lib/cursor-script-fail.mjs";
@@ -20,19 +21,52 @@ function resolvePiCodingAgentCursorSource() {
 	return join(repoRoot, "node_modules/@oh-my-pi/pi-coding-agent/src/cursor.ts");
 }
 
+function resolveInstalledHostPackageVersion() {
+	const packageJsonPath = join(repoRoot, "node_modules/@oh-my-pi/pi-coding-agent/package.json");
+	if (existsSync(packageJsonPath)) {
+		try {
+			return JSON.parse(readFileSync(packageJsonPath, "utf8")).version;
+		} catch {
+			// fall through
+		}
+	}
+	return "unknown";
+}
+
+function resolveSpawnedOmpVersion() {
+	try {
+		const out = execFileSync("omp", ["--version"], { encoding: "utf8", timeout: 5000 });
+		return out.trim();
+	} catch {
+		return "unknown";
+	}
+}
+
 /** Contract probe: OMP CursorExecBridge.executeTool still omits AbortSignal. */
 export function hostExecuteToolOmitsAbortSignal() {
-	const source = readFileSync(resolvePiCodingAgentCursorSource(), "utf8");
+	const sourcePath = resolvePiCodingAgentCursorSource();
+	if (!existsSync(sourcePath)) {
+		return { status: "unknown", gap: null, path: sourcePath };
+	}
+	const source = readFileSync(sourcePath, "utf8");
 	const start = source.indexOf("async function executeTool");
-	if (start === -1) fail("could not locate executeTool in @oh-my-pi/pi-coding-agent");
+	if (start === -1) {
+		return { status: "unknown", gap: null, path: sourcePath };
+	}
 	const slice = source.slice(start, start + 2500);
-	return /await tool\.execute\([\s\S]{0,240}\bundefined\b/.test(slice);
+	const hasUndefinedSignal = /await tool\.execute\([\s\S]{0,240}\bundefined\b/.test(slice);
+	return {
+		status: hasUndefinedSignal ? "observed-gap" : "changed-or-unknown",
+		gap: hasUndefinedSignal,
+		path: sourcePath,
+	};
 }
 
 export async function runExtensionOmpMcpSmoke(argv = process.argv.slice(2), baseEnv = process.env) {
-	const hostCancelGapOpen = hostExecuteToolOmitsAbortSignal();
+	const cancelProbe = hostExecuteToolOmitsAbortSignal();
 	const env = {
 		...baseEnv,
+		PI_CURSOR_RUNTIME: "local",
 		PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS: "1",
 		PI_CURSOR_TOOL_MANIFEST: "1",
 		PI_CURSOR_PI_TOOL_BRIDGE: "1",
@@ -47,10 +81,26 @@ export async function runExtensionOmpMcpSmoke(argv = process.argv.slice(2), base
 	if (!result.waitResultRecorded) {
 		fail("provider turn did not record wait result (see errors.jsonl in artifact dir)");
 	}
+
+	const waitResultPath = join(result.artifactDir, "wait-result.json");
+	let waitResultStatus = "unknown";
+	if (existsSync(waitResultPath)) {
+		try {
+			const waitResult = JSON.parse(readFileSync(waitResultPath, "utf8"));
+			waitResultStatus = waitResult?.status ?? "unknown";
+		} catch {
+			// fall through
+		}
+	}
+	const runFinishedSuccessfully = waitResultStatus === "finished";
+
 	const metadataPath = join(result.artifactDir, "metadata.json");
 	const metadata = JSON.parse(readFileSync(metadataPath, "utf8"));
 	const bridgeRunId = metadata.providerMeta?.bridgeRunId;
 	const bridgeEnabled = metadata.send?.bridgeEnabled;
+	const activeToolNames = metadata.providerMeta?.activeToolNames ?? [];
+	const manifest = metadata.providerMeta?.promptOptions?.toolManifest ?? "";
+	const extensionCustomToolsListedInManifest = manifest.includes("OMP extension customTools (handlers.mcp)");
 
 	if (bridgeRunId !== undefined && bridgeRunId !== null) {
 		fail(`expected no bridgeRunId with extension customTools opt-in, got ${String(bridgeRunId)}`);
@@ -58,16 +108,31 @@ export async function runExtensionOmpMcpSmoke(argv = process.argv.slice(2), base
 	if (bridgeEnabled !== false) {
 		fail(`expected send.bridgeEnabled=false, got ${String(bridgeEnabled)}`);
 	}
+	if (!extensionCustomToolsListedInManifest) {
+		fail("expected tool manifest to list OMP extension customTools (handlers.mcp)");
+	}
+	if (activeToolNames.length === 0) {
+		fail("expected activeToolNames to be non-empty in metadata.json");
+	}
 
 	const evidence = {
-		status: "passed",
+		status: runFinishedSuccessfully ? "passed" : "incomplete",
 		lane: "extension-omp-mcp-structural",
 		artifactDir: result.artifactDir,
-		hostCancelGapOpen,
+		captureComplete: true,
+		structuralAssertionsPassed: true,
+		runFinishedSuccessfully,
+		waitResultStatus,
+		hostCancelGap: cancelProbe.status,
+		hostCancelGapOpen: cancelProbe.gap === true,
+		probeSourcePath: cancelProbe.path,
+		installedHostPackageVersion: resolveInstalledHostPackageVersion(),
+		spawnedOmpVersion: resolveSpawnedOmpVersion(),
 		bridgeRunId: bridgeRunId ?? null,
 		bridgeEnabled,
-		activeToolNameCount: metadata.providerMeta?.activeToolNames?.length ?? 0,
-		waitResultRecorded: result.waitResultRecorded,
+		activeToolNameCount: activeToolNames.length,
+		activeToolNames,
+		extensionCustomToolsListedInManifest,
 		elapsedMs: result.elapsedMs,
 		model: result.model,
 		extensionVersion: result.extensionVersion,

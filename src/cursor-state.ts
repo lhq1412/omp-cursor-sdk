@@ -15,6 +15,7 @@ import {
 	type CursorHttp1EntryData,
 } from "./cursor-http1.js";
 import {
+	buildCursorOmpExtensionToolSpecs,
 	CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV,
 	resolveCursorOmpExtensionCustomToolsEnabled,
 } from "./cursor-omp-exec-adapter.js";
@@ -380,7 +381,17 @@ export function formatCursorToolsDebugReport(
 		`${CURSOR_SETTING_SOURCES_ENV}: ${formatEffectiveCursorSettingSourcesLabel(env[CURSOR_SETTING_SOURCES_ENV])}`,
 	];
 	let bridgeSnapshot;
-	if (bridgeEnabled) {
+	let extensionToolNames: string[] | undefined;
+
+	if (extensionCustomToolsEnabled) {
+		const activeNames = new Set(pi.getActiveTools());
+		const specs = buildCursorOmpExtensionToolSpecs(pi.getAllTools(), {
+			activeNames,
+		});
+		extensionToolNames = specs.map((spec) => spec.name);
+	}
+
+	if (bridgeEnabled && !extensionCustomToolsEnabled) {
 		try {
 			bridgeSnapshot = buildCursorPiToolBridgeSnapshot(pi);
 		} catch {
@@ -388,7 +399,13 @@ export function formatCursorToolsDebugReport(
 		}
 	}
 
-	lines.push(buildCursorToolManifestText({ bridgeSnapshot, piBridgeEnabled: bridgeEnabled }));
+	lines.push(
+		buildCursorToolManifestText({
+			bridgeSnapshot,
+			piBridgeEnabled: bridgeEnabled && !extensionCustomToolsEnabled,
+			extensionToolNames,
+		}),
+	);
 	return lines.join("\n");
 }
 
