@@ -14,6 +14,8 @@ import { sdkCursorBackend, type CursorBackendSession, type LocalCursorBackendSes
 import {
 	CURSOR_OMP_EXEC_DISALLOWED_TOOLS,
 	buildCursorOmpExtensionToolSpecs,
+	buildCursorOmpExtensionToolSurfaceSignature,
+	listActiveCursorOmpExecCustomToolSdkNames,
 	prefersCursorOmpExtensionCustomTools,
 	resolveCursorProviderExecHandlers,
 } from "./cursor-omp-exec-adapter.js";
@@ -262,6 +264,16 @@ async function prepareCursorLocalProviderTurn(
 	const { model, context, options } = params;
 	const execHandlers = resolveCursorProviderExecHandlers(options);
 	const skipPiToolBridge = prefersCursorOmpExtensionCustomTools(execHandlers);
+	const activeToolNames = getActiveContextToolNames(context);
+	const extensionToolSpecs = skipPiToolBridge
+		? buildCursorOmpExtensionToolSpecs(context.tools, {
+				activeNames: activeToolNames,
+				reservedSdkNames: new Set(listActiveCursorOmpExecCustomToolSdkNames(activeToolNames)),
+			})
+		: [];
+	const ompExtensionToolSurfaceSignature = skipPiToolBridge
+		? buildCursorOmpExtensionToolSurfaceSignature(extensionToolSpecs)
+		: undefined;
 
 	let restoreCursorSdkOutputFilter: (() => void) | undefined;
 	let sessionAgentScopeKey: string | undefined;
@@ -296,7 +308,14 @@ async function prepareCursorLocalProviderTurn(
 			localResume: resolvedConfig.local.resume.value,
 			useHttp1ForAgent,
 			...(execHandlers ? { disallowedTools: [...CURSOR_OMP_EXEC_DISALLOWED_TOOLS] } : {}),
-			...(skipPiToolBridge ? { skipPiToolBridge: true } : {}),
+			...(skipPiToolBridge
+				? {
+						skipPiToolBridge: true,
+						...(ompExtensionToolSurfaceSignature
+							? { ompExtensionToolSurfaceSignature }
+							: {}),
+					}
+				: {}),
 			debugRecorder: sdkEventDebug,
 			...(skipPiToolBridge
 				? {}
@@ -316,14 +335,9 @@ async function prepareCursorLocalProviderTurn(
 		});
 		sessionAgentScopeKey = backendSession.scopeKey;
 		throwIfAborted();
-		const extensionToolSpecs = skipPiToolBridge
-			? buildCursorOmpExtensionToolSpecs(context.tools, {
-					activeNames: getActiveContextToolNames(context),
-				})
-			: [];
 		let bridgeToolNames = new Set(backendSession.bridgeRun?.snapshot.tools.map((tool) => tool.mcpToolName) ?? []);
 		let includePiBridgeGuidance = bridgeToolNames.size > 0;
-		const buildPromptOptions = (plan: ReturnType<typeof planCursorSessionSend>) => {
+		const buildPromptOptions = (plan: CursorSessionSendPlan) => {
 			const promptOptions = {
 				...getCursorPromptOptions(model),
 				agentMode,
@@ -370,7 +384,6 @@ async function prepareCursorLocalProviderTurn(
 		const sessionBridgeRun = bridgeRun;
 		const promptInputTokens = estimateCursorPromptTokens(prompt, promptOptions);
 		const useNativeToolReplay = isCursorNativeToolDisplayRuntimeEnabled();
-		const activeToolNames = getActiveContextToolNames(context);
 		sdkEventDebug?.recordProviderMeta({
 			model: {
 				id: model.id,

@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CursorExecHandlers, CursorMcpCall, ToolResultMessage } from "@oh-my-pi/pi-ai";
 import {
+	CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV,
 	buildCursorOmpExtensionToolSpecs,
+	buildCursorOmpExtensionToolSurfaceSignature,
 	createCursorOmpExtensionCustomTools,
+	listActiveCursorOmpExecCustomToolSdkNames,
 	mergeCursorOmpCustomTools,
 	prefersCursorOmpExtensionCustomTools,
 	toolResultMessageToSdkCustomToolResult,
@@ -170,24 +173,42 @@ describe("createCursorOmpExtensionCustomTools (PR0 mcp path)", () => {
 	});
 });
 
-describe("buildCursorOmpExtensionToolSpecs / merge", () => {
-	it("prefers mcp when handlers.mcp exists", () => {
-		expect(prefersCursorOmpExtensionCustomTools(undefined)).toBe(false);
-		expect(prefersCursorOmpExtensionCustomTools({})).toBe(false);
-		expect(prefersCursorOmpExtensionCustomTools({ mcp: async () => okResult("x", "y") })).toBe(true);
+describe("buildCursorOmpExtensionToolSpecs / merge / opt-in", () => {
+	it("prefers mcp only when opt-in env is enabled", () => {
+		const handlers = { mcp: async () => okResult("x", "y") };
+		expect(prefersCursorOmpExtensionCustomTools(handlers, {})).toBe(false);
+		expect(prefersCursorOmpExtensionCustomTools(handlers, { [CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV]: "1" })).toBe(true);
+		expect(prefersCursorOmpExtensionCustomTools(undefined, { [CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV]: "1" })).toBe(false);
+		expect(prefersCursorOmpExtensionCustomTools({}, { [CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV]: "1" })).toBe(false);
 	});
 
-	it("skips builtins and respects activeNames", () => {
+	it("skips builtins, reserved SDK names, and respects activeNames", () => {
+		const reserved = new Set(listActiveCursorOmpExecCustomToolSdkNames(new Set(["bash", "echo_ext", "shell"])));
+		expect(reserved.has("shell")).toBe(true);
 		const specs = buildCursorOmpExtensionToolSpecs(
 			[
 				{ name: "read", description: "r", parameters: {} },
+				{ name: "bash", description: "b", parameters: {} },
+				{ name: "shell", description: "user shell", parameters: { type: "object", properties: {} } },
 				{ name: "echo_ext", description: "e", parameters: { type: "object", properties: {} } },
 				{ name: "closed", description: "c", parameters: {} },
 			],
-			{ activeNames: new Set(["echo_ext", "read"]) },
+			{ activeNames: new Set(["echo_ext", "read", "bash", "shell"]), reservedSdkNames: reserved },
 		);
 		expect(specs.map((s) => s.name)).toEqual(["echo_ext"]);
 		expect(specs[0]?.inputSchema).toMatchObject({ type: "object" });
+	});
+
+	it("surface signature changes when tool set or schema changes", () => {
+		const a = buildCursorOmpExtensionToolSpecs([{ name: "echo_ext", description: "e", parameters: { type: "object" } }]);
+		const b = buildCursorOmpExtensionToolSpecs([{ name: "echo_ext", description: "e2", parameters: { type: "object" } }]);
+		const c = buildCursorOmpExtensionToolSpecs([
+			{ name: "echo_ext", description: "e", parameters: { type: "object" } },
+			{ name: "other", description: "o", parameters: { type: "object" } },
+		]);
+		expect(buildCursorOmpExtensionToolSurfaceSignature(a)).not.toBe(buildCursorOmpExtensionToolSurfaceSignature(b));
+		expect(buildCursorOmpExtensionToolSurfaceSignature(a)).not.toBe(buildCursorOmpExtensionToolSurfaceSignature(c));
+		expect(buildCursorOmpExtensionToolSurfaceSignature([])).toBe("omp-mcp:empty");
 	});
 
 	it("merge keeps first tool on name collision", () => {
@@ -199,5 +220,30 @@ describe("buildCursorOmpExtensionToolSpecs / merge", () => {
 		const merged = mergeCursorOmpCustomTools(a, b)!;
 		expect(Object.keys(merged).sort()).toEqual(["other", "shared"]);
 		expect(merged.shared).toBe(a.shared);
+	});
+
+	it("assigns unique toolCallId when SDK omits id", async () => {
+		const seen = new Set<string>();
+		const tools = createCursorOmpExtensionCustomTools(
+			registryHandlers(
+				new Map([
+					[
+						"echo_ext",
+						async (call) => {
+							seen.add(call.toolCallId);
+							return okResult("echo_ext", "ok", call.toolCallId);
+						},
+					],
+				]),
+			),
+			[echoSpec],
+		);
+		await tools.echo_ext!.execute({ text: "a" } as never, {} as never);
+		await tools.echo_ext!.execute({ text: "b" } as never, { toolCallId: "  " } as never);
+		expect(seen.size).toBe(2);
+		for (const id of seen) {
+			expect(id.length).toBeGreaterThan(8);
+			expect(id).not.toBe("cursor-omp-extension");
+		}
 	});
 });

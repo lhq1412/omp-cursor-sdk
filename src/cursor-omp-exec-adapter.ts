@@ -1,6 +1,9 @@
+import { randomUUID } from "node:crypto";
 import type { SDKCustomTool, SDKCustomToolContext, SDKCustomToolResult, SDKJsonValue, ToolName } from "@cursor/sdk";
 import type { CursorExecHandlers, SimpleStreamOptions, Tool, ToolResultMessage } from "@oh-my-pi/pi-ai";
 import { omitUndefinedArgs, piGrepSkip, piLimit, piLsPath, piTimeout } from "@oh-my-pi/pi-ai/providers/cursor-pi-args";
+import { parseEnvBoolean } from "./cursor-env-boolean.js";
+import { stableNameHash } from "./cursor-pi-tool-bridge-mcp.js";
 import { normalizeMcpInputSchema } from "./cursor-pi-tool-bridge-snapshot.js";
 import { isExcludedFromCursorBridgeExposure } from "./cursor-tool-presentation-registry.js";
 import { isRegisteredCursorNativeToolName } from "./cursor-native-tool-display-state.js";
@@ -185,25 +188,52 @@ export type CursorOmpExtensionCustomToolsOptions = {
 	/** CursorMcpCall.providerIdentifier; default `omp`. */
 	providerIdentifier?: string;
 };
+/** Opt-in: extension tools via handlers.mcp customTools (skip loopback bridge). Default off until cancel hard gate closes. */
+export const CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV = "PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS";
 
-/** True when extension tools can run in-process via handlers.mcp (skip loopback bridge). */
-export function prefersCursorOmpExtensionCustomTools(handlers?: CursorExecHandlers): boolean {
-	return typeof handlers?.mcp === "function";
+export function resolveCursorOmpExtensionCustomToolsEnabled(
+	env: Record<string, string | undefined> = process.env,
+): boolean {
+	return parseEnvBoolean(env[CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV], false);
+}
+
+/** True when mcp exists and PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS is enabled (default off). */
+export function prefersCursorOmpExtensionCustomTools(
+	handlers?: CursorExecHandlers,
+	env: Record<string, string | undefined> = process.env,
+): boolean {
+	return typeof handlers?.mcp === "function" && resolveCursorOmpExtensionCustomToolsEnabled(env);
+}
+
+/** SDK customTool names that createCursorOmpExecCustomTools will install for this active set. */
+export function listActiveCursorOmpExecCustomToolSdkNames(
+	activeToolNames?: ReadonlySet<string>,
+): string[] {
+	const names: string[] = [];
+	for (const name of CURSOR_OMP_EXEC_CUSTOM_TOOL_NAMES) {
+		const ompName = CUSTOM_TOOL_OMP_NAMES[name];
+		if (activeToolNames && ompName !== undefined && !activeToolNames.has(ompName)) continue;
+		names.push(name);
+	}
+	return names;
 }
 
 /**
  * Build SDK customTool specs for active non-builtin OMP tools.
  * Schemas reuse the bridge MCP projection helpers without standing up HTTP.
+ * `reservedSdkNames` drops extension names that would collide with builtins (no silent dual routing).
  */
 export function buildCursorOmpExtensionToolSpecs(
 	tools: readonly Pick<Tool, "name" | "description" | "parameters">[] | undefined,
 	options?: {
 		activeNames?: ReadonlySet<string>;
+		reservedSdkNames?: ReadonlySet<string>;
 		requiresCursorToolSchemaProjection?: boolean;
 	},
 ): CursorOmpExtensionToolSpec[] {
 	if (!tools?.length) return [];
 	const active = options?.activeNames;
+	const reserved = options?.reservedSdkNames;
 	const schemaOptions = {
 		requiresCursorToolSchemaProjection: options?.requiresCursorToolSchemaProjection === true,
 	};
@@ -213,6 +243,7 @@ export function buildCursorOmpExtensionToolSpecs(
 		const name = tool.name;
 		if (!name || seen[name]) continue;
 		if (active && !active.has(name)) continue;
+		if (reserved?.has(name)) continue;
 		if (OMP_BUILTIN_EXEC_TOOL_NAMES.has(name)) continue;
 		if (isExcludedFromCursorBridgeExposure(name) && isRegisteredCursorNativeToolName(name)) continue;
 		seen[name] = true;
@@ -225,7 +256,25 @@ export function buildCursorOmpExtensionToolSpecs(
 	return out;
 }
 
-/** First group wins on name collision (pass builtins before extensions). */
+/** Pool-key fingerprint of the extension customTools surface (name/description/schema). */
+export function buildCursorOmpExtensionToolSurfaceSignature(
+	specs: readonly CursorOmpExtensionToolSpec[],
+): string {
+	if (specs.length === 0) return "omp-mcp:empty";
+	const serialized = specs
+		.map((tool) =>
+			JSON.stringify({
+				name: tool.name,
+				description: tool.description ?? "",
+				inputSchema: tool.inputSchema ?? null,
+			}),
+		)
+		.sort()
+		.join("\0");
+	return `omp-mcp:${stableNameHash(serialized)}`;
+}
+
+/** First group wins on name collision (pass builtins before extensions). Prefer filtering reserved names at spec build. */
 export function mergeCursorOmpCustomTools(
 	...groups: Array<Record<string, SDKCustomTool> | undefined>
 ): Record<string, SDKCustomTool> | undefined {
@@ -277,7 +326,7 @@ async function executeCursorOmpExtensionTool(
 	onResolved: CursorOmpExecResolvedSink | undefined,
 	providerIdentifier: string,
 ): Promise<SDKCustomToolResult> {
-	const toolCallId = context.toolCallId ?? "cursor-omp-extension";
+	const toolCallId = context.toolCallId?.trim() || `cursor-omp-extension-${randomUUID()}`;
 	const rawArgs = args as Record<string, unknown>;
 	try {
 		if (!handlers.mcp) {

@@ -149,6 +149,8 @@ export interface SessionCursorAgentCreateParams {
 	disallowedTools?: ToolName[];
 	/** Prefer send-time handlers.mcp customTools; do not attach loopback pi_tools MCP. */
 	skipPiToolBridge?: boolean;
+	/** Fingerprint of extension customTools surface when skipPiToolBridge (pool identity). */
+	ompExtensionToolSurfaceSignature?: string;
 	createAgent?: CursorSdkModule["Agent"]["create"];
 	resumeAgent?: CursorSdkModule["Agent"]["resume"];
 }
@@ -228,7 +230,10 @@ function buildApiKeyPoolKeyFingerprint(apiKey: string): string {
 }
 
 function buildBridgePoolKeySuffix(params: SessionCursorAgentCreateParams): string {
-	if (params.skipPiToolBridge) return "bridge:skipped-omp-mcp";
+	if (params.skipPiToolBridge) {
+		const surface = params.ompExtensionToolSurfaceSignature?.trim() || "omp-mcp:empty";
+		return `bridge:skipped-omp-mcp:${surface}`;
+	}
 	const registeredBridge = getRegisteredCursorPiToolBridge();
 	if (!registeredBridge) return "bridge:absent";
 	return registeredBridge.getToolSurfaceSignature();

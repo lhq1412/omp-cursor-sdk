@@ -4,6 +4,7 @@ import {
 	buildCursorOmpExtensionToolSpecs,
 	createCursorOmpExecCustomTools,
 	createCursorOmpExtensionCustomTools,
+	listActiveCursorOmpExecCustomToolSdkNames,
 	mergeCursorOmpCustomTools,
 	prefersCursorOmpExtensionCustomTools,
 	resolveCursorProviderExecHandlers,
@@ -136,7 +137,10 @@ export async function sendCursorProviderTurn(sendParams: SendCursorProviderTurnP
 				const extensionTools = prefersCursorOmpExtensionCustomTools(execHandlers)
 					? createCursorOmpExtensionCustomTools(
 						execHandlers,
-						buildCursorOmpExtensionToolSpecs(params.context.tools, { activeNames: activeToolNames }),
+						buildCursorOmpExtensionToolSpecs(params.context.tools, {
+							activeNames: activeToolNames,
+							reservedSdkNames: new Set(listActiveCursorOmpExecCustomToolSdkNames(activeToolNames)),
+						}),
 						onResolved,
 					)
 					: undefined;

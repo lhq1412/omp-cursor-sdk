@@ -114,20 +114,22 @@ Delete only with caller proofs (bridge server/run/mcp, live-run handoff branches
 
 ## Cutover status (this branch)
 
-Landed in one PR (plan PR0–2 + partial 3–5):
+Landed as **opt-in** path (advisor PR #25 review remediation):
 
-- `createCursorOmpExtensionCustomTools` + `buildCursorOmpExtensionToolSpecs` + `mergeCursorOmpCustomTools`
-- `sendCursorProviderTurn` merges builtin + extension customTools with shared `cursorOnToolResult` / `emitResolvedOmpExecTool` sink
-- When `handlers.mcp` exists: `skipPiToolBridge` on session agent (no loopback `pi_tools` MCP); pool key `bridge:skipped-omp-mcp`
-- Manifest lists extension OMP names; ask-question guidance also matches `cursor_ask_question` customTool name
-- Bridge modules **kept** as opt-in fallback when `handlers.mcp` is absent (and for existing bridge tests)
+- `PI_CURSOR_OMP_EXTENSION_CUSTOM_TOOLS=1` required (default **off**) plus `handlers.mcp`
+- `createCursorOmpExtensionCustomTools` + `buildCursorOmpExtensionToolSpecs` + surface signature pool key
+- reserved SDK names drop extension/builtin collisions before merge; manifest lists final extension specs
+- unique `toolCallId` when SDK omits id (`cursor-omp-extension-${uuid}`)
+- When enabled: skip loopback bridge (`skipPiToolBridge`, pool `bridge:skipped-omp-mcp:<surface>`)
+- Bridge modules remain default path until cancel hard gate closes
 
 | Check | Unit | Live still required |
 | --- | --- | --- |
+| Opt-in gate (default off) | yes | — |
 | Real tool via `mcp` customTools | yes | host CursorExecHandlers |
-| Dynamic active set / onResolved / single effect | yes | hooks + concurrent live |
-| Bridge skipped when mcp present | yes | smoke with real OMP session |
-| Cancel stops real work | **open** (host signal=undefined) | **hard gate** |
-| Long task / ask / subagent | no | yes |
-| Full bridge file delete (plan PR5) | deferred | after cancel + ask live go |
+| Surface signature / reserved names / unique toolCallId | yes | multi-turn tool churn |
+| Cancel stops real work | **open** (host signal=undefined) | **hard gate before default-on** |
+| Ask guidance / long-task | no | before default-on |
+| Full bridge file delete | deferred | after default-on + live go |
+
 

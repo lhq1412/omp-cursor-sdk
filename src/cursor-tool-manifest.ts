@@ -40,7 +40,7 @@ export function buildCursorToolManifestText(options: {
 	const bridgeTools = includePiBridgeGuidance ? options.bridgeSnapshot?.tools ?? [] : [];
 	if (includePiBridgeGuidance) {
 		if (!piBridgeEnabled) {
-			lines.push("- OMP bridge: disabled (PI_CURSOR_PI_TOOL_BRIDGE=0 or handlers.mcp customTools path).");
+			lines.push("- OMP bridge: disabled (PI_CURSOR_PI_TOOL_BRIDGE=0 or opt-in handlers.mcp customTools path).");
 		} else if (bridgeTools.length === 0) {
 			lines.push("- OMP bridge: no pi__* tools exposed this run.");
 		} else {

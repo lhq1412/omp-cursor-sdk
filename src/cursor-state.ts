@@ -15,6 +15,10 @@ import {
 	type CursorHttp1EntryData,
 } from "./cursor-http1.js";
 import {
+	CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV,
+	resolveCursorOmpExtensionCustomToolsEnabled,
+} from "./cursor-omp-exec-adapter.js";
+import {
 	buildCursorPiToolBridgeSnapshot,
 	CURSOR_PI_TOOL_BRIDGE_ENV,
 	resolveCursorPiToolBridgeEnabled,
@@ -367,13 +371,14 @@ export function formatCursorToolsDebugReport(
 ): string {
 	const bridgeEnabled = resolveCursorPiToolBridgeEnabled(env);
 	const manifestEnabled = resolveCursorToolManifestEnabled(env);
+	const extensionCustomToolsEnabled = resolveCursorOmpExtensionCustomToolsEnabled(env);
 	const lines = [
 		"Cursor tool surfaces (current session):",
 		`${CURSOR_PI_TOOL_BRIDGE_ENV}: ${bridgeEnabled ? "enabled" : "disabled"}`,
+		`${CURSOR_OMP_EXTENSION_CUSTOM_TOOLS_ENV}: ${extensionCustomToolsEnabled ? "enabled (opt-in)" : "disabled (default)"}`,
 		`${CURSOR_TOOL_MANIFEST_ENV}: ${manifestEnabled ? "enabled" : "disabled"}`,
 		`${CURSOR_SETTING_SOURCES_ENV}: ${formatEffectiveCursorSettingSourcesLabel(env[CURSOR_SETTING_SOURCES_ENV])}`,
 	];
-
 	let bridgeSnapshot;
 	if (bridgeEnabled) {
 		try {
