@@ -306,17 +306,79 @@ describe("buildCursorOmpExtensionToolSpecs / merge / opt-in", () => {
 		expect(result.content?.[0]?.text).toContain("user cancelled before send");
 	});
 
-	it("passes signal to handlers.mcp invocation context and allows tool cancellation", async () => {
-		let receivedSignal: AbortSignal | undefined;
+	it("preserves `this` method receiver on handlers.mcp class instances (with and without signal)", async () => {
+		class TestExecHandlers {
+			public readonly options = { prefix: "from_options" };
+
+			async mcp(this: TestExecHandlers, call: { name: string; toolCallId: string }, context?: { signal?: AbortSignal }) {
+				if (!this || !this.options) {
+					throw new TypeError("Cannot read properties of undefined (reading 'options')");
+				}
+				const signalMark = context?.signal ? "with_signal" : "no_signal";
+				return okResult(call.name, `${this.options.prefix}:${signalMark}`, call.toolCallId);
+			}
+		}
+
+		const handlers = new TestExecHandlers() as unknown as CursorExecHandlers;
+
+		// 1. Without signal
+		const toolsNoSignal = createCursorOmpExtensionCustomTools(handlers, [echoSpec]);
+		const resNoSignal = (await toolsNoSignal.echo_ext!.execute({ text: "test" } as never, { toolCallId: "call_this_1" } as never)) as {
+			isError: boolean;
+			content: { type: string; text: string }[];
+		};
+		expect(resNoSignal).toMatchObject({
+			isError: false,
+			content: [{ type: "text", text: "from_options:no_signal" }],
+		});
+
+		// 2. With signal
 		const controller = new AbortController();
+		const toolsWithSignal = createCursorOmpExtensionCustomTools(handlers, [echoSpec], undefined, { signal: controller.signal });
+		const resWithSignal = (await toolsWithSignal.echo_ext!.execute({ text: "test" } as never, { toolCallId: "call_this_2" } as never)) as {
+			isError: boolean;
+			content: { type: string; text: string }[];
+		};
+		expect(resWithSignal).toMatchObject({
+			isError: false,
+			content: [{ type: "text", text: "from_options:with_signal" }],
+		});
+	});
+
+	it("cancels an in-flight pending execution mid-flight when signal aborts", async () => {
+		const controller = new AbortController();
+		let startedResolve: () => void;
+		const startedPromise = new Promise<void>((resolve) => {
+			startedResolve = resolve;
+		});
+		let workCompletedAfterWait = false;
+		let receivedSignal: AbortSignal | undefined;
 
 		const handlers = {
-			mcp: async (call: unknown, context?: { signal?: AbortSignal }) => {
+			async mcp(this: unknown, call: { toolCallId: string; name: string }, context?: { signal?: AbortSignal }) {
 				receivedSignal = context?.signal;
-				if (context?.signal?.aborted) {
-					throw new Error("aborted in tool");
-				}
-				return okResult("echo_ext", "ok");
+				// Signal that execution has entered the working phase and is pending
+				startedResolve();
+
+				// Simulate long-running asynchronous work that observes signal
+				return new Promise((resolve, reject) => {
+					const signal = context?.signal;
+					if (signal?.aborted) {
+						reject(new Error(`aborted: ${signal.reason}`));
+						return;
+					}
+					const onAbort = () => {
+						signal?.removeEventListener("abort", onAbort);
+						reject(new Error(`aborted: ${signal?.reason ?? "operation aborted"}`));
+					};
+					signal?.addEventListener("abort", onAbort);
+
+					setTimeout(() => {
+						signal?.removeEventListener("abort", onAbort);
+						workCompletedAfterWait = true;
+						resolve(okResult(call.name, "finished_late", call.toolCallId));
+					}, 200);
+				});
 			},
 		} as unknown as CursorExecHandlers;
 
@@ -327,19 +389,48 @@ describe("buildCursorOmpExtensionToolSpecs / merge / opt-in", () => {
 			{ signal: controller.signal },
 		);
 
-		const result = (await tools.echo_ext!.execute({ text: "hi" } as never, { toolCallId: "call_with_signal" } as never)) as {
+		// Start execution WITHOUT immediately awaiting it to complete
+		const inFlightPromise = tools.echo_ext!.execute({ text: "hi" } as never, { toolCallId: "call_inflight_1" } as never);
+
+		// Wait until execution has confirmed entered working phase (pending)
+		await startedPromise;
+		expect(receivedSignal).toBe(controller.signal);
+		expect(workCompletedAfterWait).toBe(false);
+
+		// Abort mid-flight while the same call is pending
+		controller.abort("cancelled mid-flight");
+
+		// Await original in-flight call to finish
+		const result = (await inFlightPromise) as {
 			isError: boolean;
 			content: { type: string; text: string }[];
 		};
-		expect(receivedSignal).toBe(controller.signal);
-		expect(result).toMatchObject({ isError: false, content: [{ type: "text", text: "ok" }] });
 
-		// Now trigger abort and execute again
-		controller.abort("cancelled mid-flight");
-		const abortedResult = (await tools.echo_ext!.execute({ text: "hi" } as never, { toolCallId: "call_aborted_post" } as never)) as {
+		// Assert that the aborted call observed cancellation and that subsequent work did NOT complete
+		expect(result).toMatchObject({
+			isError: true,
+		});
+		expect(result.content?.[0]?.text).toContain("aborted: cancelled mid-flight");
+		expect(workCompletedAfterWait).toBe(false);
+
+		// Control test: a tool that is not aborted completes work normally
+		let controlWorkCompleted = false;
+		const uncancelledController = new AbortController();
+		const uncancelledTools = createCursorOmpExtensionCustomTools(
+			handlers,
+			[echoSpec],
+			undefined,
+			{ signal: uncancelledController.signal },
+		);
+		const controlResult = (await uncancelledTools.echo_ext!.execute({ text: "hi" } as never, { toolCallId: "call_control_1" } as never)) as {
 			isError: boolean;
+			content: { type: string; text: string }[];
 		};
-		expect(abortedResult.isError).toBe(true);
+		expect(controlResult).toMatchObject({
+			isError: false,
+			content: [{ type: "text", text: "finished_late" }],
+		});
+		expect(workCompletedAfterWait).toBe(true);
 	});
 
 	it("maintains backward compatibility when no signal context is provided", async () => {

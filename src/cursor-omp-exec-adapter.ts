@@ -362,10 +362,12 @@ async function executeCursorOmpExtensionTool(
 			return toolResultMessageToSdkCustomToolResult(resolved);
 		}
 		const mcpHandler = handlers.mcp as (
+			this: CursorExecHandlers,
 			call: CursorMcpCall,
 			context?: CursorExecCallContext,
 		) => Promise<unknown>;
-		const invoked = await mcpHandler(
+		const invoked = await mcpHandler.call(
+			handlers,
 			{
 				name: toolName,
 				providerIdentifier,
