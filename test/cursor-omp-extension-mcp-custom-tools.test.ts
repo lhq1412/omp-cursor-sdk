@@ -351,7 +351,7 @@ describe("buildCursorOmpExtensionToolSpecs / merge / opt-in", () => {
 		const startedPromise = new Promise<void>((resolve) => {
 			startedResolve = resolve;
 		});
-		let workCompletedAfterWait = false;
+		const completedCallIds: string[] = [];
 		let receivedSignal: AbortSignal | undefined;
 
 		const handlers = {
@@ -360,24 +360,26 @@ describe("buildCursorOmpExtensionToolSpecs / merge / opt-in", () => {
 				// Signal that execution has entered the working phase and is pending
 				startedResolve();
 
-				// Simulate long-running asynchronous work that observes signal
+				// Simulate long-running asynchronous work that observes signal and cleans up timer on abort
 				return new Promise((resolve, reject) => {
 					const signal = context?.signal;
 					if (signal?.aborted) {
 						reject(new Error(`aborted: ${signal.reason}`));
 						return;
 					}
+					let timer: ReturnType<typeof setTimeout> | undefined;
 					const onAbort = () => {
+						if (timer !== undefined) clearTimeout(timer);
 						signal?.removeEventListener("abort", onAbort);
 						reject(new Error(`aborted: ${signal?.reason ?? "operation aborted"}`));
 					};
 					signal?.addEventListener("abort", onAbort);
 
-					setTimeout(() => {
+					timer = setTimeout(() => {
 						signal?.removeEventListener("abort", onAbort);
-						workCompletedAfterWait = true;
+						completedCallIds.push(call.toolCallId);
 						resolve(okResult(call.name, "finished_late", call.toolCallId));
-					}, 200);
+					}, 100);
 				});
 			},
 		} as unknown as CursorExecHandlers;
@@ -390,12 +392,12 @@ describe("buildCursorOmpExtensionToolSpecs / merge / opt-in", () => {
 		);
 
 		// Start execution WITHOUT immediately awaiting it to complete
-		const inFlightPromise = tools.echo_ext!.execute({ text: "hi" } as never, { toolCallId: "call_inflight_1" } as never);
+		const inFlightPromise = tools.echo_ext!.execute({ text: "hi" } as never, { toolCallId: "call_aborted_inflight" } as never);
 
 		// Wait until execution has confirmed entered working phase (pending)
 		await startedPromise;
 		expect(receivedSignal).toBe(controller.signal);
-		expect(workCompletedAfterWait).toBe(false);
+		expect(completedCallIds).toEqual([]);
 
 		// Abort mid-flight while the same call is pending
 		controller.abort("cancelled mid-flight");
@@ -406,15 +408,17 @@ describe("buildCursorOmpExtensionToolSpecs / merge / opt-in", () => {
 			content: { type: string; text: string }[];
 		};
 
-		// Assert that the aborted call observed cancellation and that subsequent work did NOT complete
+		// Assert that the aborted call observed cancellation
 		expect(result).toMatchObject({
 			isError: true,
 		});
 		expect(result.content?.[0]?.text).toContain("aborted: cancelled mid-flight");
-		expect(workCompletedAfterWait).toBe(false);
 
-		// Control test: a tool that is not aborted completes work normally
-		let controlWorkCompleted = false;
+		// Sleep past the scheduled work deadline (100ms timer + 50ms buffer) to verify the timer was indeed cleared
+		await new Promise((resolve) => setTimeout(resolve, 150));
+		expect(completedCallIds).toEqual([]);
+
+		// Control test: an uncancelled call on the same handlers completes work normally after timer fires
 		const uncancelledController = new AbortController();
 		const uncancelledTools = createCursorOmpExtensionCustomTools(
 			handlers,
@@ -422,7 +426,7 @@ describe("buildCursorOmpExtensionToolSpecs / merge / opt-in", () => {
 			undefined,
 			{ signal: uncancelledController.signal },
 		);
-		const controlResult = (await uncancelledTools.echo_ext!.execute({ text: "hi" } as never, { toolCallId: "call_control_1" } as never)) as {
+		const controlResult = (await uncancelledTools.echo_ext!.execute({ text: "hi" } as never, { toolCallId: "call_control_completed" } as never)) as {
 			isError: boolean;
 			content: { type: string; text: string }[];
 		};
@@ -430,7 +434,8 @@ describe("buildCursorOmpExtensionToolSpecs / merge / opt-in", () => {
 			isError: false,
 			content: [{ type: "text", text: "finished_late" }],
 		});
-		expect(workCompletedAfterWait).toBe(true);
+		// Check that ONLY the control call recorded completed work, not the aborted call
+		expect(completedCallIds).toEqual(["call_control_completed"]);
 	});
 
 	it("maintains backward compatibility when no signal context is provided", async () => {
