@@ -1,12 +1,21 @@
 #!/usr/bin/env node
 /**
  * Cancel gate smoke for extension MCP customTools path.
- * Default: probe-only (no Cursor key). Live body runs only after OMP host closes the gap.
+ * Default: probe-only (no Cursor key). Live body runs only after OMP host wires signal.
+ *
+ * Exit codes:
+ *   0  probe-only diagnostic finished, or self-test passed
+ *   1  validation failure or live run failed / not ready
+ *   2  invalid CLI usage
+ *
+ * Probe statuses never imply cancel-gate pass. Only a future --live with stop
+ * assertions may exit 0 as cancellation acceptance.
  */
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createScriptFail } from "./lib/cursor-script-fail.mjs";
 import {
+	classifyAgentToolExecuteSignalArg,
 	hostExecuteToolOmitsAbortSignal,
 	resolveInstalledHostPackageVersion,
 } from "./lib/cursor-host-cancel-probe.mjs";
@@ -27,17 +36,18 @@ Usage:
 
 Options:
   -h, --help       Show this help.
-  --self-test      Probe installed OMP; expect host cancel gap open on current releases.
-  --live           Run live cancel scenario (requires upstream host signal wiring).
+  --self-test      Fixture-based probe classification (open / unknown / wiring).
+  --live           Run live cancel scenario (requires host signal wiring + body).
 
 Exit codes:
-  0  blocked gate documented, self-test passed, or live cancel passed
-  1  validation failure or live run failed
+  0  probe-only diagnostic finished, or self-test passed
+  1  validation failure or live run failed / not ready
   2  invalid command-line usage
 
 Notes:
-  - Default mode needs no CURSOR_API_KEY; it records the host cancel gap only.
-  - See ${PROPOSAL_DOC} for the minimal OMP upstream patch.
+  - Default mode needs no CURSOR_API_KEY; it records the host cancel probe only.
+  - Exit 0 on blocked/unknown is diagnostic success, NOT cancel-gate pass.
+  - See ${PROPOSAL_DOC} for the minimal OMP upstream patch (AgentTool signal = 3rd arg).
 `);
 }
 
@@ -68,41 +78,183 @@ function resolveSpawnedOmpVersion() {
 	}
 }
 
-export function buildExtensionOmpMcpCancelEvidence(options = {}) {
-	const cancelProbe = hostExecuteToolOmitsAbortSignal(repoRoot);
-	const hostCancelGapOpen = cancelProbe.gap === true;
+/**
+ * Map probe → gate evidence.
+ * unknown / source-wiring-observed never alone mean cancel-gate pass.
+ */
+export function buildExtensionOmpMcpCancelEvidence(probe = hostExecuteToolOmitsAbortSignal(repoRoot)) {
 	const base = {
 		lane: "extension-omp-mcp-cancel",
-		hostCancelGap: cancelProbe.status,
-		hostCancelGapOpen,
-		probeSourcePath: cancelProbe.path,
+		hostCancelGap: probe.status,
+		hostCancelGapOpen: probe.gap === true,
+		probeThirdArg: probe.thirdArg ?? null,
+		probeSourcePath: probe.path,
 		installedHostPackageVersion: resolveInstalledHostPackageVersion(repoRoot),
 		spawnedOmpVersion: resolveSpawnedOmpVersion(),
 		proposalDoc: PROPOSAL_DOC,
 	};
 
-	if (hostCancelGapOpen) {
+	if (probe.gap === true || probe.status === "open") {
 		return {
 			...base,
 			status: "blocked",
 			liveCancelRunnable: false,
 			nextSteps: [
-				`Land OMP upstream patch described in ${PROPOSAL_DOC}`,
-				"Re-run: npm run smoke:extension-mcp-cancel -- --self-test (gap should close)",
-				"Then: npm run smoke:extension-mcp-cancel -- --live",
+				`Land OMP upstream patch in ${PROPOSAL_DOC} (AgentTool execute 3rd arg = signal)`,
+				"Re-run: npm run smoke:extension-mcp-cancel (expect source-wiring-observed, still not gate pass)",
+				"Then implement: npm run smoke:extension-mcp-cancel -- --live",
 			],
 		};
 	}
 
+	if (probe.status === "source-wiring-observed") {
+		return {
+			...base,
+			status: "source-wiring-observed",
+			liveCancelRunnable: true,
+			nextSteps: [
+				"Host source appears to pass a signal-like 3rd arg; implement --live stop assertions",
+				"Assert: same in-flight call, subprocess/task stop, no post-cancel writes, control call OK",
+			],
+		};
+	}
+
+	// unknown and any other status: never claim ready
 	return {
 		...base,
-		status: options.liveAttempted ? "live-pending" : "ready",
-		liveCancelRunnable: true,
+		status: "unknown",
+		liveCancelRunnable: false,
 		nextSteps: [
-			"Host cancel gap closed; implement live in-flight abort assertions in --live mode",
-			"Assert: subprocess/task stop, no post-cancel writes, no cross-session backfill",
+			"Probe could not classify host executeTool wiring; do not treat as gap closed",
+			`Check ${probe.path || "pi-coding-agent/src/cursor.ts"} and ${PROPOSAL_DOC}`,
 		],
 	};
+}
+
+/** Fixture self-test: classification only; does not claim product cancel safety. */
+export function runCancelProbeSelfTest() {
+	const cases = [
+		{
+			name: "explicit-undefined-third",
+			source: `
+async function executeTool(options, toolName, toolCallId, args) {
+  result = await tool.execute(
+    toolCallId,
+    toolArgs,
+    undefined,
+    onUpdate,
+    options.getToolContext?.(),
+  );
+}
+`,
+			expectStatus: "open",
+			expectGap: true,
+		},
+		{
+			name: "signal-third-arg",
+			source: `
+async function executeTool(options, toolName, toolCallId, args, overrideTool, signal) {
+  result = await tool.execute(toolCallId, toolArgs, signal, onUpdate, options.getToolContext?.());
+}
+`,
+			expectStatus: "source-wiring-observed",
+			expectGap: false,
+		},
+		{
+			name: "wrong-fifth-arg-still-undefined-third",
+			source: `
+async function executeTool() {
+  result = await tool.execute(toolCallId, toolArgs, undefined, onUpdate, ctx, signal);
+}
+`,
+			expectStatus: "open",
+			expectGap: true,
+		},
+		{
+			name: "comment-only-signal",
+			source: `
+async function executeTool() {
+  result = await tool.execute(
+    toolCallId,
+    toolArgs,
+    undefined, // signal intentionally omitted
+    onUpdate,
+    ctx,
+  );
+}
+`,
+			expectStatus: "open",
+			expectGap: true,
+		},
+		{
+			name: "trailing-audit-signal",
+			source: `
+async function executeTool() {
+  result = await tool.execute(toolCallId, toolArgs, undefined, onUpdate, ctx);
+  audit(signal);
+}
+`,
+			expectStatus: "open",
+			expectGap: true,
+		},
+		{
+			name: "abortToken-third",
+			source: `
+async function executeTool() {
+  result = await tool.execute(toolCallId, toolArgs, abortToken, onUpdate, ctx);
+}
+`,
+			expectStatus: "source-wiring-observed",
+			expectGap: false,
+		},
+		{
+			name: "missing-executeTool",
+			source: `export function other() { return 1 }`,
+			expectStatus: "unknown",
+			expectGap: null,
+		},
+		{
+			name: "fifth-param-onUpdate-third",
+			source: `
+async function executeTool() {
+  await tool.execute(toolCallId, toolArgs, onUpdate, ctx, signal);
+}
+`,
+			expectStatus: "unknown",
+			expectGap: null,
+		},
+	];
+
+	const failures = [];
+	for (const c of cases) {
+		const got = classifyAgentToolExecuteSignalArg(c.source, c.name);
+		if (got.status !== c.expectStatus || got.gap !== c.expectGap) {
+			failures.push({
+				name: c.name,
+				expected: { status: c.expectStatus, gap: c.expectGap },
+				got: { status: got.status, gap: got.gap, thirdArg: got.thirdArg },
+			});
+		}
+	}
+
+	const unknownEvidence = buildExtensionOmpMcpCancelEvidence({
+		status: "unknown",
+		gap: null,
+		thirdArg: null,
+		path: "missing.ts",
+	});
+	if (unknownEvidence.status !== "unknown" || unknownEvidence.liveCancelRunnable !== false) {
+		failures.push({
+			name: "unknown-evidence-not-ready",
+			expected: { status: "unknown", liveCancelRunnable: false },
+			got: {
+				status: unknownEvidence.status,
+				liveCancelRunnable: unknownEvidence.liveCancelRunnable,
+			},
+		});
+	}
+
+	return { ok: failures.length === 0, failures, caseCount: cases.length };
 }
 
 export async function runExtensionOmpMcpCancelSmoke(argv = process.argv.slice(2)) {
@@ -113,35 +265,37 @@ export async function runExtensionOmpMcpCancelSmoke(argv = process.argv.slice(2)
 	}
 
 	if (options.selfTest) {
-		const evidence = buildExtensionOmpMcpCancelEvidence();
-		if (!evidence.hostCancelGapOpen) {
-			fail(
-				"self-test expected host cancel gap to remain open on current OMP; probe reported gap closed — update self-test expectations",
-			);
+		const result = runCancelProbeSelfTest();
+		if (!result.ok) {
+			fail(`self-test failed: ${JSON.stringify(result.failures, null, 2)}`);
 		}
-		return { ...evidence, status: "self-test-pass" };
+		return { status: "self-test-pass", caseCount: result.caseCount };
 	}
 
+	const evidence = buildExtensionOmpMcpCancelEvidence();
+
 	if (options.live) {
-		const evidence = buildExtensionOmpMcpCancelEvidence({ liveAttempted: true });
-		if (evidence.hostCancelGapOpen) {
+		if (evidence.status === "blocked" || evidence.hostCancelGapOpen) {
 			fail(
-				`live cancel smoke blocked: OMP host still omits AbortSignal in executeTool (see ${PROPOSAL_DOC})`,
+				`live cancel smoke blocked: OMP host still omits AbortSignal as AgentTool 3rd arg (see ${PROPOSAL_DOC})`,
 			);
 		}
+		if (evidence.status === "unknown" || !evidence.liveCancelRunnable) {
+			fail(`live cancel smoke not runnable: probe status=${evidence.status} (see ${PROPOSAL_DOC})`);
+		}
 		fail(
-			"live cancel smoke body not implemented yet; host gap probe passed — add RPC abort + post-cancel assertions next",
+			"live cancel smoke body not implemented yet; host source wiring observed — add RPC abort + post-cancel assertions next",
 		);
 	}
 
-	return buildExtensionOmpMcpCancelEvidence();
+	return evidence;
 }
 
 async function main() {
 	const evidence = await runExtensionOmpMcpCancelSmoke();
 	if (evidence.status === "help") return;
 	if (evidence.status === "self-test-pass") {
-		process.stdout.write("self-test PASS\n");
+		process.stdout.write(`self-test PASS (${evidence.caseCount} fixtures)\n`);
 		return;
 	}
 	process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);

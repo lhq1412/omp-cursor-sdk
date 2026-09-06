@@ -32,14 +32,8 @@ function resolveSpawnedOmpVersion() {
 
 /** Contract probe: OMP CursorExecBridge.executeTool still omits AbortSignal. */
 export function hostExecuteToolOmitsAbortSignal() {
-	const probe = probeHostExecuteToolOmitsAbortSignal(repoRoot);
-	if (probe.gap === true) {
-		return { ...probe, status: "observed-gap" };
-	}
-	if (probe.gap === false) {
-		return { ...probe, status: "changed-or-unknown" };
-	}
-	return probe;
+	// Preserve shared probe statuses (open / source-wiring-observed / unknown).
+	return probeHostExecuteToolOmitsAbortSignal(repoRoot);
 }
 
 export async function runExtensionOmpMcpSmoke(argv = process.argv.slice(2), baseEnv = process.env) {
